@@ -3,6 +3,18 @@
     nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
     extra-container.url = "github:erikarvstedt/extra-container";
     gitignore.url = "github:hercules-ci/gitignore.nix";
+
+    pre-commit-hooks = {
+      url = "github:cachix/git-hooks.nix";
+      inputs = {
+        nixpkgs.follows = "nixpkgs";
+      };
+    };
+
+    treefmt-nix = {
+      url = "github:numtide/treefmt-nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
   outputs =
@@ -10,6 +22,8 @@
       self,
       nixpkgs,
       extra-container,
+      pre-commit-hooks,
+      treefmt-nix,
       ...
     }@inputs:
     let
@@ -61,6 +75,55 @@
                         };
                       };
                     };
+                };
+              };
+            };
+          };
+        }
+      );
+
+      devShells = eachSystem (
+        pkgs: system: {
+          default =
+            with pkgs;
+            mkShell {
+              buildInputs = [
+                self.checks.${system}.pre-commit-check.enabledPackages
+              ];
+              inherit (self.checks.${system}.pre-commit-check) shellHook;
+              packages = with pkgs; [
+                svelte-language-server
+              ];
+            };
+        }
+      );
+
+      formatter = eachSystem (
+        pkgs: _: (treefmt-nix.lib.evalModule pkgs ./treefmt.nix).config.build.wrapper
+      );
+      checks = eachSystem (
+        _: system: {
+          pre-commit-check = pre-commit-hooks.lib.${system}.run {
+            src = ./.;
+            hooks = {
+              check-added-large-files.enable = true;
+              check-merge-conflicts.enable = true;
+              detect-private-keys.enable = true;
+              deadnix.enable = true;
+              end-of-file-fixer.enable = true;
+              flake-checker.enable = true;
+              ripsecrets.enable = true;
+              statix.enable = true;
+              treefmt = {
+                enable = true;
+                packageOverrides.treefmt = self.outputs.formatter.${system};
+              };
+              typos = {
+                enable = true;
+                settings = {
+                  diff = false;
+                  ignored-words = [
+                  ];
                 };
               };
             };
