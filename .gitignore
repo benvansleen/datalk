@@ -10,3 +10,4 @@ config.tf.json
 build/
 node_modules/
 certs/
+.envrc.*

@@ -2,8 +2,10 @@ import { query, form } from '$app/server';
 import { sql } from 'drizzle-orm';
 import * as v from 'valibot';
 
-import { db } from '$lib/server/db';
+import { getDb } from '$lib/server/db';
 import { usersTable } from '$lib/server/schema';
+
+const db = getDb();
 
 export const getUsers = query(async () => {
   const users = await db.execute(sql`select * from ${usersTable}`);
