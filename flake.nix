@@ -1,8 +1,13 @@
 {
   inputs = {
     nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
-    extra-container.url = "github:erikarvstedt/extra-container";
     gitignore.url = "github:hercules-ci/gitignore.nix";
+
+    extra-container.url = "github:erikarvstedt/extra-container";
+    terranix = {
+      url = "github:terranix/terranix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
 
     pre-commit-hooks = {
       url = "github:cachix/git-hooks.nix";
@@ -22,6 +27,7 @@
       self,
       nixpkgs,
       extra-container,
+      terranix,
       pre-commit-hooks,
       treefmt-nix,
       ...
@@ -98,6 +104,41 @@
                 svelte-language-server
               ];
             };
+        }
+      );
+
+      apps = eachSystem (
+        pkgs: system:
+        let
+          terraform = pkgs.opentofu;
+          terraformConfiguration = terranix.lib.terranixConfiguration {
+            inherit system;
+            modules = [ ./tf ];
+          };
+        in
+        {
+          apply = {
+            type = "app";
+            program = toString (
+              pkgs.writers.writeBash "apply" ''
+                [[ -e config.tf.json ]] && rm -f config.tf.json
+                cp ${terraformConfiguration} config.tf.json \
+                && ${lib.getExe terraform} init \
+                && ${lib.getExe terraform} apply
+              ''
+            );
+          };
+          destroy = {
+            type = "app";
+            program = toString (
+              pkgs.writers.writeBash "destroy" ''
+                [[ -e config.tf.json ]] && rm -f config.tf.json
+                cp ${terraformConfiguration} config.tf.json \
+                && ${lib.getExe terraform} init \
+                && ${lib.getExe terraform} destroy
+              ''
+            );
+          };
         }
       );
 
