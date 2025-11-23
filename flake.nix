@@ -36,6 +36,8 @@
       inherit (nixpkgs) lib;
       eachSystem =
         f: lib.genAttrs lib.systems.flakeExposed (system: f nixpkgs.legacyPackages.${system} system);
+
+      domain = "datalk.vansleen.dev";
     in
     {
       packages = eachSystem (
@@ -48,42 +50,63 @@
               containers = {
                 ui = {
                   extra.addressPrefix = "10.250.0";
-                  config =
-                    { pkgs, ... }:
-                    let
-                      port = 3000;
-                    in
-                    {
-                      systemd.services.ui = {
-                        wantedBy = [ "multi-user.target" ];
-                        serviceConfig = {
-                          ExecStart = "${self.packages.${system}.ui}/bin/ui";
-                          Restart = "always";
-                          Environment = "PORT=${toString port}";
-                        };
-                      };
-                      services.nginx = {
-                        enable = true;
-                        recommendedGzipSettings = true;
-                        recommendedOptimisation = true;
-                        recommendedProxySettings = true;
-                        recommendedTlsSettings = true;
-                        virtualHosts."localhost" = {
-                          forceSSL = true;
-                          sslTrustedCertificate = "${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt";
-                          sslCertificate = ./certs/localhost.crt;
-                          sslCertificateKey = ./certs/localhost.key;
-                          locations = {
-                            "/" = {
-                              proxyPass = "http://localhost:${toString port}";
-                            };
-                          };
-                        };
-                      };
-                    };
+                  config = {
+                    networking.firewall.allowedTCPPorts = [
+                      80
+                      443
+                    ];
+                  }
+                  // (import ./nix/services/ui { self-sign-certs = true; } {
+                    inherit self pkgs;
+                    inherit (pkgs) lib;
+                  });
                 };
               };
             };
+          };
+        }
+      );
+
+      nixosConfigurations = {
+        ui = lib.nixosSystem {
+          specialArgs = inputs;
+          modules = [
+            (import ./nix/systems/ui.nix { inherit domain; })
+          ];
+        };
+      };
+
+      apps = eachSystem (
+        pkgs: system:
+        let
+          terraform = pkgs.opentofu;
+          terraformConfiguration = terranix.lib.terranixConfiguration {
+            inherit system;
+            modules = [ (import ./tf { inherit domain; }) ];
+          };
+        in
+        {
+          tf-apply = {
+            type = "app";
+            program = toString (
+              pkgs.writers.writeBash "apply" ''
+                [[ -e config.tf.json ]] && rm -f config.tf.json
+                cp ${terraformConfiguration} config.tf.json \
+                && ${lib.getExe terraform} init \
+                && ${lib.getExe terraform} apply
+              ''
+            );
+          };
+          tf-destroy = {
+            type = "app";
+            program = toString (
+              pkgs.writers.writeBash "destroy" ''
+                [[ -e config.tf.json ]] && rm -f config.tf.json
+                cp ${terraformConfiguration} config.tf.json \
+                && ${lib.getExe terraform} init \
+                && ${lib.getExe terraform} destroy
+              ''
+            );
           };
         }
       );
@@ -104,41 +127,6 @@
                 svelte-language-server
               ];
             };
-        }
-      );
-
-      apps = eachSystem (
-        pkgs: system:
-        let
-          terraform = pkgs.opentofu;
-          terraformConfiguration = terranix.lib.terranixConfiguration {
-            inherit system;
-            modules = [ ./tf ];
-          };
-        in
-        {
-          apply = {
-            type = "app";
-            program = toString (
-              pkgs.writers.writeBash "apply" ''
-                [[ -e config.tf.json ]] && rm -f config.tf.json
-                cp ${terraformConfiguration} config.tf.json \
-                && ${lib.getExe terraform} init \
-                && ${lib.getExe terraform} apply
-              ''
-            );
-          };
-          destroy = {
-            type = "app";
-            program = toString (
-              pkgs.writers.writeBash "destroy" ''
-                [[ -e config.tf.json ]] && rm -f config.tf.json
-                cp ${terraformConfiguration} config.tf.json \
-                && ${lib.getExe terraform} init \
-                && ${lib.getExe terraform} destroy
-              ''
-            );
-          };
         }
       );
 

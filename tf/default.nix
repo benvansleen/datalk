@@ -1,3 +1,4 @@
+{ domain }:
 {
   config,
   lib,
@@ -9,6 +10,8 @@
     shared_credentials_files = [ "./.aws/credentials" ];
     region = "us-east-1";
   };
+
+  provider.cloudflare = { };
 
   data.aws_ami.nixos_arm64 = {
     owners = [ "427812963091" ];
@@ -25,6 +28,12 @@
     ];
   };
 
+  data.cloudflare_zone.personal = {
+    filter = {
+      name = "vansleen.dev";
+    };
+  };
+
   resource = {
     aws_key_pair.ssh_key = {
       key_name = "datalk";
@@ -37,6 +46,12 @@
       instance_type = "t2.micro";
       vpc_security_group_ids = [ "\${aws_security_group.ui.id}" ];
       associate_public_ip_address = true;
+
+      root_block_device = {
+        volume_size = 32;
+        volume_type = "gp3";
+        encrypted = true;
+      };
 
       tags = {
         Name = "datalk ui";
@@ -74,6 +89,23 @@
         protocol = "tcp";
         cidr_blocks = [ "0.0.0.0/0" ];
       };
+      allow_egress = {
+        security_group_id = "\${aws_security_group.ui.id}";
+        type = "egress";
+        from_port = 0;
+        to_port = 0;
+        protocol = "-1";
+        cidr_blocks = [ "0.0.0.0/0" ];
+      };
+    };
+
+    cloudflare_dns_record.ui = {
+      zone_id = "\${data.cloudflare_zone.personal.id}";
+      name = domain;
+      type = "A";
+      content = "\${aws_instance.ui.public_ip}";
+      ttl = 1;
+      proxied = false; # TODO: probably should proxy this application
     };
   };
 
