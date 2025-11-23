@@ -89,6 +89,14 @@
         protocol = "tcp";
         cidr_blocks = [ "0.0.0.0/0" ];
       };
+      allow_pg = {
+        security_group_id = "\${aws_security_group.ui.id}";
+        type = "ingress";
+        from_port = 5432;
+        to_port = 5432;
+        protocol = "tcp";
+        cidr_blocks = [ "0.0.0.0/0" ];
+      };
       allow_egress = {
         security_group_id = "\${aws_security_group.ui.id}";
         type = "egress";

@@ -2,6 +2,17 @@
   inputs = {
     nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
     gitignore.url = "github:hercules-ci/gitignore.nix";
+    secrets = {
+      url = "git+ssh://git@github.com/benvansleen/datalk-secrets.git";
+      # url = "path:/home/ben/Code/datalk/secrets";
+      inputs = {
+        nixpkgs.follows = "nixpkgs";
+      };
+    };
+    sops-nix = {
+      url = "github:Mic92/sops-nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
 
     extra-container.url = "github:erikarvstedt/extra-container";
     terranix = {
@@ -50,13 +61,32 @@
               containers = {
                 ui = {
                   extra.addressPrefix = "10.250.0";
-                  config = {
+                  config = lib.recursiveUpdate 
+                  {
                     networking.firewall.allowedTCPPorts = [
                       80
                       443
+                      5432
                     ];
+
+                    services.postgresql = {
+                      enable = true;
+                      enableJIT = true;
+                      ensureUsers = [ { name = "postgres"; } ];
+                      ensureDatabases = [ "datalk" ];
+                      enableTCPIP = true;
+                      settings = {
+                        port = 5432;
+                      };
+                      initialScript = pkgs.writeText "init-sql-script" ''
+                        ALTER USER postgres WITH PASSWORD 'postgres';
+                      '';
+                      authentication = '' 
+                        host all all 0.0.0.0/0 md5
+                      '';
+                    };
                   }
-                  // (import ./nix/services/ui { self-sign-certs = true; } {
+                  (import ./nix/services/ui { self-sign-certs = true; } {
                     inherit self pkgs;
                     inherit (pkgs) lib;
                   });

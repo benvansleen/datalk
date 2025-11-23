@@ -187,8 +187,51 @@
         "gitignore": "gitignore",
         "nixpkgs": "nixpkgs_3",
         "pre-commit-hooks": "pre-commit-hooks",
+        "secrets": "secrets",
+        "sops-nix": "sops-nix",
         "terranix": "terranix",
         "treefmt-nix": "treefmt-nix"
+      }
+    },
+    "secrets": {
+      "inputs": {
+        "nixpkgs": [
+          "nixpkgs"
+        ],
+        "systems": "systems_2"
+      },
+      "locked": {
+        "lastModified": 1763933321,
+        "narHash": "sha256-9EjETqwJLpxF75WWSrac7jghIYD5W0m1DSVlUKuJdkA=",
+        "ref": "refs/heads/master",
+        "rev": "802366fb998a0c73a63394a09fcf246fbd7c2fa5",
+        "revCount": 2,
+        "type": "git",
+        "url": "ssh://git@github.com/benvansleen/datalk-secrets.git"
+      },
+      "original": {
+        "type": "git",
+        "url": "ssh://git@github.com/benvansleen/datalk-secrets.git"
+      }
+    },
+    "sops-nix": {
+      "inputs": {
+        "nixpkgs": [
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1763870012,
+        "narHash": "sha256-AHxFfIu73SpNLAOZbu/AvpLhZ/Szhx6gRPj9ufZtaZA=",
+        "owner": "Mic92",
+        "repo": "sops-nix",
+        "rev": "4e7d74d92398b933cc0e0e25af5b0836efcfdde3",
+        "type": "github"
+      },
+      "original": {
+        "owner": "Mic92",
+        "repo": "sops-nix",
+        "type": "github"
       }
     },
     "systems": {
@@ -221,13 +264,28 @@
         "type": "github"
       }
     },
+    "systems_3": {
+      "locked": {
+        "lastModified": 1681028828,
+        "narHash": "sha256-Vy1rq5AaRuLzOxct8nz4T6wlgyUR7zLU309k9mBC768=",
+        "owner": "nix-systems",
+        "repo": "default",
+        "rev": "da67096a3b9bf56a91d16901293e51ba5b49a27e",
+        "type": "github"
+      },
+      "original": {
+        "owner": "nix-systems",
+        "repo": "default",
+        "type": "github"
+      }
+    },
     "terranix": {
       "inputs": {
         "flake-parts": "flake-parts",
         "nixpkgs": [
           "nixpkgs"
         ],
-        "systems": "systems_2"
+        "systems": "systems_3"
       },
       "locked": {
         "lastModified": 1762472226,

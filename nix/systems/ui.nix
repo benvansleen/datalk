@@ -8,6 +8,7 @@
   imports = [
     ./default.nix
     (import ../services/ui { inherit port; })
+    ../services/database.nix
   ];
 
   config = {
