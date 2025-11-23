@@ -34,7 +34,7 @@
     {
       packages = eachSystem (
         pkgs: system: {
-          ui = pkgs.callPackage ./nix/ui.nix inputs;
+          ui = pkgs.callPackage ./ui/package.nix inputs;
 
           containers = extra-container.lib.buildContainers {
             inherit nixpkgs system;
@@ -51,7 +51,7 @@
                       systemd.services.ui = {
                         wantedBy = [ "multi-user.target" ];
                         serviceConfig = {
-                          ExecStart = lib.getExe self.packages.${system}.ui;
+                          ExecStart = "${self.packages.${system}.ui}/bin/ui";
                           Restart = "always";
                           Environment = "PORT=${toString port}";
                         };
@@ -89,6 +89,9 @@
             mkShell {
               buildInputs = [
                 self.checks.${system}.pre-commit-check.enabledPackages
+                self.packages.${system}.ui.buildInputs
+                self.packages.${system}.ui.nativeBuildInputs
+                self.packages.${system}.ui.propagatedBuildInputs
               ];
               inherit (self.checks.${system}.pre-commit-check) shellHook;
               packages = with pkgs; [

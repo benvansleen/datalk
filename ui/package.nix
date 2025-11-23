@@ -1,6 +1,6 @@
 {
   lib,
-  nodejs_22,
+  pkgs,
   buildNpmPackage,
   importNpmLock,
   writeShellApplication,
@@ -10,8 +10,8 @@
 
 let
   inherit (gitignore.lib) gitignoreSource;
-  nodejs = nodejs_22;
-  root = ../ui;
+  nodejs = pkgs.nodejs_22;
+  root = ./.;
   packageJSON = lib.importJSON (root + "/package.json");
   site = buildNpmPackage {
     inherit nodejs;
@@ -30,6 +30,7 @@ in
 writeShellApplication {
   inherit (packageJSON) name;
   text = ''
-     ${lib.getExe nodejs} ${site}
+    ${lib.getExe nodejs} ${site}
   '';
+  passthru = site;
 }
