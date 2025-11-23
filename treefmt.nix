@@ -13,7 +13,18 @@
     shellcheck.enable = true;
     jsonfmt.enable = true;
     yamlfmt.enable = true;
-    prettier.enable = true;
+    prettier = {
+      enable = true;
+      includes = [
+        ".ts"
+        ".js"
+        ".svelte"
+      ];
+      settings = {
+        parser = "typescript";
+        plugins = [ "@prettier/plugin-svelte" ];
+      };
+    };
   };
 
   # List of formatters available at https://github.com/numtide/treefmt-nix?tab=readme-ov-file#supported-programs
