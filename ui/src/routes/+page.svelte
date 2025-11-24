@@ -1,30 +1,31 @@
 <script lang="ts">
   import { createChat, getChats } from '$lib/api/chat.remote';
+  import { Button } from '$lib/components/ui/button';
+  import * as Item from '$lib/components/ui/item';
+  import * as Card from '$lib/components/ui/card';
 </script>
 
-<div class="mx-auto w-fit my-4 grid grid-cols-1 gap-10">
-  <section>
-    <form {...createChat}>
-      <button
-        type="submit"
-        class="px-8 py-4 text-lg font-semibold rounded-xl
-  border-2 border-indigo-600 text-indigo-600
-  hover:bg-indigo-600 hover:text-white
-  transition">Create new chat</button
-      >
-
-      {#if createChat.result}
-        {createChat.result}
-      {/if}
-    </form>
-  </section>
-
-  <section class="">
-    <h1 class="text-lg tracking-wide">Historical chats</h1>
-    <ol class="list-decimal pl-4">
+<div class="grid place-items-center h-screen">
+  <Card.Root class="w-full max-w-sm">
+    <Card.Header>
+      <form {...createChat} class="mx-auto w-fit">
+        <Button type="submit">Create new chat</Button>
+      </form>
+    </Card.Header>
+    <Card.Content class="grid gap-6">
+      <Card.Title class="mx-auto w-fit">Historical Chats</Card.Title>
+      <div class="grid gap-2 h-128 overflow-y-auto">
       {#each await getChats() as chat}
-        <li><a href={`/chat/${chat.id}`}>{chat.title}</a></li>
+        <Item.Root variant="outline">
+          <Item.Content class="flex flex-row items-center justify-between">
+            <Item.Title>{chat.title}</Item.Title>
+            <Item.Actions>
+              <Button variant="outline" size="sm" href={`/chat/${chat.id}`}>Open</Button>
+            </Item.Actions>
+          </Item.Content>
+        </Item.Root>
       {/each}
-    </ol>
-  </section>
+      </div>
+    </Card.Content>
+  </Card.Root>
 </div>
