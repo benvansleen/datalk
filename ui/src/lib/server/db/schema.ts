@@ -1,28 +1,56 @@
-// import { pgTable, serial, text, timestamp, varchar } from 'drizzle-orm/pg-core';
-//
-// export const users = pgTable('users', {
-//   id: serial('id').primaryKey(),
-//   firstName: text('first_name').notNull(),
-//   lastName: text('last_name').notNull(),
-//   email: varchar('email', { length: 256 }).notNull(),
-// });
-//
-// export const chats = pgTable('chats', {
-//   id: serial('id').primaryKey(),
-//   userId: serial('user_id').references(() => users.id).notNull(),
-//   createdAt: timestamp('created_at').defaultNow().notNull().notNull(),
-// });
-//
-// export const messages = pgTable('messages', {
-//   id: serial('id').primaryKey(),
-//   chatId: serial('chat_id').references(() => chats.id).notNull(),
-//   createdAt: timestamp('created_at').defaultNow().notNull(),
-//   content: text('content').notNull(),
-//   type: varchar('type', { length: 128 }).notNull(),
-// });
-
 import { relations } from 'drizzle-orm';
-import { pgTable, text, timestamp, boolean, index } from 'drizzle-orm/pg-core';
+import {
+  uuid,
+  serial,
+  pgTable,
+  text,
+  varchar,
+  timestamp,
+  boolean,
+  index,
+} from 'drizzle-orm/pg-core';
+
+export const chat = pgTable('chat', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: text('user_id')
+    .notNull()
+    .references(() => user.id, { onDelete: 'cascade' }),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at')
+    .$onUpdate(() => /* @__PURE__ */ new Date())
+    .notNull(),
+
+  title: text('title'),
+});
+
+export const message = pgTable('message', {
+  id: serial('id').primaryKey(),
+  chatId: uuid('chat_id')
+    .notNull()
+    .references(() => chat.id, { onDelete: 'cascade' }),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  content: text('title').notNull(),
+  type: varchar('type', { length: 128 }).notNull(),
+});
+
+export const chatRelations = relations(chat, ({ many, one }) => ({
+  messages: many(message),
+  user: one(user, {
+    fields: [chat.userId],
+    references: [user.id],
+  }),
+}));
+
+export const messageRelations = relations(message, ({ one }) => ({
+  chat: one(chat, {
+    fields: [message.chatId],
+    references: [chat.id],
+  }),
+}));
+
+/*
+  -------- Auth --------
+*/
 
 export const user = pgTable('user', {
   id: text('id').primaryKey(),
@@ -98,6 +126,7 @@ export const verification = pgTable(
 export const userRelations = relations(user, ({ many }) => ({
   sessions: many(session),
   accounts: many(account),
+  chats: many(chat),
 }));
 
 export const sessionRelations = relations(session, ({ one }) => ({

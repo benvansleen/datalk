@@ -1,16 +1,11 @@
 <script lang="ts">
-  import { requireAuth } from '$lib/api/auth.remote';
-
-  const _ = requireAuth();
-
-  let x = $state(0);
-  function increment() {
-    x += 1;
-  }
+  import { createChat } from '$lib/api/chat.remote';
 </script>
 
-<h1 class="prose">test!</h1>
-<p>Visit <a href="https://svelte.dev/docs/kit">svelte.dev/docs/kit</a> to read the documentation</p>
+<form {...createChat}>
+  <button type="submit">Create new chat</button>
 
-<button onclick={increment}>increment</button>
-<p>{x}</p>
+  {#if createChat.result}
+    {createChat.result}
+  {/if}
+</form>

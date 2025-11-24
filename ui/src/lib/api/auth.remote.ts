@@ -20,7 +20,7 @@ export const signup = form(SignupS, async (user) => {
     console.log(err);
     return { error: "There's already an account associated with this email." };
   }
-  redirect(307, '/');
+  redirect(307, `/`);
 });
 
 export const login = form(LoginS, async (user) => {
@@ -33,7 +33,7 @@ export const login = form(LoginS, async (user) => {
     console.log(err);
     return { error: 'No account exists with this email/password combination.' };
   }
-  redirect(303, '/');
+  redirect(303, `/`);
 });
 
 export const signout = form(async () => {
@@ -41,7 +41,7 @@ export const signout = form(async () => {
     request: { headers },
   } = getRequestEvent();
   await getAuth().api.signOut({ headers });
-  redirect(303, '/login');
+  redirect(303, `/login`);
 });
 
 export const requireAuth = query(async () => {
@@ -49,7 +49,7 @@ export const requireAuth = query(async () => {
     locals: { user },
   } = getRequestEvent();
   if (!user) {
-    redirect(307, '/login');
+    redirect(307, `/login`);
   }
   return user;
 });
@@ -59,6 +59,6 @@ export const alreadyLoggedIn = query(async () => {
     locals: { user },
   } = getRequestEvent();
   if (user) {
-    redirect(307, '/');
+    redirect(307, `/`);
   }
 });

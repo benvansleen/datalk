@@ -43,6 +43,34 @@
       "when": 1763946549422,
       "tag": "0005_far_exiles",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1763955962417,
+      "tag": "0006_mighty_amphibian",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1763955999794,
+      "tag": "0007_productive_young_avengers",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1763956020907,
+      "tag": "0008_workable_nightmare",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1763961255593,
+      "tag": "0009_jittery_nuke",
+      "breakpoints": true
     }
   ]
 }

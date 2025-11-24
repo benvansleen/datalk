@@ -4,7 +4,7 @@
 }:
 {
   self,
-  config,
+  config ? null,
   pkgs,
   lib,
   ...
