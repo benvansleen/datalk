@@ -14,6 +14,11 @@ const LoginS = v.object({
 });
 
 export const signup = form(SignupS, async (user) => {
+  // Hooked up to my credit card! Let's not put it out in the world for just anyone!
+  if (process.env.ENVIRONMENT === 'production' && user.email !== 'benvansleen@gmail.com') {
+    return { error: "**Extremely** private beta only!" };
+  }
+
   try {
     await getAuth().api.signUpEmail({ body: user });
   } catch (err) {
@@ -34,7 +39,7 @@ export const login = form(LoginS, async (user) => {
     return { error: 'No account exists with this email/password combination.' };
   }
 
-  console.log('New user registered:', user);
+  console.log('User logged in:', user);
   redirect(303, `/`);
 });
 

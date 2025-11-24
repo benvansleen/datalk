@@ -63,7 +63,7 @@
   };
 </script>
 
-<Button variant="link" href='/'>Go home</Button>
+<Button variant="link" href="/">Go home</Button>
 
 <div class="m-20 grid gap-6">
   <div class="grid gap-2">

@@ -20,8 +20,12 @@ in
     serviceConfig = {
       ExecStart = "${self.packages.${pkgs.stdenv.hostPlatform.system}.ui}/bin/ui";
       Restart = "always";
+      User = "ui";
       ${if-nixos-config "EnvironmentFile"} = config.sops.templates."ui.env".path;
     };
+  };
+  users.users.ui = {
+    isNormalUser = true;
   };
   users.users.nginx.extraGroups = [ "acme" ];
   security.acme = {
@@ -50,6 +54,8 @@ in
 
   ${if-nixos-config "sops"} = {
     templates."ui.env".content = /* ini */ ''
+      ENVIRONMENT=production
+
       PORT=${toString port}
       DB_HOST=datalk.vansleen.dev
       DB_PORT=${toString config.services.postgresql.settings.port}
