@@ -1,5 +1,7 @@
 <script lang="ts">
-  import { login } from '$lib/api/auth.remote';
+  import { login, alreadyLoggedIn } from '$lib/api/auth.remote';
+
+  alreadyLoggedIn();
 </script>
 
 <div>
@@ -28,5 +30,9 @@
     </p>
 
     <button type="submit">Submit</button>
+
+    {#if login.result?.error}
+      <p class="issue">{login.result.error}</p>
+    {/if}
   </form>
 </div>

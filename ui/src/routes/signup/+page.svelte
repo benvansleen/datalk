@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { signup } from '$lib/api/auth.remote';
+  import { signup, alreadyLoggedIn } from '$lib/api/auth.remote';
+  alreadyLoggedIn();
 </script>
 
 <div>
@@ -31,5 +32,14 @@
     </label>
 
     <button type="submit">Submit</button>
+
+    {#if signup.result?.error}
+      <p class="issue">{signup.result.error}</p>
+    {/if}
   </form>
+
+  <p>
+    Already have an account?
+    <a href="/login">Log in here instead!</a>
+  </p>
 </div>
