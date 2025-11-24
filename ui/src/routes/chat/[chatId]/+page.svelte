@@ -1,7 +1,8 @@
 <script lang="ts">
   import { createMessage, getChatMessages } from '$lib/api/chat.remote';
 
-  let chat = $derived(await getChatMessages());
+  let { params } = $props();
+  let chat = $derived(await getChatMessages(params.chatId));
 </script>
 
 <h1>welcome to chat: {chat.title} ({chat.id})</h1>
@@ -18,6 +19,7 @@
       <input {...createMessage.fields.content.as('text')} />
     </label>
 
+    <input {...createMessage.fields.chatId.as('hidden', params.chatId)} />
     <button type="submit">Send</button>
   </form>
 {/if}

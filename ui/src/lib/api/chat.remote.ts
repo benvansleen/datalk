@@ -3,7 +3,7 @@ import { form, query, getRequestEvent } from '$app/server';
 import { getDb } from '$lib/server/db';
 import * as T from '$lib/server/db/schema';
 import { redirect } from '@sveltejs/kit';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, desc } from 'drizzle-orm';
 
 function requireAuth() {
   const {
@@ -29,11 +29,17 @@ export const createChat = form(async () => {
   redirect(300, `/chat/${chat_id}`);
 });
 
-export const getChatMessages = query(async () => {
+export const getChats = query(async () => {
   const user = requireAuth();
-  const {
-    params: { chatId },
-  } = getRequestEvent();
+  const chats = await getDb().query.chat.findMany({
+    where: eq(T.chat.userId, user.id),
+    orderBy: [desc(T.chat.createdAt)],
+  });
+  return chats;
+});
+
+export const getChatMessages = query(v.pipe(v.string(), v.uuid()), async (chatId) => {
+  const user = requireAuth();
 
   const chat = await getDb().query.chat.findFirst({
     where: and(eq(T.chat.userId, user.id), eq(T.chat.id, chatId as string)),
@@ -50,13 +56,11 @@ export const getChatMessages = query(async () => {
 
 export const createMessage = form(
   v.object({
+    chatId: v.pipe(v.string(), v.nonEmpty()),
     content: v.pipe(v.string(), v.nonEmpty()),
   }),
-  async ({ content }) => {
+  async ({ chatId, content }) => {
     const _ = requireAuth();
-    const {
-      params: { chatId },
-    } = getRequestEvent();
 
     try {
       await getDb()
