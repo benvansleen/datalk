@@ -33,6 +33,8 @@ export const login = form(LoginS, async (user) => {
     console.log(err);
     return { error: 'No account exists with this email/password combination.' };
   }
+
+  console.log('New user registered:', user);
   redirect(303, `/`);
 });
 
