@@ -201,11 +201,11 @@
         "systems": "systems_2"
       },
       "locked": {
-        "lastModified": 1763933321,
-        "narHash": "sha256-9EjETqwJLpxF75WWSrac7jghIYD5W0m1DSVlUKuJdkA=",
+        "lastModified": 1764011300,
+        "narHash": "sha256-yqxQLEoOBfwsSBi8CORSKIUUCZnpvFhSg6D2TlxAqwk=",
         "ref": "refs/heads/master",
-        "rev": "802366fb998a0c73a63394a09fcf246fbd7c2fa5",
-        "revCount": 2,
+        "rev": "4ad5b978fd4d944d90487ef38faffaa7694357df",
+        "revCount": 3,
         "type": "git",
         "url": "ssh://git@github.com/benvansleen/datalk-secrets.git"
       },

@@ -56,6 +56,10 @@ in
       DB_USER=postgres
       DB_PASSWORD=${config.sops.placeholder.pg_password}
       DB_NAME=datalk
+
+      BETTER_AUTH_SECRET=${config.sops.placeholder.better_auth_secret}
+
+      OPENAI_API_KEY=${config.sops.placeholder.openai_api_key}
     '';
   };
 }
