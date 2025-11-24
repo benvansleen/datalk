@@ -22,6 +22,27 @@
       "when": 1763926210778,
       "tag": "0002_bored_moondragon",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1763937046801,
+      "tag": "0003_sloppy_quicksilver",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1763938704364,
+      "tag": "0004_amusing_kingpin",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1763946549422,
+      "tag": "0005_far_exiles",
+      "breakpoints": true
     }
   ]
 }
