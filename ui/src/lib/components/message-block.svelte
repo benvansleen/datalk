@@ -2,12 +2,8 @@
   import * as Item from '$lib/components/shadcn/item';
   import { marked } from 'marked';
   import hljs from 'highlight.js/lib/core';
-  import markdown from 'highlight.js/lib/languages/markdown';
-  import python from 'highlight.js/lib/languages/python';
   import { onMount } from 'svelte';
 
-  hljs.registerLanguage('markdown', markdown);
-  hljs.registerLanguage('python', python);
   onMount(() => {
     hljs.highlightAll();
   });
@@ -21,7 +17,7 @@
       if (call.params.python_code) {
         type = 'python';
         content = `
-\`\`\`
+\`\`\`python
 ${call.params.python_code.join('\n')}
 \`\`\`
 

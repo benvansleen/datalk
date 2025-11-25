@@ -3,6 +3,7 @@
   import { Spinner } from '$lib/components/shadcn/spinner';
   import { ArrowUp } from 'lucide-svelte';
   import { getChatMessages } from '$lib/api/chat.remote';
+  import { fly, slide } from 'svelte/transition';
 
   import MessageBlock from '$lib/components/message-block.svelte';
 
@@ -81,9 +82,13 @@
     {/each}
 
     {#if generating}
-      <MessageBlock type="user" content={submittedUserInput} />
+      <div in:fly={{ y: 20, duration: 500 }}>
+        <MessageBlock type="user" content={submittedUserInput} />
+      </div>
       {#if toolState}
-        <MessageBlock type="tool" content={toolState} />
+        <div in:slide={{ duration: 200 }} out:slide={{ duration: 200 }}>
+          <MessageBlock type="tool" content={toolState} />
+        </div>
       {/if}
 
       {#if !received_first_token}
@@ -92,14 +97,14 @@
     {/if}
 
     {#if answer}
-      <div bind:this={scrollToDiv}>
+      <div in:slide={{ duration: 100 }}>
         <MessageBlock type="assistant" content={answer} />
       </div>
     {/if}
   </div>
 
   <form onsubmit={handleSubmit} class="grid gap-2">
-    <div class="flex w-full max-w-2xl mx-auto border rounded-md overflow-hidden">
+    <div bind:this={scrollToDiv} class="flex w-full max-w-2xl mx-auto border rounded-md overflow-hidden">
       <input
         bind:value={userInput}
         type="text"

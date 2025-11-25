@@ -2,16 +2,12 @@
   import hljs from 'highlight.js/lib/core';
   import markdown from 'highlight.js/lib/languages/markdown';
   import python from 'highlight.js/lib/languages/python';
-  import { afterUpdate, onMount } from 'svelte';
   import 'highlight.js/styles/base16/gruvbox-dark-medium.css';
   import '@fontsource/victor-mono/400.css';
   import '@fontsource/iosevka-aile/300.css';
 
   hljs.registerLanguage('markdown', markdown);
   hljs.registerLanguage('python', python);
-  onMount(() => {
-    hljs.highlightAll();
-  });
 </script>
 
 <slot />
