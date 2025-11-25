@@ -5,7 +5,6 @@
   import * as Item from '$lib/components/ui/item';
   import SvelteMarkdown from '@humanspeak/svelte-markdown';
   import { getChatMessages } from '$lib/api/chat.remote';
-  import { SSE } from 'sse.js';
 
   let { params } = $props();
   let chat = $derived(await getChatMessages(params.chatId));
@@ -14,7 +13,9 @@
   let scrollToDiv: HTMLDivElement;
   const scrollToBottom = () => {
     setTimeout(() => {
-      scrollToDiv.scrollIntoView({ behavior: 'smooth', block: 'end', inline: 'nearest' });
+      if (scrollToDiv) {
+        scrollToDiv.scrollIntoView({ behavior: 'smooth', block: 'end', inline: 'nearest' });
+      }
     });
   };
 
@@ -28,17 +29,23 @@
     e.preventDefault();
     scrollToBottom();
 
+    const res = await fetch(`/chat/${params.chatId}`, {
+      method: 'POST',
+      body: userInput,
+      headers: {
+        'Content-Type': 'text/plain',
+      },
+    });
+    const messageRequestId = await res.text();
+    console.log(messageRequestId);
+
     submittedUserInput = userInput;
     received_first_token = false;
     generating = true;
     (e.target as HTMLFormElement).reset();
 
-    const eventSource = new SSE(`/chat/${params.chatId}`, {
-      headers: {
-        'Content-Type': 'text/plain',
-      },
-      payload: userInput,
-    });
+    const eventSource = new EventSource(`/message-request/${messageRequestId}`);
+    console.log(eventSource);
 
     eventSource.addEventListener('message', (e: { data: string }) => {
       scrollToBottom();
@@ -49,6 +56,9 @@
         answer += chunk.text;
         received_first_token = true;
       }
+      if (chunk.type == 'tool') {
+        answer += chunk.status;
+      }
       if (chunk.done) {
         console.log('Stream ended!');
         generating = false;
@@ -58,7 +68,6 @@
       }
     });
 
-    eventSource.stream();
     scrollToBottom();
   };
 </script>

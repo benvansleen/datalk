@@ -18,7 +18,7 @@ class ExecutionRequest(BaseModel):
 
 
 class ExecutionResult(BaseModel):
-    outputs: list[str]
+    outputs: str
 
 
 async def kernel_client() -> tuple[AsyncKernelManager, AsyncKernelClient]:
@@ -61,13 +61,10 @@ async def execute(request: ExecutionRequest) -> ExecutionResult:
 
     try:
         _, kc = KERNELS[request.chat_id]
-        outputs: list[str] = []
-        for line in request.code:
-            output = await wait_for(
-                execute_code(kc=kc, code=line),
-                timeout=120,
-            )
-            outputs.append(output)
+        outputs = await wait_for(
+            execute_code(kc=kc, code="\n".join(request.code)),
+            timeout=120,
+        )
 
         print(outputs)
     except TimeoutError:
