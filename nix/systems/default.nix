@@ -2,6 +2,7 @@
   nixpkgs,
   pkgs,
   modulesPath,
+  extra-container,
   sops-nix,
   secrets,
   ...
@@ -10,6 +11,7 @@
 {
   imports = [
     "${modulesPath}/virtualisation/amazon-image.nix"
+    extra-container.nixosModules.default
     sops-nix.nixosModules.sops
   ];
 
@@ -37,9 +39,18 @@
       system = "x86_64-linux";
     };
     services = {
-      openssh.enable = true;
+      fail2ban.enable = true;
+      openssh = {
+        enable = true;
+        settings = {
+          PasswordAuthentication = false;
+          KbdInteractiveAuthentication = false;
+        };
+      };
     };
     environment.systemPackages = with pkgs; [ ];
+    programs.extra-container.enable = true;
+
     system.stateVersion = "25.05";
   };
 }
