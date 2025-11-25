@@ -1,8 +1,8 @@
 <script lang="ts">
-  import { Button } from '$lib/components/ui/button';
-  import { Label } from '$lib/components/ui/label';
-  import { Input } from '$lib/components/ui/input';
-  import * as Card from '$lib/components/ui/card';
+  import { Button } from '$lib/components/shadcn/button';
+  import { Label } from '$lib/components/shadcn/label';
+  import { Input } from '$lib/components/shadcn/input';
+  import * as Card from '$lib/components/shadcn/card';
   import { login, alreadyLoggedIn } from '$lib/api/auth.remote';
 
   alreadyLoggedIn();

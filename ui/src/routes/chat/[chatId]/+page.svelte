@@ -1,10 +1,10 @@
 <script lang="ts">
-  import { Button } from '$lib/components/ui/button';
-  import { Spinner } from '$lib/components/ui/spinner';
-  import { Input } from '$lib/components/ui/input/index.js';
-  import * as Item from '$lib/components/ui/item';
-  import SvelteMarkdown from '@humanspeak/svelte-markdown';
+  import { Button } from '$lib/components/shadcn/button';
+  import { Spinner } from '$lib/components/shadcn/spinner';
+  import { ArrowUp } from 'lucide-svelte';
   import { getChatMessages } from '$lib/api/chat.remote';
+
+  import MessageBlock from '$lib/components/message-block.svelte';
 
   let { params } = $props();
   let chat = $derived(await getChatMessages(params.chatId));
@@ -20,6 +20,7 @@
   };
 
   let answer = $state('');
+  let toolState = $state('');
   let userInput = $state('');
   let submittedUserInput = $state('');
   let received_first_token = $state(false);
@@ -47,21 +48,20 @@
     const eventSource = new EventSource(`/message-request/${messageRequestId}`);
     console.log(eventSource);
 
-    eventSource.addEventListener('message', (e: { data: string }) => {
+    eventSource.addEventListener('message', (e) => {
       scrollToBottom();
 
       const chunk = JSON.parse(e.data);
-      console.log(chunk);
       if (chunk.type === 'content') {
         answer += chunk.text;
         received_first_token = true;
       }
-      if (chunk.type == 'tool') {
-        answer += chunk.status;
+      if (chunk.type === 'tool' && typeof chunk.status === 'string') {
+        toolState = chunk.status;
       }
-      if (chunk.done) {
-        console.log('Stream ended!');
+      if (chunk.type !== 'tool' && chunk.done) {
         generating = false;
+        toolState = '';
         answer = '';
         submittedUserInput = '';
         getChatMessages(params.chatId).refresh();
@@ -77,36 +77,38 @@
 <div class="m-20 grid gap-6">
   <div class="grid gap-2">
     {#each chat.messages as { type, content }}
-      <Item.Root class="border border-gray-300 rounded-md px-4 py-2">
-        <Item.Title class="min-w-20 font-bold">
-          {type}:
-        </Item.Title>
-        <Item.Content>
-          <SvelteMarkdown source={content} />
-        </Item.Content>
-      </Item.Root>
-    {:else}
-      <p>No messages yet!</p>
+      <MessageBlock {type} {content} />
     {/each}
 
     {#if generating}
-      <div class="border border-gray-300 rounded-md px-4 py-2">
-        <SvelteMarkdown source={submittedUserInput} />
-      </div>
+      <MessageBlock type="user" content={submittedUserInput} />
+      {#if toolState}
+        <MessageBlock type="tool" content={toolState} />
+      {/if}
+
       {#if !received_first_token}
         <Spinner />
       {/if}
     {/if}
 
     {#if answer}
-      <div bind:this={scrollToDiv} class="border border-gray-300 rounded-md px-4 py-2">
-        <SvelteMarkdown source={answer} />
+      <div bind:this={scrollToDiv}>
+        <MessageBlock type="assistant" content={answer} />
       </div>
     {/if}
   </div>
 
   <form onsubmit={handleSubmit} class="grid gap-2">
-    <Input type="text" class="input input-bordered w-full" bind:value={userInput}></Input>
-    <Button type="submit">Send</Button>
+    <div class="flex w-full max-w-2xl mx-auto border rounded-md overflow-hidden">
+      <input
+        bind:value={userInput}
+        type="text"
+        placeholder="Type your message..."
+        class="flex-1 px-4 py-2 focus:outline-none"
+      />
+      <button type="submit" class="bg-blue-500 text-white px-4 py-2 hover:bg-blue-600">
+        <ArrowUp class="w-5 h-5" />
+      </button>
+    </div>
   </form>
 </div>

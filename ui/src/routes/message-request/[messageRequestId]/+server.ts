@@ -58,6 +58,7 @@ class PythonPlugin extends llm.Plugin {
     await fetch(`${url}/environment/create`, {
       method: 'POST',
       body: JSON.stringify({
+        // TODO: scope for each chat_id
         chat_id: '1',
       }),
       headers: {
@@ -125,10 +126,13 @@ export const GET: RequestHandler = async ({ params }) => {
   }
 
   console.log(chat);
-  const messages = chat.messages
-    .filter(({ type }) => type !== 'tool')
-    .map(({ type, content }) => new llm.Message(type as llm.LlmRole, content));
-  messages.push(new llm.Message('user', content));
+  const messages = [
+    new llm.Message('system', "Always use markdown formatting in your response."),
+    ...chat.messages
+      .filter(({ type }) => type !== 'tool')
+      .map(({ type, content }) => new llm.Message(type as llm.LlmRole, content)),
+    new llm.Message('user', content),
+  ];
 
   console.log(messages);
   const res = getModel().generate(messages);
@@ -145,6 +149,7 @@ export const GET: RequestHandler = async ({ params }) => {
         }
         controller.enqueue(`data: ${JSON.stringify(chunk)}\n\n`);
       }
+
       try {
         await getDb()
           .insert(T.message)
@@ -171,6 +176,9 @@ export const GET: RequestHandler = async ({ params }) => {
         console.log(err);
       }
     },
+    cancel() {
+      clearInterval(interval);
+    }
   });
   return new Response(stream, {
     headers: {

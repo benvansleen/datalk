@@ -1,8 +1,8 @@
 <script lang="ts">
   import { createChat, getChats } from '$lib/api/chat.remote';
-  import { Button } from '$lib/components/ui/button';
-  import * as Item from '$lib/components/ui/item';
-  import * as Card from '$lib/components/ui/card';
+  import { Button } from '$lib/components/shadcn/button';
+  import * as Item from '$lib/components/shadcn/item';
+  import * as Card from '$lib/components/shadcn/card';
 </script>
 
 <div class="grid place-items-center h-screen">
