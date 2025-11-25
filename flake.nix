@@ -54,15 +54,28 @@
       packages = eachSystem (
         pkgs: system: {
           ui = pkgs.callPackage ./ui/package.nix inputs;
+          python-server = pkgs.callPackage ./python-server/package.nix inputs;
 
           containers = extra-container.lib.buildContainers {
             inherit nixpkgs system;
             config = {
+              ## FOR LOCAL DEVELOPMENT PURPOSES ONLY
+              ## DO NOT DEPLOY UNPROTECTED CONTAINERS IN PRODUCTION
               containers = {
+                py-sandbox = {
+                  extra.addressPrefix = "10.250.1";
+                  config = { pkgs, ... }: (
+                  lib.recursiveUpdate 
+                  { }
+                  (import ./nix/services/python-server.nix { inherit self pkgs; inherit (pkgs) lib;})
+                  );
+                };
                 ui = {
                   extra.addressPrefix = "10.250.0";
                   config = lib.recursiveUpdate 
                   {
+
+                    programs.extra-container.enable = true; 
                     networking.firewall.allowedTCPPorts = [
                       80
                       443
@@ -155,6 +168,19 @@
               inherit (self.checks.${system}.pre-commit-check) shellHook;
               packages = with pkgs; [
                 svelte-language-server
+
+                (python313.withPackages (pypkg: with pypkg; [
+                  duckdb
+                  matplotlib
+                  notebook
+                  pandas
+                  pydantic
+                  requests
+                  seaborn
+                  fastapi
+                  fastapi-cli
+                  uvicorn
+                ]))
               ];
             };
         }
