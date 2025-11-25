@@ -127,7 +127,7 @@ export const GET: RequestHandler = async ({ params }) => {
 
   console.log(chat);
   const messages = [
-    new llm.Message('system', "Always use markdown formatting in your response."),
+    new llm.Message('system', 'Always use markdown formatting in your response.'),
     ...chat.messages
       .filter(({ type }) => type !== 'tool')
       .map(({ type, content }) => new llm.Message(type as llm.LlmRole, content)),
@@ -178,7 +178,7 @@ export const GET: RequestHandler = async ({ params }) => {
     },
     cancel() {
       clearInterval(interval);
-    }
+    },
   });
   return new Response(stream, {
     headers: {
