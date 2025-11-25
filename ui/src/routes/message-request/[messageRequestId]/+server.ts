@@ -6,15 +6,14 @@ import * as T from '$lib/server/db/schema';
 import { and, eq } from 'drizzle-orm';
 import * as llm from 'multi-llm-ts';
 
-
 let python_server_url: string;
 const getPythonServerUrl = () => {
   if (!python_server_url) {
     const { PYTHON_SERVER_HOST, PYTHON_SERVER_PORT } = process.env;
     python_server_url = `http://${PYTHON_SERVER_HOST}:${PYTHON_SERVER_PORT}`;
   }
-  return python_server_url
-}
+  return python_server_url;
+};
 
 class PythonPlugin extends llm.Plugin {
   isEnabled(): boolean {
@@ -22,11 +21,11 @@ class PythonPlugin extends llm.Plugin {
   }
 
   getName(): string {
-    return "PythonInterpreter";
+    return 'PythonInterpreter';
   }
 
   getDescription(): string {
-    return "Provide lines of python code to be executed by a python interpreter. The results of stdout, stderr, & possible exceptions will be returned to you";
+    return 'Provide lines of python code to be executed by a python interpreter. The results of stdout, stderr, & possible exceptions will be returned to you';
   }
 
   getPreparationDescription(tool: string): string {
@@ -38,15 +37,17 @@ class PythonPlugin extends llm.Plugin {
   }
 
   getParameters(): llm.PluginParameter[] {
-    return [{
-      name: 'python_code',
-      type: 'array',
-      items: {
-        type: 'string',
+    return [
+      {
+        name: 'python_code',
+        type: 'array',
+        items: {
+          type: 'string',
+        },
+        description: 'Lines of python code to be executed',
+        required: true,
       },
-      description: "Lines of python code to be executed",
-      required: true,
-    }]
+    ];
   }
 
   async execute(context: llm.PluginExecutionContext, parameters): Promise<any> {
@@ -101,7 +102,7 @@ const getModel = () => {
 export const GET: RequestHandler = async ({ params }) => {
   const user = requireAuth();
   const { messageRequestId } = params;
-  console.log(`fired: ${messageRequestId}`)
+  console.log(`fired: ${messageRequestId}`);
   const [messageRequest] = await getDb()
     .delete(T.messageRequests)
     .where(eq(T.messageRequests.id, messageRequestId))
@@ -124,10 +125,8 @@ export const GET: RequestHandler = async ({ params }) => {
 
   console.log(chat);
   const messages = chat.messages
-  .filter( ({ type }) => type !== 'tool')
-  .map(
-    ({ type, content }) => new llm.Message(type as llm.LlmRole, content),
-  );
+    .filter(({ type }) => type !== 'tool')
+    .map(({ type, content }) => new llm.Message(type as llm.LlmRole, content));
   messages.push(new llm.Message('user', content));
 
   console.log(messages);
@@ -154,10 +153,10 @@ export const GET: RequestHandler = async ({ params }) => {
               content,
               type: 'user',
             },
-            ...tools.map(tool => {
+            ...tools.map((tool) => {
               return {
                 chatId,
-                content: JSON.stringify(tool) ?? "empty??",
+                content: JSON.stringify(tool) ?? 'empty??',
                 type: 'tool',
               };
             }),
@@ -167,7 +166,6 @@ export const GET: RequestHandler = async ({ params }) => {
               type: 'assistant',
             },
           ]);
-
       } catch (err) {
         console.log(err);
       }

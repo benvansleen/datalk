@@ -16,7 +16,7 @@ const LoginS = v.object({
 export const signup = form(SignupS, async (user) => {
   // Hooked up to my credit card! Let's not put it out in the world for just anyone!
   if (process.env.ENVIRONMENT === 'production' && user.email !== 'benvansleen@gmail.com') {
-    return { error: "**Extremely** private beta only!" };
+    return { error: '**Extremely** private beta only!' };
   }
 
   try {

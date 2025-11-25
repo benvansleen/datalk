@@ -12,8 +12,12 @@ import {
 
 export const messageRequests = pgTable('message_requests', {
   id: uuid('id').defaultRandom().primaryKey(),
-  userId: text('user_id').notNull().references(() => user.id, { onDelete: 'cascade' }),
-  chatId: uuid('chat_id').notNull().references(() => chat.id, { onDelete: 'cascade' }),
+  userId: text('user_id')
+    .notNull()
+    .references(() => user.id, { onDelete: 'cascade' }),
+  chatId: uuid('chat_id')
+    .notNull()
+    .references(() => chat.id, { onDelete: 'cascade' }),
   content: text('content'),
 });
 

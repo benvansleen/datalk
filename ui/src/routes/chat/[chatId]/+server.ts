@@ -18,7 +18,7 @@ export const POST = async ({ request, params }) => {
   const { chatId } = params;
   const content = await request.text();
   console.log(content);
-  const [ {messageRequestId} ] = await getDb()
+  const [{ messageRequestId }] = await getDb()
     .insert(T.messageRequests)
     .values({
       userId: user.id,
@@ -33,4 +33,4 @@ export const POST = async ({ request, params }) => {
       'Cache-Control': 'no-cache',
     },
   });
-}
+};
