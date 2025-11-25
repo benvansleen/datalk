@@ -2,7 +2,11 @@
   domain,
   port ? 3000,
 }:
-{ ... }:
+{
+  self,
+  lib,
+  ...
+}:
 
 {
   imports = [
@@ -26,6 +30,22 @@
           };
         };
       };
+    };
+
+    containers.py-sandbox = {
+      autoStart = true;
+      ephemeral = true;
+      hostAddress = "10.250.0.1";
+      localAddress = "10.250.0.2";
+      privateNetwork = true;
+      config =
+        { pkgs, ... }:
+        (lib.recursiveUpdate { } (
+          import ../services/python-server.nix {
+            inherit self pkgs;
+            inherit (pkgs) lib;
+          }
+        ));
     };
   };
 }

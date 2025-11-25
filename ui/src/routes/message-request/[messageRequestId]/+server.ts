@@ -11,6 +11,7 @@ const getPythonServerUrl = () => {
   if (!python_server_url) {
     const { PYTHON_SERVER_HOST, PYTHON_SERVER_PORT } = process.env;
     python_server_url = `http://${PYTHON_SERVER_HOST}:${PYTHON_SERVER_PORT}`;
+    console.log(`Using python_server_url: ${python_server_url}`);
   }
   return python_server_url;
 };

@@ -64,45 +64,51 @@
               containers = {
                 py-sandbox = {
                   extra.addressPrefix = "10.250.1";
-                  config = { pkgs, ... }: (
-                  lib.recursiveUpdate 
-                  { }
-                  (import ./nix/services/python-server.nix { inherit self pkgs; inherit (pkgs) lib;})
-                  );
+                  config =
+                    { pkgs, ... }:
+                    (lib.recursiveUpdate { } (
+                      import ./nix/services/python-server.nix {
+                        inherit self pkgs;
+                        inherit (pkgs) lib;
+                      }
+                    ));
                 };
                 ui = {
                   extra.addressPrefix = "10.250.0";
-                  config = lib.recursiveUpdate 
-                  {
+                  config =
+                    lib.recursiveUpdate
+                      {
 
-                    programs.extra-container.enable = true; 
-                    networking.firewall.allowedTCPPorts = [
-                      80
-                      443
-                      5432
-                    ];
+                        programs.extra-container.enable = true;
+                        networking.firewall.allowedTCPPorts = [
+                          80
+                          443
+                          5432
+                        ];
 
-                    services.postgresql = {
-                      enable = true;
-                      enableJIT = true;
-                      ensureUsers = [ { name = "postgres"; } ];
-                      ensureDatabases = [ "datalk" ];
-                      enableTCPIP = true;
-                      settings = {
-                        port = 5432;
-                      };
-                      initialScript = pkgs.writeText "init-sql-script" ''
-                        ALTER USER postgres WITH PASSWORD 'postgres';
-                      '';
-                      authentication = '' 
-                        host all all 0.0.0.0/0 md5
-                      '';
-                    };
-                  }
-                  (import ./nix/services/ui { self-sign-certs = true; } {
-                    inherit self pkgs;
-                    inherit (pkgs) lib;
-                  });
+                        services.postgresql = {
+                          enable = true;
+                          enableJIT = true;
+                          ensureUsers = [ { name = "postgres"; } ];
+                          ensureDatabases = [ "datalk" ];
+                          enableTCPIP = true;
+                          settings = {
+                            port = 5432;
+                          };
+                          initialScript = pkgs.writeText "init-sql-script" ''
+                            ALTER USER postgres WITH PASSWORD 'postgres';
+                          '';
+                          authentication = ''
+                            host all all 0.0.0.0/0 md5
+                          '';
+                        };
+                      }
+                      (
+                        import ./nix/services/ui { self-sign-certs = true; } {
+                          inherit self pkgs;
+                          inherit (pkgs) lib;
+                        }
+                      );
                 };
               };
             };
@@ -169,18 +175,20 @@
               packages = with pkgs; [
                 svelte-language-server
 
-                (python313.withPackages (pypkg: with pypkg; [
-                  duckdb
-                  matplotlib
-                  notebook
-                  pandas
-                  pydantic
-                  requests
-                  seaborn
-                  fastapi
-                  fastapi-cli
-                  uvicorn
-                ]))
+                (python313.withPackages (
+                  pypkg: with pypkg; [
+                    duckdb
+                    matplotlib
+                    notebook
+                    pandas
+                    pydantic
+                    requests
+                    seaborn
+                    fastapi
+                    fastapi-cli
+                    uvicorn
+                  ]
+                ))
               ];
             };
         }

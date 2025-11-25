@@ -63,6 +63,9 @@ in
       DB_PASSWORD=${config.sops.placeholder.pg_password}
       DB_NAME=datalk
 
+      PYTHON_SERVER_HOST=${config.containers.py-sandbox.localAddress}
+      PYTHON_SERVER_PORT=8000
+
       BETTER_AUTH_SECRET=${config.sops.placeholder.better_auth_secret}
 
       OPENAI_API_KEY=${config.sops.placeholder.openai_api_key}
