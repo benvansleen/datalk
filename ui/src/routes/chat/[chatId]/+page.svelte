@@ -53,20 +53,51 @@
       scrollToBottom();
 
       const chunk = JSON.parse(e.data);
-      if (chunk.type === 'content') {
-        answer += chunk.text;
-        received_first_token = true;
+      console.log(chunk);
+      switch (chunk.type) {
+        case 'response.output_text.delta': {
+          answer += chunk.delta;
+          received_first_token = true;
+          break;
+        }
+        
+        case 'response.function_call_arguments.delta': {
+          toolState += chunk.delta;
+          break;
+        }
+
+        case 'response.function_call_arguments.done': {
+          break;
+        }
+
+        case 'response_done': {
+          console.log('Stream ended!');
+          generating = false;
+          toolState = '';
+          answer = '';
+          submittedUserInput = '';
+          getChatMessages(params.chatId).refresh();
+          break;
+        }
       }
-      if (chunk.type === 'tool' && typeof chunk.status === 'string') {
-        toolState = chunk.status;
-      }
-      if (chunk.type !== 'tool' && chunk.done) {
-        generating = false;
-        toolState = '';
-        answer = '';
-        submittedUserInput = '';
-        getChatMessages(params.chatId).refresh();
-      }
+
+      // if (chunk.type === 'response.output_text.delta') {
+      //   answer += chunk.delta;
+      //   received_first_token = true;
+      // }
+      // else if (chunk.type === 'response.function_call_arguments.done') {
+      // }
+      // if (chunk.type === 'tool' && typeof chunk.status === 'string') {
+      //   toolState = chunk.status;
+      // }
+      // if (chunk.type === 'response_done') {
+      //   console.log('Stream ended!');
+      //   generating = false;
+      //   toolState = '';
+      //   answer = '';
+      //   submittedUserInput = '';
+      //   getChatMessages(params.chatId).refresh();
+      // }
     });
 
     scrollToBottom();
@@ -104,7 +135,10 @@
   </div>
 
   <form onsubmit={handleSubmit} class="grid gap-2">
-    <div bind:this={scrollToDiv} class="flex w-full max-w-2xl mx-auto border rounded-md overflow-hidden">
+    <div
+      bind:this={scrollToDiv}
+      class="flex w-full max-w-2xl mx-auto border rounded-md overflow-hidden"
+    >
       <input
         bind:value={userInput}
         type="text"

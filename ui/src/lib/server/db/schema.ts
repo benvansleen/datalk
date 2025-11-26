@@ -8,7 +8,92 @@ import {
   timestamp,
   boolean,
   index,
+  json,
 } from 'drizzle-orm/pg-core';
+
+export const ResponsesApiMessageContent = pgTable('responses_api_message_content', {
+  id: serial('id').notNull().primaryKey(),
+  messageId: serial('message_id')
+    .notNull()
+    .references(() => ResponsesApiMessage.id, { onDelete: 'cascade' }),
+  content: text('content').notNull(),
+});
+
+export const ResponsesApiMessage = pgTable('responses_api_message', {
+  id: serial('id').notNull().primaryKey(),
+  chatId: uuid('chat_id')
+    .notNull()
+    .references(() => chat.id, { onDelete: 'cascade' }),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  role: text('role').notNull(),
+});
+
+export const ResponsesApiFunctionCall = pgTable('responses_api_function_call', {
+  id: serial('id').notNull().primaryKey(),
+  chatId: uuid('chat_id')
+    .notNull()
+    .references(() => chat.id, { onDelete: 'cascade' }),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  callId: text('call_id').notNull(),
+  name: text('name').notNull(),
+  status: text('status').notNull(),
+  arguments: text('arguments').notNull(),
+  providerData: json('providerData').notNull(),
+});
+
+export const ResponsesApiFunctionResult = pgTable('responses_api_function_result', {
+  id: serial('id').notNull().primaryKey(),
+  chatId: uuid('chat_id')
+    .notNull()
+    .references(() => chat.id, { onDelete: 'cascade' }),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  name: text('name').notNull(),
+  callId: text('call_id').notNull(),
+  status: text('status').notNull(),
+  output: json().notNull(),
+});
+
+export const ResponsesApiProviderData = pgTable('responses_api_provider_data', {
+  id: serial('id').notNull().primaryKey(),
+  chatId: uuid('chat_id')
+    .notNull()
+    .references(() => chat.id, { onDelete: 'cascade' }),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  misc: json().notNull(),
+});
+
+export const ResponsesApiMessageContentRelations = relations(ResponsesApiMessageContent, ({ one }) => ({
+  message: one(ResponsesApiMessage, {
+    fields: [ResponsesApiMessageContent.messageId],
+    references: [ResponsesApiMessage.id],
+  }),
+}))
+export const ResponsesApiMessageRelations = relations(ResponsesApiMessage, ({ one, many }) => ({
+  chat: one(chat, {
+    fields: [ResponsesApiMessage.chatId],
+    references: [chat.id],
+  }),
+  messageContents: many(ResponsesApiMessageContent),
+}))
+export const ResponsesApiFunctionCallRelations = relations(ResponsesApiFunctionCall, ({ one }) => ({
+  chat: one(chat, {
+    fields: [ResponsesApiFunctionCall.chatId],
+    references: [chat.id],
+  }),
+}));
+export const ResponsesApiFunctionResultRelations = relations(ResponsesApiFunctionResult, ({ one }) => ({
+  chat: one(chat, {
+    fields: [ResponsesApiFunctionResult.chatId],
+    references: [chat.id],
+  }),
+}));
+export const ResponsesApiProviderDataRelations = relations(ResponsesApiProviderData, ({ one }) => ({
+  chat: one(chat, {
+    fields: [ResponsesApiProviderData.chatId],
+    references: [chat.id],
+  }),
+}))
+
 
 export const messageRequests = pgTable('message_requests', {
   id: uuid('id').defaultRandom().primaryKey(),
@@ -45,7 +130,11 @@ export const message = pgTable('message', {
 });
 
 export const chatRelations = relations(chat, ({ many, one }) => ({
+  Rmessages: many(ResponsesApiMessage),
   messages: many(message),
+  functionCalls: many(ResponsesApiFunctionCall),
+  functionResults: many(ResponsesApiFunctionResult),
+  providerData: many(ResponsesApiProviderData),
   user: one(user, {
     fields: [chat.userId],
     references: [user.id],
