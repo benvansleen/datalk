@@ -100,7 +100,7 @@
 
     {#if generating}
       <div in:fly={{ y: 20, duration: 500 }}>
-        <MessageBlock role='user' content={submittedUserInput} />
+        <MessageBlock role="user" content={submittedUserInput} />
       </div>
       {#if toolState}
         <div in:slide={{ duration: 200 }} out:slide={{ duration: 200 }}>
@@ -115,7 +115,7 @@
 
     {#if answer}
       <div in:slide={{ duration: 100 }}>
-        <MessageBlock role='assistant' content={answer} />
+        <MessageBlock role="assistant" content={answer} />
       </div>
     {/if}
   </div>

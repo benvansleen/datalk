@@ -1,4 +1,4 @@
-import { tool } from "@openai/agents";
+import { tool } from '@openai/agents';
 import { z } from 'zod';
 
 let python_server_url: string;
@@ -13,7 +13,8 @@ const getPythonServerUrl = () => {
 
 export const runPythonTool = tool({
   name: 'run_python',
-  description: 'Provide lines of python code to be executed by a python interpreter. The results of stdout, stderr, & possible exceptions will be returned to you',
+  description:
+    'Provide lines of python code to be executed by a python interpreter. The results of stdout, stderr, & possible exceptions will be returned to you',
   parameters: z.object({ python_code: z.array(z.string()) }),
   execute: async ({ python_code }) => {
     console.log(python_code);
@@ -42,7 +43,5 @@ export const runPythonTool = tool({
     });
 
     return await result.json();
-
-  }
-
-})
+  },
+});

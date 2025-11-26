@@ -8,7 +8,6 @@ import { requireAuth } from '$lib/server/auth';
 import { PostgresMemorySession } from '$lib/server/responses/session';
 import { getModel } from '$lib/server/responses/model';
 
-
 export const GET: RequestHandler = async ({ params }) => {
   const user = requireAuth();
   const { messageRequestId } = params;

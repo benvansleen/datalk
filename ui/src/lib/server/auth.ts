@@ -51,4 +51,4 @@ export const requireAuth = () => {
     redirect(307, '/login');
   }
   return user;
-}
+};

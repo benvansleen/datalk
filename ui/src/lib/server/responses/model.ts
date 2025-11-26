@@ -1,7 +1,7 @@
 import { runPythonTool } from '$lib/server/responses/tools';
 import { Agent } from '@openai/agents';
 
-let model: Agent<unknown, "text">;
+let model: Agent<unknown, 'text'>;
 export const getModel = () => {
   if (!model) {
     model = new Agent({
@@ -19,4 +19,4 @@ export const getModel = () => {
     });
   }
   return model;
-}
+};

@@ -63,38 +63,43 @@ export const ResponsesApiProviderData = pgTable('responses_api_provider_data', {
   misc: json().notNull(),
 });
 
-export const ResponsesApiMessageContentRelations = relations(ResponsesApiMessageContent, ({ one }) => ({
-  message: one(ResponsesApiMessage, {
-    fields: [ResponsesApiMessageContent.messageId],
-    references: [ResponsesApiMessage.id],
+export const ResponsesApiMessageContentRelations = relations(
+  ResponsesApiMessageContent,
+  ({ one }) => ({
+    message: one(ResponsesApiMessage, {
+      fields: [ResponsesApiMessageContent.messageId],
+      references: [ResponsesApiMessage.id],
+    }),
   }),
-}))
+);
 export const ResponsesApiMessageRelations = relations(ResponsesApiMessage, ({ one, many }) => ({
   chat: one(chat, {
     fields: [ResponsesApiMessage.chatId],
     references: [chat.id],
   }),
   messageContents: many(ResponsesApiMessageContent),
-}))
+}));
 export const ResponsesApiFunctionCallRelations = relations(ResponsesApiFunctionCall, ({ one }) => ({
   chat: one(chat, {
     fields: [ResponsesApiFunctionCall.chatId],
     references: [chat.id],
   }),
 }));
-export const ResponsesApiFunctionResultRelations = relations(ResponsesApiFunctionResult, ({ one }) => ({
-  chat: one(chat, {
-    fields: [ResponsesApiFunctionResult.chatId],
-    references: [chat.id],
+export const ResponsesApiFunctionResultRelations = relations(
+  ResponsesApiFunctionResult,
+  ({ one }) => ({
+    chat: one(chat, {
+      fields: [ResponsesApiFunctionResult.chatId],
+      references: [chat.id],
+    }),
   }),
-}));
+);
 export const ResponsesApiProviderDataRelations = relations(ResponsesApiProviderData, ({ one }) => ({
   chat: one(chat, {
     fields: [ResponsesApiProviderData.chatId],
     references: [chat.id],
   }),
-}))
-
+}));
 
 export const messageRequests = pgTable('message_requests', {
   id: uuid('id').defaultRandom().primaryKey(),

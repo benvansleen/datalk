@@ -68,15 +68,12 @@ export const getChatMessages = query(v.pipe(v.string(), v.uuid()), async (chatId
     }
   }
 
-  const messages = [
-    ...flattenedMessages,
-    ...flattenedFunctions,
-  ].sort((a, b) => {
+  const messages = [...flattenedMessages, ...flattenedFunctions].sort((a, b) => {
     if (a.eventIdx > b.eventIdx) {
-      return 1
+      return 1;
     }
     if (a.eventIdx < b.eventIdx) {
-      return -1
+      return -1;
     }
     return 0;
   });

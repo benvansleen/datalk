@@ -32,9 +32,10 @@
   const parsedOutput = $derived(output ? JSON.parse(output.text) : undefined);
 
   const finalRole = $derived(role ? role : cleanFnName(fnName));
-  const finalContent = $derived(content
-    ? content
-    : `
+  const finalContent = $derived(
+    content
+      ? content
+      : `
 \`\`\`python
 ${parsedArgs.python_code.join('\n')}
 \`\`\`
@@ -42,7 +43,8 @@ ${parsedArgs.python_code.join('\n')}
 \`\`\`
 > ${parsedOutput.outputs}
 \`\`\`
-  `);
+  `,
+  );
 
   console.log(finalContent);
 
