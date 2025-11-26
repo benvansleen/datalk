@@ -35,7 +35,7 @@ export const getChatMessages = query(v.pipe(v.string(), v.uuid()), async (chatId
   const chat = await getDb().query.chat.findFirst({
     where: and(eq(T.chat.userId, user.id), eq(T.chat.id, chatId as string)),
     with: {
-      Rmessages: { with: { messageContents: true } },
+      messages: { with: { messageContents: true } },
       functionCalls: true,
       functionResults: true,
     },
@@ -46,7 +46,7 @@ export const getChatMessages = query(v.pipe(v.string(), v.uuid()), async (chatId
   }
 
   const flattenedMessages = [];
-  for (const { role, messageContents, eventIdx } of chat.Rmessages) {
+  for (const { role, messageContents, eventIdx } of chat.messages) {
     for (const { content } of messageContents) {
       flattenedMessages.push({ eventIdx, role, content });
     }

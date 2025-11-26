@@ -176,6 +176,13 @@
       "when": 1764126002703,
       "tag": "0024_giant_clea",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1764129213384,
+      "tag": "0025_lethal_mephisto",
+      "breakpoints": true
     }
   ]
 }

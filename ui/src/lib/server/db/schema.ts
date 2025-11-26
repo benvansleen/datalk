@@ -5,7 +5,6 @@ import {
   serial,
   pgTable,
   text,
-  varchar,
   timestamp,
   boolean,
   index,
@@ -125,19 +124,8 @@ export const chat = pgTable('chat', {
   title: text('title'),
 });
 
-export const message = pgTable('message', {
-  id: serial('id').primaryKey(),
-  chatId: uuid('chat_id')
-    .notNull()
-    .references(() => chat.id, { onDelete: 'cascade' }),
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-  content: text('title').notNull(),
-  type: varchar('type', { length: 128 }).notNull(),
-});
-
 export const chatRelations = relations(chat, ({ many, one }) => ({
-  Rmessages: many(ResponsesApiMessage),
-  messages: many(message),
+  messages: many(ResponsesApiMessage),
   functionCalls: many(ResponsesApiFunctionCall),
   functionResults: many(ResponsesApiFunctionResult),
   providerData: many(ResponsesApiProviderData),
@@ -147,15 +135,8 @@ export const chatRelations = relations(chat, ({ many, one }) => ({
   }),
 }));
 
-export const messageRelations = relations(message, ({ one }) => ({
-  chat: one(chat, {
-    fields: [message.chatId],
-    references: [chat.id],
-  }),
-}));
-
 /*
-  -------- Auth --------
+  -------- Better-Auth --------
 */
 
 export const user = pgTable('user', {

@@ -24,7 +24,7 @@ export class PostgresMemorySession implements Session {
     const items = await getDb().query.chat.findFirst({
       where: eq(T.chat.id, this.sessionId),
       with: {
-        Rmessages: { with: { messageContents: true } },
+        messages: { with: { messageContents: true } },
         functionCalls: true,
         functionResults: true,
         providerData: true,
@@ -37,7 +37,7 @@ export class PostgresMemorySession implements Session {
     console.log(`Getting items from memory session (${this.sessionId}): ${JSON.stringify(items)}`);
 
     const loadedItems = [
-      ...items.Rmessages.map(({ role, messageContents, eventIdx }) => {
+      ...items.messages.map(({ role, messageContents, eventIdx }) => {
         let content;
         if (role === 'user') {
           content = messageContents[0].content;
