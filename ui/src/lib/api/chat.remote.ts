@@ -44,35 +44,52 @@ export const getChatMessages = query(v.pipe(v.string(), v.uuid()), async (chatId
   const chat = await getDb().query.chat.findFirst({
     where: and(eq(T.chat.userId, user.id), eq(T.chat.id, chatId as string)),
     with: {
-      messages: true,
+      Rmessages: { with: { messageContents: true } },
+      functionCalls: true,
+      functionResults: true,
     },
   });
   if (chat === undefined) {
     console.log('no chat!');
     redirect(307, `/`);
   }
-  return chat;
-});
 
-export const createMessage = form(
-  v.object({
-    chatId: v.pipe(v.string(), v.nonEmpty()),
-    content: v.pipe(v.string(), v.nonEmpty()),
-  }),
-  async ({ chatId, content }) => {
-    const _ = requireAuth();
-
-    try {
-      await getDb()
-        .insert(T.message)
-        .values({
-          chatId: chatId as string,
-          content,
-          type: 'user',
-        });
-    } catch (err) {
-      console.log(err);
-      return { error: 'failed to create message' };
+  const flattenedMessages = [];
+  for (const { role, messageContents, eventIdx } of chat.Rmessages) {
+    for (const { content } of messageContents) {
+      flattenedMessages.push({ eventIdx, role, content });
     }
-  },
-);
+  }
+
+  const flattenedFunctions = [];
+  // really ugly n^2 search here. Not really worth optimizing
+  // since n is pretty reliably < 10
+  for (const call of chat.functionCalls) {
+    for (const result of chat.functionResults) {
+      if (call.callId === result.callId) {
+        flattenedFunctions.push({
+          eventIdx: call.eventIdx,
+          name: call.name,
+          arguments: call.arguments,
+          output: result.output,
+        });
+      }
+    }
+  }
+
+  const messages = [
+    ...flattenedMessages,
+    ...flattenedFunctions,
+  ].sort((a, b) => {
+    if (a.eventIdx > b.eventIdx) {
+      return 1
+    }
+    if (a.eventIdx < b.eventIdx) {
+      return -1
+    }
+    return 0;
+  });
+
+  console.log(messages);
+  return messages;
+});

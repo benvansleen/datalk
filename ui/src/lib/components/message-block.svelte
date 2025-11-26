@@ -8,26 +8,43 @@
     hljs.highlightAll();
   });
 
-  export let type: string;
-  export let content: string;
+  const {
+    role = undefined,
+    content = undefined,
+    name: fnName = undefined,
+    arguments: args = undefined,
+    output = undefined,
+  } = $props();
 
-  if (type === 'tool') {
-    try {
-      const call = JSON.parse(content);
-      if (call.params.python_code) {
-        type = 'python';
-        content = `
-\`\`\`python
-${call.params.python_code.join('\n')}
-\`\`\`
-
-\`\`\`
-> ${call.result.outputs}
-\`\`\`
-`;
+  const cleanFnName = (fnName: any) => {
+    switch (fnName) {
+      case 'run_python': {
+        return 'python';
       }
-    } catch (err) {}
-  }
+
+      default: {
+        return fnName;
+      }
+    }
+  };
+
+  const parsedArgs = $derived(args ? JSON.parse(args) : undefined);
+  const parsedOutput = $derived(output ? JSON.parse(output.text) : undefined);
+
+  const finalRole = $derived(role ? role : cleanFnName(fnName));
+  const finalContent = $derived(content
+    ? content
+    : `
+\`\`\`python
+${parsedArgs.python_code.join('\n')}
+\`\`\`
+
+\`\`\`
+> ${parsedOutput.outputs}
+\`\`\`
+  `);
+
+  console.log(finalContent);
 
   const roleStyle = (role: string): string => {
     switch (role) {
@@ -45,11 +62,11 @@ ${call.params.python_code.join('\n')}
 
 <Item.Root class={`border border-gray-300 rounded-md px-0 py-0 grid grid-cols-1 gap-0 bg-gray-200`}>
   <div
-    class={`${roleStyle(type)} w-full capitalize text-gray-900 dark:text-gray-100 font-semibold px-4 py-2 rounded-t text-left`}
+    class={`${roleStyle(finalRole)} w-full capitalize text-gray-900 dark:text-gray-100 font-semibold px-4 py-2 rounded-t text-left`}
   >
-    {type}
+    {finalRole}
   </div>
   <div class="markdown mx-6">
-    {@html marked.parse(content)}
+    {@html marked.parse(finalContent)}
   </div>
 </Item.Root>

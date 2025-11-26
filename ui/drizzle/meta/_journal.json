@@ -169,6 +169,13 @@
       "when": 1764122785686,
       "tag": "0023_needy_thunderball",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1764126002703,
+      "tag": "0024_giant_clea",
+      "breakpoints": true
     }
   ]
 }

@@ -1,6 +1,7 @@
 import { relations } from 'drizzle-orm';
 import {
   uuid,
+  integer,
   serial,
   pgTable,
   text,
@@ -24,7 +25,7 @@ export const ResponsesApiMessage = pgTable('responses_api_message', {
   chatId: uuid('chat_id')
     .notNull()
     .references(() => chat.id, { onDelete: 'cascade' }),
-  createdAt: timestamp('created_at').defaultNow().notNull(),
+  eventIdx: integer('event_idx').notNull(),
   role: text('role').notNull(),
 });
 
@@ -33,7 +34,7 @@ export const ResponsesApiFunctionCall = pgTable('responses_api_function_call', {
   chatId: uuid('chat_id')
     .notNull()
     .references(() => chat.id, { onDelete: 'cascade' }),
-  createdAt: timestamp('created_at').defaultNow().notNull(),
+  eventIdx: integer('event_idx').notNull(),
   callId: text('call_id').notNull(),
   name: text('name').notNull(),
   status: text('status').notNull(),
@@ -46,7 +47,7 @@ export const ResponsesApiFunctionResult = pgTable('responses_api_function_result
   chatId: uuid('chat_id')
     .notNull()
     .references(() => chat.id, { onDelete: 'cascade' }),
-  createdAt: timestamp('created_at').defaultNow().notNull(),
+  eventIdx: integer('event_idx').notNull(),
   name: text('name').notNull(),
   callId: text('call_id').notNull(),
   status: text('status').notNull(),
@@ -58,7 +59,7 @@ export const ResponsesApiProviderData = pgTable('responses_api_provider_data', {
   chatId: uuid('chat_id')
     .notNull()
     .references(() => chat.id, { onDelete: 'cascade' }),
-  createdAt: timestamp('created_at').defaultNow().notNull(),
+  eventIdx: integer('event_idx').notNull(),
   misc: json().notNull(),
 });
 

@@ -8,7 +8,7 @@
   import MessageBlock from '$lib/components/message-block.svelte';
 
   let { params } = $props();
-  let chat = $derived(await getChatMessages(params.chatId));
+  let messages = $derived(await getChatMessages(params.chatId));
 
   // svelte-ignore non_reactive_update
   let scrollToDiv: HTMLDivElement;
@@ -30,6 +30,10 @@
   const handleSubmit = async (e: SubmitEvent) => {
     e.preventDefault();
     scrollToBottom();
+
+    if (!userInput) {
+      return;
+    }
 
     const res = await fetch(`/chat/${params.chatId}`, {
       method: 'POST',
@@ -60,7 +64,7 @@
           received_first_token = true;
           break;
         }
-        
+
         case 'response.function_call_arguments.delta': {
           toolState += chunk.delta;
           break;
@@ -80,24 +84,6 @@
           break;
         }
       }
-
-      // if (chunk.type === 'response.output_text.delta') {
-      //   answer += chunk.delta;
-      //   received_first_token = true;
-      // }
-      // else if (chunk.type === 'response.function_call_arguments.done') {
-      // }
-      // if (chunk.type === 'tool' && typeof chunk.status === 'string') {
-      //   toolState = chunk.status;
-      // }
-      // if (chunk.type === 'response_done') {
-      //   console.log('Stream ended!');
-      //   generating = false;
-      //   toolState = '';
-      //   answer = '';
-      //   submittedUserInput = '';
-      //   getChatMessages(params.chatId).refresh();
-      // }
     });
 
     scrollToBottom();
@@ -108,17 +94,17 @@
 
 <div class="m-20 grid gap-6">
   <div class="grid gap-2">
-    {#each chat.messages as { type, content }}
-      <MessageBlock {type} {content} />
+    {#each messages as message}
+      <MessageBlock {...message} />
     {/each}
 
     {#if generating}
       <div in:fly={{ y: 20, duration: 500 }}>
-        <MessageBlock type="user" content={submittedUserInput} />
+        <MessageBlock role='user' content={submittedUserInput} />
       </div>
       {#if toolState}
         <div in:slide={{ duration: 200 }} out:slide={{ duration: 200 }}>
-          <MessageBlock type="tool" content={toolState} />
+          <MessageBlock role="tool" content={toolState} />
         </div>
       {/if}
 
@@ -129,7 +115,7 @@
 
     {#if answer}
       <div in:slide={{ duration: 100 }}>
-        <MessageBlock type="assistant" content={answer} />
+        <MessageBlock role='assistant' content={answer} />
       </div>
     {/if}
   </div>
