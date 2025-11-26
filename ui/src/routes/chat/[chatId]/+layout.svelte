@@ -4,7 +4,6 @@
   import python from 'highlight.js/lib/languages/python';
   import 'highlight.js/styles/base16/gruvbox-dark-medium.css';
   import '@fontsource/victor-mono/400.css';
-  import '@fontsource/iosevka-aile/300.css';
 
   hljs.registerLanguage('markdown', markdown);
   hljs.registerLanguage('python', python);
@@ -13,13 +12,6 @@
 <slot />
 
 <style>
-  :global(body) {
-    font-family:
-      'Iosevka Aile',
-      system-ui,
-      -apple-system,
-      sans-serif;
-  }
   :global(.markdown body) {
     line-height: 1.6;
     font-size: 1rem;
