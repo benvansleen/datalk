@@ -1,19 +1,10 @@
 import * as v from 'valibot';
-import { form, query, getRequestEvent } from '$app/server';
+import { form, query } from '$app/server';
 import { getDb } from '$lib/server/db';
 import * as T from '$lib/server/db/schema';
 import { redirect } from '@sveltejs/kit';
 import { eq, and, desc } from 'drizzle-orm';
-
-function requireAuth() {
-  const {
-    locals: { user },
-  } = getRequestEvent();
-  if (!user) {
-    redirect(307, '/login');
-  }
-  return user;
-}
+import { requireAuth } from '$lib/server/auth';
 
 export const createChat = form(async () => {
   const user = requireAuth();
