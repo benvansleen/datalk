@@ -83,6 +83,7 @@
                         networking.firewall.allowedTCPPorts = [
                           80
                           443
+                          3000
                           5432
                         ];
 
@@ -101,6 +102,16 @@
                           authentication = ''
                             host all all 0.0.0.0/0 md5
                           '';
+                        };
+
+                        services.redis.servers."cache" = {
+                          enable = true;
+                          bind = "0.0.0.0";
+                          port = 6379;
+                          # user = "redis";
+                          # group = "users";
+                          requirePass = "letmein";
+                          openFirewall = true;
                         };
                       }
                       (

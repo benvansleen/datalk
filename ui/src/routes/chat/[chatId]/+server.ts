@@ -1,19 +1,9 @@
-import { getRequestEvent } from '$app/server';
-import { redirect } from '@sveltejs/kit';
+import { requireAuth } from '$lib/server/auth';
 import { getDb } from '$lib/server/db';
 import * as T from '$lib/server/db/schema';
+import type { RequestHandler } from './$types';
 
-function requireAuth() {
-  const {
-    locals: { user },
-  } = getRequestEvent();
-  if (!user) {
-    redirect(307, '/login');
-  }
-  return user;
-}
-
-export const POST = async ({ request, params }) => {
+export const POST: RequestHandler = async ({ request, params }) => {
   const user = requireAuth();
   const { chatId } = params;
   const content = await request.text();

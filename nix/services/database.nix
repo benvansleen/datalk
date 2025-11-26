@@ -16,6 +16,15 @@
       host all all 0.0.0.0/0 md5
     '';
   };
+
+  services.redis.servers."cache" = {
+    enable = true;
+    bind = "127.0.0.1";
+    port = 6379;
+    requirePassFile = config.sops.secrets.redis_password.path;
+    openFirewall = false;
+  };
+
   sops.templates."init-sql-script" = {
     owner = "postgres";
     content = /* sql */ ''

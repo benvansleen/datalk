@@ -63,6 +63,11 @@ in
       DB_PASSWORD=${config.sops.placeholder.pg_password}
       DB_NAME=datalk
 
+      REDIS_USER=${config.sops.placeholder.redis_user}
+      REDIS_PASSWORD=${config.sops.placeholder.redis_password}
+      REDIS_HOST=localhost
+      REDIS_PORT=${toString config.services.redis.servers."cache".port}
+
       PYTHON_SERVER_HOST=${config.containers.py-sandbox.localAddress}
       PYTHON_SERVER_PORT=8000
 

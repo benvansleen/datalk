@@ -10,6 +10,7 @@ import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { sveltekitCookies } from 'better-auth/svelte-kit';
 import { getDb } from './db';
 import { getRequestEvent } from '$app/server';
+import { redirect } from '@sveltejs/kit';
 
 // See '$lib/server/db/index.ts' for explanation
 let auth: Auth<{
@@ -40,4 +41,14 @@ export const getAuth = () => {
   }
 
   return auth;
+};
+
+export const requireAuth = () => {
+  const {
+    locals: { user },
+  } = getRequestEvent();
+  if (!user) {
+    redirect(307, '/login');
+  }
+  return user;
 };

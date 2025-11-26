@@ -14,7 +14,7 @@
     </Card.Header>
     <Card.Content class="grid gap-6">
       <Card.Title class="mx-auto w-fit">Historical Chats</Card.Title>
-      <div class="grid gap-2 h-128 overflow-y-auto">
+      <div class="grid gap-2 max-h-128 overflow-y-auto">
         {#each await getChats() as chat}
           <Item.Root variant="outline">
             <Item.Content class="flex flex-row items-center justify-between">
