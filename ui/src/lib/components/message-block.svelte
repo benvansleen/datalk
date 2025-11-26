@@ -18,8 +18,15 @@
 
   const cleanFnName = (fnName: any) => {
     switch (fnName) {
+      case 'check_environment': {
+        return 'check environment';
+      }
       case 'run_python': {
         return 'python';
+      }
+
+      case 'run_sql': {
+        return 'sql';
       }
 
       default: {
@@ -28,23 +35,38 @@
     }
   };
 
-  const parsedArgs = $derived(args ? JSON.parse(args) : undefined);
-  const parsedOutput = $derived(output ? JSON.parse(output.text) : undefined);
+  const parseFn = ({ fnName, args, output }) => {
+    switch (fnName) {
+      case 'check_environment': {
+        return '';
+      }
+      case 'run_python': {
+        return `
+\`\`\`python
+${JSON.parse(args).python_code.join('\n')}
+\`\`\`
+
+\`\`\`
+> ${JSON.parse(output).outputs}
+\`\`\`
+  `;
+      }
+      case 'run_sql': {
+        return `
+\`\`\`sql
+${JSON.parse(args).sql_statement.join('\n')}
+\`\`\`
+
+\`\`\`
+> ${JSON.parse(output).outputs}
+\`\`\`
+        `;
+      }
+    }
+  };
 
   const finalRole = $derived(role ? role : cleanFnName(fnName));
-  const finalContent = $derived(
-    content
-      ? content
-      : `
-\`\`\`python
-${parsedArgs.python_code.join('\n')}
-\`\`\`
-
-\`\`\`
-> ${parsedOutput.outputs}
-\`\`\`
-  `,
-  );
+  const finalContent = $derived(content ? content : parseFn({ fnName, args, output: output.text }));
 
   const roleStyle = (role: string): string => {
     switch (role) {
@@ -54,13 +76,15 @@ ${parsedArgs.python_code.join('\n')}
         return 'bg-blue-300';
       case 'python':
         return 'bg-green-300';
+      case 'sql':
+        return 'bg-yellow-300';
       default:
         return 'bg-purple-300';
     }
   };
 </script>
 
-<Item.Root class={`border border-gray-300 rounded-md px-0 py-0 grid grid-cols-1 gap-0 bg-gray-200`}>
+<Item.Root class={`rounded-md px-0 py-0 grid grid-cols-1 gap-0 bg-gray-200`}>
   <div
     class={`${roleStyle(finalRole)} w-full capitalize text-gray-900 dark:text-gray-100 font-semibold px-4 py-2 rounded-t text-left`}
   >

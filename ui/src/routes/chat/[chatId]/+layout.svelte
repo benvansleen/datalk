@@ -2,11 +2,13 @@
   import hljs from 'highlight.js/lib/core';
   import markdown from 'highlight.js/lib/languages/markdown';
   import python from 'highlight.js/lib/languages/python';
+  import sql from 'highlight.js/lib/languages/sql';
   import 'highlight.js/styles/base16/gruvbox-dark-medium.css';
   import '@fontsource/victor-mono/400.css';
 
   hljs.registerLanguage('markdown', markdown);
   hljs.registerLanguage('python', python);
+  hljs.registerLanguage('sql', sql);
 </script>
 
 <slot />
@@ -20,16 +22,22 @@
     overflow-wrap: break-word;
   }
   :global(.markdown h1) {
-    font-size: 1.8rem;
-    font-weight: bold;
-  }
-  :global(.markdown h2) {
     font-size: 1.4rem;
     font-weight: bold;
+    margin-top: 1.5rem;
+    margin-bottom: 0;
   }
-  :global(.markdown h3) {
+  :global(.markdown h2) {
     font-size: 1.2rem;
     font-weight: bold;
+    margin-top: 1.5rem;
+    margin-bottom: 0;
+  }
+  :global(.markdown h3) {
+    font-size: 1.1rem;
+    font-weight: bold;
+    margin-top: 1.5rem;
+    margin-bottom: 0;
   }
 
   /* Paragraphs */
@@ -90,55 +98,44 @@
     font-style: italic;
   }
 
-  /* Tables */
-  /* Sleek tables inside markdown */
-  :global(.markdown table) {
-    border-collapse: collapse;
+  :global(table) {
     width: 100%;
-    margin: 1em 0;
-    font-size: 0.95rem;
-    overflow-x: auto;
-    display: block;
+    border-collapse: collapse;
+    font-size: 0.9rem;
+    color: #333;
+    background: white;
   }
 
-  :global(.markdown th, .markdown td) {
-    padding: 0.4rem 0.6rem;
+  :global(thead) {
+    background: #f5f5f7;
+    text-align: left;
   }
 
-  :global(.markdown th) {
-    background: #bfbfbf;
+  :global(th, td) {
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid #e5e7eb;
   }
 
-  :global(.markdown tr:nth-child(even) td) {
-    background: #bfbfbf; /* light striping */
+  :global(th) {
+    font-weight: 600;
+    color: #1f2937;
   }
 
-  :global(.markdown tr:hover td) {
-    background: #2d2d2d; /* subtle hover row */
-    color: #bfbfbf;
+  :global(tbody tr:hover) {
+    background: #f9fafb;
   }
 
-  /* Rounded corners without heavy borders */
-  :global(.markdown table) {
-    border-radius: 6px;
+  :global(tbody tr:last-child td) {
+    border-bottom: none;
   }
 
-  /* Make header corners rounded */
-  :global(.markdown table thead tr:first-child th:first-child) {
-    border-top-left-radius: 6px;
-  }
-  :global(.markdown table thead tr:first-child th:last-child) {
-    border-top-right-radius: 6px;
+  :global(table.striped tbody tr:nth-child(even)) {
+    background: #fafafa;
   }
 
-  /* Make footer corners rounded */
-  :global(.markdown table tr:last-child td:first-child) {
-    border-bottom-left-radius: 6px;
+  :global(table.compact th, table.compact td) {
+    padding: 0.5rem 0.75rem;
   }
-  :global(.markdown table tr:last-child td:last-child) {
-    border-bottom-right-radius: 6px;
-  }
-
   /* Images */
   :global(.markdown img) {
     max-width: 100%;

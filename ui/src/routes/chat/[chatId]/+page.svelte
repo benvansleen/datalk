@@ -135,12 +135,25 @@
       bind:this={scrollToDiv}
       class="flex w-full max-w-2xl mx-auto border rounded-md overflow-hidden"
     >
-      <input
+      <textarea
         bind:value={userInput}
-        type="text"
-        placeholder="Type your message..."
-        class="flex-1 px-4 py-2 focus:outline-none"
-      />
+        placeholder="Type your question..."
+        class="resize-none flex-1 px-4 py-2 focus:outline-none"
+        rows="1"
+        oninput={(e) => {
+          e.target.style.height = "auto";
+          e.target.style.height = `${e.target.scrollHeight}px`;
+        }}
+        onkeydown={(e) => {
+          if (e.key == 'Enter' && e.shiftKey) {
+            e.preventDefault();
+            e.target.style.height = "auto";
+            const form = e.currentTarget.closest('form');
+            form?.requestSubmit();
+          }
+        }}
+      ></textarea>
+
       <button type="submit" class="bg-blue-500 text-white px-4 py-2 hover:bg-blue-600">
         <ArrowUp class="w-5 h-5" />
       </button>

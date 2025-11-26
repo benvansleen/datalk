@@ -186,6 +186,7 @@
               packages = with pkgs; [
                 svelte-language-server
 
+                self.packages.${pkgs.stdenv.hostPlatform.system}.python-server
                 (python313.withPackages (
                   pypkg: with pypkg; [
                     duckdb

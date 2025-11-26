@@ -2,7 +2,9 @@
 
 import asyncio
 from asyncio import TimeoutError, wait_for
+from typing import Literal
 
+import pandas as pd
 from fastapi import FastAPI, HTTPException
 from jupyter_client.asynchronous.client import AsyncKernelClient
 from jupyter_client.manager import AsyncKernelManager
@@ -19,6 +21,7 @@ DATA_SOURCES: dict[str, list[str]] = {}
 class ExecutionRequest(BaseModel):
     chat_id: str
     code: list[str]
+    language: Literal["python"] | Literal["sql"]
 
 
 class ExecutionResult(BaseModel):
@@ -56,7 +59,6 @@ async def execute_code(kc: AsyncKernelClient, code: str) -> str:
 
 @app.post("/execute", response_model=ExecutionResult)
 async def execute(request: ExecutionRequest) -> ExecutionResult:
-    print(request.chat_id)
     if request.chat_id not in KERNELS:
         raise HTTPException(
             status_code=400,
@@ -65,8 +67,20 @@ async def execute(request: ExecutionRequest) -> ExecutionResult:
 
     try:
         _, kc = KERNELS[request.chat_id]
+        match request.language:
+            case "python":
+                code = "\n".join(request.code)
+            case "sql":
+                code_without_newlines = [
+                    line.replace("\n", " ") for line in request.code
+                ]
+                code = f"""
+                import duckdb
+                sql_output = duckdb.sql('''{"\n".join(code_without_newlines)}''').df()
+                print(sql_output)
+                """
         outputs = await wait_for(
-            execute_code(kc=kc, code="\n".join(request.code)),
+            execute_code(kc=kc, code=code),
             timeout=120,
         )
 
@@ -81,7 +95,12 @@ async def execute(request: ExecutionRequest) -> ExecutionResult:
 
 class EnvironmentCreationRequest(BaseModel):
     chat_id: str
-    enabled_data_sources: list[str]
+    # enabled_data_sources: list[str]
+
+
+class EnvironmentCreationResponse(BaseModel):
+    # available_dataframes: list[tuple[str, pd.Index, tuple[int, int]]]
+    available_dataframes: str
 
 
 class EnvironmentDeletionRequest(BaseModel):
@@ -89,10 +108,32 @@ class EnvironmentDeletionRequest(BaseModel):
 
 
 @app.post("/environment/create")
-async def create_kernel(request: EnvironmentCreationRequest):
+async def create_kernel(
+    request: EnvironmentCreationRequest,
+) -> EnvironmentCreationResponse:
     if request.chat_id not in KERNELS:
-        KERNELS[request.chat_id] = await kernel_client()
-    return
+        km, kc = await kernel_client()
+        KERNELS[request.chat_id] = (km, kc)
+        _ = kc.execute("""
+            import pandas as pd
+            cfbd_2025_games = pd.read_csv('./cfbd_2025_games.csv')
+            cfbd_2025_lines = pd.read_csv('./cfbd_2025_lines.csv')
+        """)
+    else:
+        _, kc = KERNELS[request.chat_id]
+
+    available_dataframes = await execute_code(
+        kc=kc,
+        code="""
+        print([
+            (var, val.columns, val.shape) 
+            for var, val in globals().items()
+            if type(val) is pd.core.frame.DataFrame and not var.startswith('_')
+        ])
+    """,
+    )
+
+    return EnvironmentCreationResponse(available_dataframes=available_dataframes)
 
 
 @app.post("/environment/destroy")
