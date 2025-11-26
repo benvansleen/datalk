@@ -4,12 +4,16 @@ import asyncio
 from asyncio import TimeoutError, wait_for
 
 from fastapi import FastAPI, HTTPException
-from jupyter_client.manager import AsyncKernelClient, AsyncKernelManager
+from jupyter_client.asynchronous.client import AsyncKernelClient
+from jupyter_client.manager import AsyncKernelManager
 from pydantic import BaseModel
+
+from . import data_source
 
 app = FastAPI()
 
-KERNELS = {}
+KERNELS: dict[str, tuple[AsyncKernelManager, AsyncKernelClient]] = {}
+DATA_SOURCES: dict[str, list[str]] = {}
 
 
 class ExecutionRequest(BaseModel):
@@ -77,6 +81,7 @@ async def execute(request: ExecutionRequest) -> ExecutionResult:
 
 class EnvironmentCreationRequest(BaseModel):
     chat_id: str
+    enabled_data_sources: list[str]
 
 
 class EnvironmentDeletionRequest(BaseModel):
@@ -105,7 +110,22 @@ def environment_exists(chat_id: str) -> bool:
     return chat_id in KERNELS
 
 
-if __name__ == "__main__":
+# @app.get("/data/list")
+# def get_available_data_sources(chat_id: str) -> list[str]:
+#     return DATA_SOURCES.get(chat_id, [])
+
+
+# @app.post("/data/allow")
+# def grant_user_access_to_source(chat_id: str, data_source_name: str):
+#     DATA_SOURCES[chat_id] = DATA_SOURCES.get(chat_id, []) + [data_source_name]
+#     return
+
+
+def main():
     import uvicorn
 
     uvicorn.run(app, host="0.0.0.0", port=8000)
+
+
+if __name__ == "__main__":
+    main()
