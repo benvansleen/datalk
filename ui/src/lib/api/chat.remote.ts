@@ -12,12 +12,14 @@ import { getPythonServerUrl } from '$lib/server/responses/tools';
 export const availableDatasets = query(async () => {
   const url = getPythonServerUrl();
   const res = await fetch(`${url}/dataset/list`, { method: 'GET' });
-  const datasets = await res.json()
+  const datasets = await res.json();
   return datasets;
-})
+});
 
-const CreateChatS = v.object({ dataset: v.custom<string>((value) => value !== "Select a dataset") });
-export const createChat = form(CreateChatS, async ({dataset}) => {
+const CreateChatS = v.object({
+  dataset: v.custom<string>((value) => value !== 'Select a dataset'),
+});
+export const createChat = form(CreateChatS, async ({ dataset }) => {
   const user = requireAuth();
   const [{ chatId }] = await getDb()
     .insert(T.chat)
