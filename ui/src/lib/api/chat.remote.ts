@@ -33,7 +33,10 @@ export const createChat = form(CreateChatS, async ({ dataset }) => {
 
   console.log(chatId);
   const redis = await getRedis();
-  await redis.publish('chat-status', JSON.stringify({ userId: user.id, type: 'chat-created', chatId }));
+  await redis.publish(
+    'chat-status',
+    JSON.stringify({ userId: user.id, type: 'chat-created', chatId }),
+  );
   redirect(300, `/chat/${chatId}`);
 });
 
@@ -44,9 +47,12 @@ export const deleteChat = form(DeleteChatS, async ({ chatId }) => {
   const user = requireAuth();
   await getDb()
     .delete(T.chat)
-    .where(and(eq(T.chat.userId, user.id), eq(T.chat.id, chatId)))
+    .where(and(eq(T.chat.userId, user.id), eq(T.chat.id, chatId)));
   const redis = await getRedis();
-  await redis.publish('chat-status', JSON.stringify({ userId: user.id, type: 'chat-deleted', chatId }));
+  await redis.publish(
+    'chat-status',
+    JSON.stringify({ userId: user.id, type: 'chat-deleted', chatId }),
+  );
 });
 
 export const getChats = query(async () => {

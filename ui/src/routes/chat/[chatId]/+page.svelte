@@ -18,9 +18,9 @@
   onMount(() => {
     const chatStatusEvents = new EventSource('/chat-status-events');
     chatStatusEvents.addEventListener('message', (e) => {
-          // See other `getChats().refresh()` call for short-term
-          // explanation for why this is so expensive
-          getChats().refresh();
+      // See other `getChats().refresh()` call for short-term
+      // explanation for why this is so expensive
+      getChats().refresh();
     });
 
     if (currentMessageRequestId) {
