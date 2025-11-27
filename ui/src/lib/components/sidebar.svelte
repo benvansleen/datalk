@@ -2,17 +2,17 @@
   import { Button } from '$lib/components/shadcn/button';
   import { Menu, ChevronLeft } from 'lucide-svelte';
   import SidebarItem from './sidebar-item.svelte';
-  import { Home, Settings, User, MessageCircle } from 'lucide-svelte';
+  import { Home, MessageCircle, MessageCircleDashed } from 'lucide-svelte';
   let collapsed = $state(true);
 
-  const { chats } = $props();
+  const { chats, children } = $props();
 </script>
 
 <div class="flex min-h-screen">
   <div
     class="
       flex flex-col bg-gray-200 transition-all duration-100
-      border-r border-gray-200 text-neutral-900 rounded-md
+      border-r border-gray-200 text-neutral-900
     "
     style={`width: ${collapsed ? '4rem' : '16rem'}`}
   >
@@ -27,7 +27,7 @@
       <SidebarItem Icon={Home} label="Home" {collapsed} link="/" />
       {#each chats as chat}
         <SidebarItem
-          Icon={MessageCircle}
+          Icon={chat.currentMessageRequest === null ? MessageCircle : MessageCircleDashed}
           label={chat.title}
           {collapsed}
           link={`/chat/${chat.id}`}
@@ -37,6 +37,6 @@
   </div>
 
   <div class="flex-1 p-6">
-    <slot />
+    {@render children()}
   </div>
 </div>

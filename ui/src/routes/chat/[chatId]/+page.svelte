@@ -13,7 +13,16 @@
   let { params } = $props();
   const { currentMessageRequestId, messages } = $derived(await getChatMessages(params.chatId));
 
+  const chats = $derived(await getChats());
+
   onMount(() => {
+    const chatStatusEvents = new EventSource('/chat-status-events');
+    chatStatusEvents.addEventListener('message', (e) => {
+          // See other `getChats().refresh()` call for short-term
+          // explanation for why this is so expensive
+          getChats().refresh();
+    });
+
     if (currentMessageRequestId) {
       console.log(`Resuming message request: ${currentMessageRequestId}`);
       subscribe(currentMessageRequestId);
@@ -102,7 +111,7 @@
   };
 </script>
 
-<Sidebar chats={await getChats()}>
+<Sidebar {chats}>
   <div class="m-20 grid gap-6">
     <div class="grid gap-2">
       {#each messages as message}
