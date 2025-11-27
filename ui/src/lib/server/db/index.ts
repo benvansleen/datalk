@@ -17,7 +17,7 @@ export const getDb = () => {
     const DB_URL = `postgres://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${DB_NAME}?sslmode=disable`;
     db = drizzle(DB_URL, {
       schema,
-      cache: new RedisCache(),
+      // cache: new RedisCache(),
     });
   }
   return db;
