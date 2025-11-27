@@ -35,38 +35,45 @@
     }
   };
 
-  const parseFn = ({ fnName, args, output }) => {
-    switch (fnName) {
-      case 'check_environment': {
-        return '';
-      }
-      case 'run_python': {
-        return `
-\`\`\`python
-${JSON.parse(args).python_code.join('\n')}
-\`\`\`
+  const parseFn = ({ args, output }) => {
+    let result = '';
 
+    try {
+      const { python_code, sql_statement } = JSON.parse(args);
+      if (python_code) {
+        result += `
+\`\`\`python
+${python_code.join('\n')}
 \`\`\`
-> ${JSON.parse(output).outputs}
-\`\`\`
+`;
+      }
+      if (sql_statement) {
+        result += `
+  \`\`\`sql
+  ${JSON.parse(args).sql_statement.join('\n')}
+  \`\`\`
   `;
       }
-      case 'run_sql': {
-        return `
-\`\`\`sql
-${JSON.parse(args).sql_statement.join('\n')}
-\`\`\`
+    } catch (err) {
+      result += args;
+    }
 
-\`\`\`
-> ${JSON.parse(output).outputs}
-\`\`\`
-        `;
+    if (typeof output === 'string') {
+      const outputs = JSON.parse(output).outputs;
+      if (outputs) {
+        result += `
+  \`\`\`
+  > ${outputs}
+  \`\`\`
+  `;
       }
     }
+
+    return result;
   };
 
   const finalRole = $derived(role ? role : cleanFnName(fnName));
-  const finalContent = $derived(content ? content : parseFn({ fnName, args, output: output.text }));
+  const finalContent = $derived(content ? content : parseFn({ args, output: output?.text }));
 
   const roleStyle = (role: string): string => {
     switch (role) {
@@ -90,8 +97,10 @@ ${JSON.parse(args).sql_statement.join('\n')}
   >
     {finalRole}
   </div>
-  <div class="markdown mx-6">
-    {@html marked.parse(finalContent)}
-  </div>
+  {#if finalContent}
+    <div class="markdown mx-6">
+      {@html marked.parse(finalContent)}
+    </div>
+  {/if}
   <div class="min-h-2"></div>
 </Item.Root>

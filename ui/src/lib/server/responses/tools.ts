@@ -1,5 +1,9 @@
-import { tool } from '@openai/agents';
+import { RunContext, tool } from '@openai/agents';
 import { z } from 'zod';
+
+export interface Context {
+  chatId: string;
+}
 
 let python_server_url: string;
 const getPythonServerUrl = () => {
@@ -11,25 +15,47 @@ const getPythonServerUrl = () => {
   return python_server_url;
 };
 
+const environmentExists = async (chatId: string) => {
+  const url = getPythonServerUrl();
+  const res = await fetch(`${url}/environment/create`, {
+    method: 'POST',
+    body: JSON.stringify({
+      chat_id: chatId,
+    }),
+    headers: {
+      'Content-Type': 'application/json',
+    },
+  });
+  const available_dataframes = await res.text();
+  console.log(available_dataframes);
+  return available_dataframes;
+}
+
+const executeInEnvironment = async (chatId: string, execute) => {
+  const url = getPythonServerUrl();
+  const result = await fetch(`${url}/execute`, {
+    method: 'POST',
+    body: JSON.stringify({
+      chat_id: chatId,
+      ...execute,
+    }),
+    headers: {
+      'Content-Type': 'application/json',
+    },
+  });
+
+  return await result.json();
+}
+
 export const checkEnvironmentTool = tool({
   name: 'check_environment',
   description: 'Fetch the available dataframes within the given compute environment',
   parameters: z.object({}),
-  execute: async () => {
-    const url = getPythonServerUrl();
-    const res = await fetch(`${url}/environment/create`, {
-      method: 'POST',
-      body: JSON.stringify({
-        // TODO: scope for each chat_id
-        chat_id: '1',
-      }),
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    });
-    const available_dataframes = await res.text();
-    console.log(available_dataframes);
-    return available_dataframes;
+  execute: async (_, runContext?: RunContext<Context>) => {
+    if (!runContext) {
+      throw new Error('Must be called with Context!')
+    }
+    return await environmentExists(runContext.context.chatId);
   }
 })
 
@@ -38,34 +64,15 @@ export const runPythonTool = tool({
   description:
     'Provide lines of python code to be executed by a python interpreter. The results of stdout, stderr, & possible exceptions will be returned to you',
   parameters: z.object({ python_code: z.array(z.string()) }),
-  execute: async ({ python_code }) => {
-    console.log(python_code);
-    const url = getPythonServerUrl();
-
-    await fetch(`${url}/environment/create`, {
-      method: 'POST',
-      body: JSON.stringify({
-        // TODO: scope for each chat_id
-        chat_id: '1',
-      }),
-      headers: {
-        'Content-Type': 'application/json',
-      },
+  execute: async ({ python_code }, runContext?: RunContext<Context>) => {
+    if (!runContext) {
+      throw new Error('Must be called with Context!')
+    }
+    await environmentExists(runContext.context.chatId);
+    return await executeInEnvironment(runContext.context.chatId, {
+      code: python_code,
+      language: 'python',
     });
-
-    const result = await fetch(`${url}/execute`, {
-      method: 'POST',
-      body: JSON.stringify({
-        chat_id: '1',
-        code: python_code,
-        language: 'python',
-      }),
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    });
-
-    return await result.json();
   },
 });
 
@@ -74,33 +81,15 @@ export const runSqlTool = tool({
   description:
     'Provide SQL statement to be executed within a Jupyter kernel. The result of the SQL expression will be stored in a Pandas DataFrame called `sql_output`. You can interact with this result via the `run_python` tool. Since you are running within a `duckdb` environment, you can access available dataframes within your SQL statement. Example: `SELECT * FROM df`',
   parameters: z.object({ sql_statement: z.array(z.string()) }),
-  execute: async ({ sql_statement }) => {
-    console.log(sql_statement);
-    const url = getPythonServerUrl();
+  execute: async ({ sql_statement }, runContext?: RunContext<Context>) => {
+    if (!runContext) {
+      throw new Error('Must be called with Context!')
+    }
 
-    await fetch(`${url}/environment/create`, {
-      method: 'POST',
-      body: JSON.stringify({
-        // TODO: scope for each chat_id
-        chat_id: '1',
-      }),
-      headers: {
-        'Content-Type': 'application/json',
-      },
+    await environmentExists(runContext.context.chatId);
+    return await executeInEnvironment(runContext.context.chatId, {
+      code: sql_statement,
+      language: 'sql',
     });
-
-    const result = await fetch(`${url}/execute`, {
-      method: 'POST',
-      body: JSON.stringify({
-        chat_id: '1',
-        code: sql_statement,
-        language: 'sql',
-      }),
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    });
-
-    return await result.json();
   },
 });

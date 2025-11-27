@@ -29,6 +29,7 @@ export const GET: RequestHandler = async ({ params }) => {
   });
   const res = await run(getModel(), content, {
     session,
+    context: { chatId },
     stream: true,
   });
 
@@ -45,6 +46,10 @@ export const GET: RequestHandler = async ({ params }) => {
               case 'response.function_call_arguments.done': {
                 send(event.data.event);
                 break;
+              }
+
+              default: {
+                // console.log(JSON.stringify(event));
               }
             }
           }
