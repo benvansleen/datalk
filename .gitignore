@@ -9,7 +9,10 @@ config.tf.json
 .pre-commit-config.yaml
 build/
 node_modules/
+.svelte-kit/
 certs/
 .envrc.*
 
 *.pyc
+.ipynb_checkpoints/
+*.csv
