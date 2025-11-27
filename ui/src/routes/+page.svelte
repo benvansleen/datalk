@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { createChat, getChats } from '$lib/api/chat.remote';
+  import { availableDatasets, createChat, getChats } from '$lib/api/chat.remote';
   import { Button } from '$lib/components/shadcn/button';
   import * as Card from '$lib/components/shadcn/card';
   import Separator from '$lib/components/shadcn/separator/separator.svelte';
@@ -46,14 +46,46 @@
       }
     });
   });
+
+  import * as Select from '$lib/components/shadcn/select/index.js';
+
+  const fruits = [
+    { value: 'apple', label: 'Apple' },
+    { value: 'banana', label: 'Banana' },
+    { value: 'blueberry', label: 'Blueberry' },
+    { value: 'grapes', label: 'Grapes' },
+    { value: 'pineapple', label: 'Pineapple' },
+  ];
+
+  const datasets = await availableDatasets();
+
+  let value = $state('');
+
+  const triggerContent = $derived(datasets.find((d) => d === value) ?? 'Select a dataset');
 </script>
 
 <div class="grid place-items-center h-screen">
   <Card.Root class="w-full max-w-sm">
-    <Card.Header>
+    <Card.Header class="flex flex-col items-center">
       <form {...createChat} class="mx-auto w-fit">
         <Button type="submit">Create new chat</Button>
+        <input {...createChat.fields.dataset.as('hidden', triggerContent)}/>
       </form>
+      <Select.Root type="single" bind:value required>
+        <Select.Trigger>
+          {triggerContent}
+        </Select.Trigger>
+        <Select.Content>
+          <Select.Group>
+            <Select.Label>Datasets</Select.Label>
+            {#each datasets as dataset}
+              <Select.Item value={dataset} label={dataset}>
+                {dataset}
+              </Select.Item>
+            {/each}
+          </Select.Group>
+        </Select.Content>
+      </Select.Root>
     </Card.Header>
     {#if chats.length > 0}
       <Card.Content class="grid gap-6">

@@ -1,7 +1,10 @@
 #! /usr/bin/env python
 
 import asyncio
+import os
 from asyncio import TimeoutError, wait_for
+from pathlib import Path
+from textwrap import dedent
 from typing import Literal
 
 import pandas as pd
@@ -15,7 +18,11 @@ from . import data_source
 app = FastAPI()
 
 KERNELS: dict[str, tuple[AsyncKernelManager, AsyncKernelClient]] = {}
-DATA_SOURCES: dict[str, list[str]] = {}
+DATASETS: dict[str, dict] = {
+    "College Football 2025": {
+        "path": "./datasets/cfbd/",
+    },
+}
 
 
 class ExecutionRequest(BaseModel):
@@ -95,6 +102,7 @@ async def execute(request: ExecutionRequest) -> ExecutionResult:
 
 class EnvironmentCreationRequest(BaseModel):
     chat_id: str
+    dataset: str
     # enabled_data_sources: list[str]
 
 
@@ -111,14 +119,28 @@ class EnvironmentDeletionRequest(BaseModel):
 async def create_kernel(
     request: EnvironmentCreationRequest,
 ) -> EnvironmentCreationResponse:
+    if len(KERNELS) > 20:
+        for chat_id in KERNELS:
+            del KERNELS[chat_id]
+            break
+
     if request.chat_id not in KERNELS:
         km, kc = await kernel_client()
         KERNELS[request.chat_id] = (km, kc)
-        _ = kc.execute("""
-            import pandas as pd
-            cfbd_2025_games = pd.read_csv('./cfbd_2025_games.csv')
-            cfbd_2025_lines = pd.read_csv('./cfbd_2025_lines.csv')
-        """)
+
+        dataset = DATASETS[request.dataset]
+        path = Path(dataset["path"])
+        load_data = []
+        for f in os.listdir(path):
+            p = Path(path) / f
+            load_data.append(f"{p.stem} = pd.read_csv('{str(p)}')")
+
+        load_data_script = f"""
+import pandas as pd
+{"\n".join(load_data)}
+        """
+        print(load_data_script)
+        _ = kc.execute(load_data_script)
     else:
         _, kc = KERNELS[request.chat_id]
 
@@ -151,15 +173,9 @@ def environment_exists(chat_id: str) -> bool:
     return chat_id in KERNELS
 
 
-# @app.get("/data/list")
-# def get_available_data_sources(chat_id: str) -> list[str]:
-#     return DATA_SOURCES.get(chat_id, [])
-
-
-# @app.post("/data/allow")
-# def grant_user_access_to_source(chat_id: str, data_source_name: str):
-#     DATA_SOURCES[chat_id] = DATA_SOURCES.get(chat_id, []) + [data_source_name]
-#     return
+@app.get("/dataset/list")
+def get_available_data_sources() -> list[str]:
+    return list(DATASETS.keys())
 
 
 def main():

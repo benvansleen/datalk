@@ -24,7 +24,6 @@ export const GET: RequestHandler = async ({ params }) => {
   const stream = new ReadableStream({
     async start(controller) {
       const send = (data: string) => {
-        console.log(data);
         controller.enqueue(`data: ${data}\n\n`);
       };
 

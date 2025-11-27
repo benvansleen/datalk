@@ -30,6 +30,7 @@ const generateChatTitle = async (userId: string, chatId: string, currentMessage:
 const generateResponse = async (
   userId: string,
   chatId: string,
+  dataset: string,
   messageId: string,
   currentMessage: string,
 ) => {
@@ -44,7 +45,7 @@ const generateResponse = async (
   });
   const res = await run(getModel(), currentMessage, {
     session,
-    context: { chatId },
+    context: { chatId, dataset },
     stream: true,
   });
 
@@ -95,12 +96,13 @@ export const POST: RequestHandler = async ({ request, params }) => {
     })
     .returning({ messageRequestId: T.messageRequests.id });
 
-  await getDb()
+  const [{ dataset }] = await getDb()
     .update(T.chat)
     .set({ currentMessageRequest: messageRequestId })
-    .where(eq(T.chat.id, chatId));
+    .where(eq(T.chat.id, chatId))
+    .returning({ dataset: T.chat.dataset });
 
-  generateResponse(user.id, chatId, messageRequestId, content).catch((err) =>
+  generateResponse(user.id, chatId, dataset, messageRequestId, content).catch((err) =>
     console.log(`Error generating response for ${messageRequestId}: ${err}`),
   );
   return new Response(messageRequestId, {

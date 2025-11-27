@@ -3,10 +3,11 @@ import { z } from 'zod';
 
 export interface Context {
   chatId: string;
+  dataset: string;
 }
 
 let python_server_url: string;
-const getPythonServerUrl = () => {
+export const getPythonServerUrl = () => {
   if (!python_server_url) {
     const { PYTHON_SERVER_HOST, PYTHON_SERVER_PORT } = process.env;
     python_server_url = `http://${PYTHON_SERVER_HOST}:${PYTHON_SERVER_PORT}`;
@@ -15,12 +16,13 @@ const getPythonServerUrl = () => {
   return python_server_url;
 };
 
-const environmentExists = async (chatId: string) => {
+const environmentExists = async (chatId: string, dataset: string) => {
   const url = getPythonServerUrl();
   const res = await fetch(`${url}/environment/create`, {
     method: 'POST',
     body: JSON.stringify({
       chat_id: chatId,
+      dataset,
     }),
     headers: {
       'Content-Type': 'application/json',
@@ -55,7 +57,7 @@ export const checkEnvironmentTool = tool({
     if (!runContext) {
       throw new Error('Must be called with Context!');
     }
-    return await environmentExists(runContext.context.chatId);
+    return await environmentExists(runContext.context.chatId, runContext.context.dataset);
   },
 });
 
@@ -68,7 +70,7 @@ export const runPythonTool = tool({
     if (!runContext) {
       throw new Error('Must be called with Context!');
     }
-    await environmentExists(runContext.context.chatId);
+    await environmentExists(runContext.context.chatId, runContext.context.dataset);
     return await executeInEnvironment(runContext.context.chatId, {
       code: python_code,
       language: 'python',
@@ -86,7 +88,7 @@ export const runSqlTool = tool({
       throw new Error('Must be called with Context!');
     }
 
-    await environmentExists(runContext.context.chatId);
+    await environmentExists(runContext.context.chatId, runContext.context.dataset);
     return await executeInEnvironment(runContext.context.chatId, {
       code: sql_statement,
       language: 'sql',

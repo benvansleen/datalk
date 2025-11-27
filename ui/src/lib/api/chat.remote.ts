@@ -7,13 +7,24 @@ import { eq, and, desc } from 'drizzle-orm';
 import { requireAuth } from '$lib/server/auth';
 import { flattenMessages } from '$lib/server/responses/utils';
 import { getRedis } from '$lib/server/redis';
+import { getPythonServerUrl } from '$lib/server/responses/tools';
 
-export const createChat = form(async () => {
+export const availableDatasets = query(async () => {
+  const url = getPythonServerUrl();
+  const res = await fetch(`${url}/dataset/list`, { method: 'GET' });
+  const datasets = await res.json()
+  console.log(datasets);
+  return datasets;
+})
+
+const CreateChatS = v.object({ dataset: v.custom<string>((value) => value !== "Select a dataset") });
+export const createChat = form(CreateChatS, async ({dataset}) => {
   const user = requireAuth();
   const [{ chatId }] = await getDb()
     .insert(T.chat)
     .values({
       userId: user.id,
+      dataset,
       title: '...',
       currentMessageRequest: null,
     })
