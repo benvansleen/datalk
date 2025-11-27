@@ -14,15 +14,18 @@
     jsonfmt.enable = true;
     yamlfmt.enable = true;
     prettier = {
-      enable = true;
-      includes = [
-        ".ts"
-        ".js"
-        ".svelte"
-      ];
+      enable = false;
+      # includes = [
+      #   ".ts"
+      #   ".js"
+      #   ".svelte"
+      # ];
       settings = {
         parser = "typescript";
-        plugins = [ "@prettier/plugin-svelte" ];
+        # plugins = [ "@prettier/plugin-svelte" ];
+        # overrides = [
+        #   { files = "*.svelte"; options = { parser = "svelte"; }; }
+        # ];
       };
     };
   };
