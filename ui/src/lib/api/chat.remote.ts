@@ -13,7 +13,6 @@ export const availableDatasets = query(async () => {
   const url = getPythonServerUrl();
   const res = await fetch(`${url}/dataset/list`, { method: 'GET' });
   const datasets = await res.json()
-  console.log(datasets);
   return datasets;
 })
 

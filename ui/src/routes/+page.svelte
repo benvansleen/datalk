@@ -68,7 +68,7 @@
   <Card.Root class="w-full max-w-sm">
     <Card.Header class="flex flex-col items-center">
       <form {...createChat} class="mx-auto w-fit">
-        <Button type="submit">Create new chat</Button>
+        <Button type="submit" disabled={!value}>Create new chat</Button>
         <input {...createChat.fields.dataset.as('hidden', triggerContent)}/>
       </form>
       <Select.Root type="single" bind:value required>
