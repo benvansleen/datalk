@@ -155,7 +155,7 @@
             e.target.style.height = `${e.target.scrollHeight}px`;
           }}
           onkeydown={(e) => {
-            if (e.key == 'Enter' && e.shiftKey) {
+            if (!generating && e.key == 'Enter' && e.shiftKey) {
               e.preventDefault();
               e.target.style.height = 'auto';
               const form = e.currentTarget.closest('form');
