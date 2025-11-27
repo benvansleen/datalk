@@ -29,7 +29,7 @@ const environmentExists = async (chatId: string) => {
   const available_dataframes = await res.text();
   console.log(available_dataframes);
   return available_dataframes;
-}
+};
 
 const executeInEnvironment = async (chatId: string, execute) => {
   const url = getPythonServerUrl();
@@ -45,7 +45,7 @@ const executeInEnvironment = async (chatId: string, execute) => {
   });
 
   return await result.json();
-}
+};
 
 export const checkEnvironmentTool = tool({
   name: 'check_environment',
@@ -53,11 +53,11 @@ export const checkEnvironmentTool = tool({
   parameters: z.object({}),
   execute: async (_, runContext?: RunContext<Context>) => {
     if (!runContext) {
-      throw new Error('Must be called with Context!')
+      throw new Error('Must be called with Context!');
     }
     return await environmentExists(runContext.context.chatId);
-  }
-})
+  },
+});
 
 export const runPythonTool = tool({
   name: 'run_python',
@@ -66,7 +66,7 @@ export const runPythonTool = tool({
   parameters: z.object({ python_code: z.array(z.string()) }),
   execute: async ({ python_code }, runContext?: RunContext<Context>) => {
     if (!runContext) {
-      throw new Error('Must be called with Context!')
+      throw new Error('Must be called with Context!');
     }
     await environmentExists(runContext.context.chatId);
     return await executeInEnvironment(runContext.context.chatId, {
@@ -83,7 +83,7 @@ export const runSqlTool = tool({
   parameters: z.object({ sql_statement: z.array(z.string()) }),
   execute: async ({ sql_statement }, runContext?: RunContext<Context>) => {
     if (!runContext) {
-      throw new Error('Must be called with Context!')
+      throw new Error('Must be called with Context!');
     }
 
     await environmentExists(runContext.context.chatId);

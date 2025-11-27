@@ -1,6 +1,14 @@
-import { Agent, run } from "@openai/agents";
+import { Agent, run } from '@openai/agents';
 
-export const flattenMessages = (messages: { role: string; eventIdx: number; id: number; chatId: string; messageContents: { content: string; id: number; messageId: number; }[]; }[]) => {
+export const flattenMessages = (
+  messages: {
+    role: string;
+    eventIdx: number;
+    id: number;
+    chatId: string;
+    messageContents: { content: string; id: number; messageId: number }[];
+  }[],
+) => {
   const flattenedMessages = [];
   for (const { role, messageContents, eventIdx } of messages) {
     for (const { content } of messageContents) {
@@ -9,8 +17,7 @@ export const flattenMessages = (messages: { role: string; eventIdx: number; id: 
   }
 
   return flattenedMessages;
-}
-
+};
 
 let chatTitleModel: Agent<unknown, 'text'>;
 const getChatTitleModel = () => {
@@ -32,19 +39,19 @@ const getChatTitleModel = () => {
           include: ['reasoning.encrypted_content'],
         },
       },
-    })
+    });
   }
   return chatTitleModel;
-}
+};
 
 export const runChatTitleGenerator = async (conversationSnapshot: string[]) => {
   console.log(conversationSnapshot);
   const res = await run(
-    getChatTitleModel(), 
-    conversationSnapshot.map((msg, idx) => `${idx + 1}. ${msg}`).join('\n\n'), 
+    getChatTitleModel(),
+    conversationSnapshot.map((msg, idx) => `${idx + 1}. ${msg}`).join('\n\n'),
     {},
   );
   const chatTitle = res.finalOutput;
   console.log(chatTitle);
   return chatTitle;
-}
+};

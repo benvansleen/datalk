@@ -1,6 +1,10 @@
-import { type Context, checkEnvironmentTool, runPythonTool, runSqlTool } from '$lib/server/responses/tools';
+import {
+  type Context,
+  checkEnvironmentTool,
+  runPythonTool,
+  runSqlTool,
+} from '$lib/server/responses/tools';
 import { Agent } from '@openai/agents';
-
 
 let model: Agent<Context, 'text'>;
 export const getModel = () => {
