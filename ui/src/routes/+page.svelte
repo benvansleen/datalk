@@ -48,15 +48,6 @@
   });
 
   import * as Select from '$lib/components/shadcn/select/index.js';
-
-  const fruits = [
-    { value: 'apple', label: 'Apple' },
-    { value: 'banana', label: 'Banana' },
-    { value: 'blueberry', label: 'Blueberry' },
-    { value: 'grapes', label: 'Grapes' },
-    { value: 'pineapple', label: 'Pineapple' },
-  ];
-
   const datasets = await availableDatasets();
 
   let value = $state('');
@@ -90,7 +81,7 @@
     {#if chats.length > 0}
       <Card.Content class="grid gap-6">
         <Card.Title class="mx-auto w-fit">Chat Dashboard</Card.Title>
-        <div class="grid gap-2 max-h-128 overflow-y-auto">
+        <div class="grid gap-2 max-h-128 p-4 overflow-y-auto">
           {#each workingChats as chat}
             <div class="bg-gray-200">
               <ChatSummary {chat} />
