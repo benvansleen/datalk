@@ -12,7 +12,9 @@ pkgs.python313Packages.buildPythonApplication rec {
     pydantic
     uvicorn
 
-    notebook
+    jupyter
+    pandas
+    duckdb
   ];
   pyproject = true;
   meta.mainProgram = pname;

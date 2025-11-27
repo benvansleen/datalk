@@ -24,7 +24,7 @@ export const getModel = () => {
       - The user is **probably** referring to one of the datasets uploaded into the computation environment
       `,
       tools: [checkEnvironmentTool, runPythonTool, runSqlTool],
-      model: 'gpt-5-nano',
+      model: 'gpt-5.1',
       modelSettings: {
         store: false,
         providerData: {

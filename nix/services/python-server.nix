@@ -13,6 +13,7 @@
       ExecStart = lib.getExe self.packages.${pkgs.stdenv.hostPlatform.system}.python-server;
       Restart = "always";
       User = "python-server";
+      WorkingDirectory = "/home/python-server";
     };
   };
 

@@ -13,9 +13,15 @@ const LoginS = v.object({
   password: v.pipe(v.string(), v.minLength(8)),
 });
 
+const WHITELIST_SIGNUPS = new Set([
+  'benvansleen@gmail.com',
+  'jbm@textql.com',
+  'mark@textql.com',
+])
+
 export const signup = form(SignupS, async (user) => {
   // Hooked up to my credit card! Let's not put it out in the world for just anyone!
-  if (process.env.ENVIRONMENT === 'production' && user.email !== 'benvansleen@gmail.com') {
+  if (process.env.ENVIRONMENT === 'production' && !WHITELIST_SIGNUPS.has(user.email)) {
     return { error: '**Extremely** private beta only!' };
   }
 

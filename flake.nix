@@ -189,16 +189,17 @@
                 self.packages.${pkgs.stdenv.hostPlatform.system}.python-server
                 (python313.withPackages (
                   pypkg: with pypkg; [
-                    duckdb
-                    matplotlib
-                    notebook
-                    pandas
-                    pydantic
-                    requests
-                    seaborn
-                    fastapi
-                    fastapi-cli
-                    uvicorn
+                    # duckdb
+                    # matplotlib
+                    # notebook
+                    # pandas
+                    # pydantic
+                    # requests
+                    # seaborn
+                    # fastapi
+                    # fastapi-cli
+                    # uvicorn
+                    # jupyter
                   ]
                 ))
               ];
