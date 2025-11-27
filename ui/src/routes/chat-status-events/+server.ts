@@ -13,19 +13,19 @@ export const GET: RequestHandler = async () => {
         if (parsedMessage.userId === user.id) {
           controller.enqueue(`data: ${JSON.stringify(parsedMessage)}\n\n`);
         }
-      })
+      });
     },
     cancel() {
       redis.unsubscribe('chat-status');
       redis.quit();
-    }
-  })
+    },
+  });
 
   return new Response(stream, {
     headers: {
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache',
       Connection: 'keep-alive',
-    }
+    },
   });
 };

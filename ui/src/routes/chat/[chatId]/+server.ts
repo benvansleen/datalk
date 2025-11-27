@@ -18,18 +18,26 @@ const generateChatTitle = async (userId: string, chatId: string, currentMessage:
   const flattenedMessages = flattenMessages(recentMessages).map(({ content }) => content);
   const conversationSnapshot = [...flattenedMessages, currentMessage];
   const title = await runChatTitleGenerator(conversationSnapshot);
-  await getDb()
-    .update(T.chat)
-    .set({ title })
-    .where(eq(T.chat.id, chatId));
+  await getDb().update(T.chat).set({ title }).where(eq(T.chat.id, chatId));
 
   const redis = await getRedis();
-  await redis.publish('chat-status', JSON.stringify({ type: 'title-changed', userId, chatId, title }));
+  await redis.publish(
+    'chat-status',
+    JSON.stringify({ type: 'title-changed', userId, chatId, title }),
+  );
 };
 
-const generateResponse = async (userId: string, chatId: string, messageId: string, currentMessage: string) => {
+const generateResponse = async (
+  userId: string,
+  chatId: string,
+  messageId: string,
+  currentMessage: string,
+) => {
   const redis = await getRedis();
-  await redis.publish('chat-status', JSON.stringify({ type: 'status-changed', userId, chatId, currentMessageId: messageId }));
+  await redis.publish(
+    'chat-status',
+    JSON.stringify({ type: 'status-changed', userId, chatId, currentMessageId: messageId }),
+  );
 
   const session = new PostgresMemorySession({
     sessionId: chatId,
@@ -60,9 +68,12 @@ const generateResponse = async (userId: string, chatId: string, messageId: strin
   }
   await redis.publish(`gen:${messageId}`, JSON.stringify({ type: 'response_done' }));
   await redis.set(`gen:${messageId}:done`, '1');
-  await redis.publish('chat-status', JSON.stringify({ type: 'status-changed', userId, chatId, currentMessageId: null }));
+  await redis.publish(
+    'chat-status',
+    JSON.stringify({ type: 'status-changed', userId, chatId, currentMessageId: null }),
+  );
   await getDb().update(T.chat).set({ currentMessageRequest: null }).where(eq(T.chat.id, chatId));
-}
+};
 
 export const POST: RequestHandler = async ({ request, params }) => {
   const user = requireAuth();
@@ -90,7 +101,7 @@ export const POST: RequestHandler = async ({ request, params }) => {
     .where(eq(T.chat.id, chatId));
 
   generateResponse(user.id, chatId, messageRequestId, content).catch((err) =>
-    console.log(`Error generating response for ${messageRequestId}: ${err}`)
+    console.log(`Error generating response for ${messageRequestId}: ${err}`),
   );
   return new Response(messageRequestId, {
     headers: {

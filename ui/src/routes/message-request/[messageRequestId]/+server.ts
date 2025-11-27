@@ -25,7 +25,7 @@ export const GET: RequestHandler = async ({ params }) => {
     async start(controller) {
       const send = (data: string) => {
         console.log(data);
-        controller.enqueue(`data: ${data}\n\n`)
+        controller.enqueue(`data: ${data}\n\n`);
       };
 
       try {
@@ -50,8 +50,8 @@ export const GET: RequestHandler = async ({ params }) => {
         await redis.unsubscribe(`gen:${messageRequestId}`);
       } catch {}
       await redis.quit();
-    }
-  })
+    },
+  });
 
   return new Response(stream, {
     headers: {

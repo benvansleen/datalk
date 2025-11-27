@@ -5,4 +5,4 @@ export const getRedis = async () => {
   const redis = createClient({ url: getRedisUrl() });
   await redis.connect();
   return redis;
-}
+};

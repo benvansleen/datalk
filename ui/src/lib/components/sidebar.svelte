@@ -17,13 +17,13 @@
     style={`width: ${collapsed ? '4rem' : '16rem'}`}
   >
     <nav class="flex flex-col gap-1 p-3 overflow-visible">
-        <Button class="justify-start" variant="ghost" onclick={() => (collapsed = !collapsed)}>
-          {#if collapsed}
-            <Menu class="" />
-          {:else}
-            <ChevronLeft class="" />
-          {/if}
-        </Button>
+      <Button class="justify-start" variant="ghost" onclick={() => (collapsed = !collapsed)}>
+        {#if collapsed}
+          <Menu class="" />
+        {:else}
+          <ChevronLeft class="" />
+        {/if}
+      </Button>
       <SidebarItem Icon={Home} label="Home" {collapsed} link="/" />
       {#each chats as chat}
         <SidebarItem
