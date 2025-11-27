@@ -1,21 +1,22 @@
-{ pkgs, gitignore, ... }:
+{ pkgs, ... }:
 
-let
-  inherit (gitignore.lib) gitignoreSource;
-in
-pkgs.python313Packages.buildPythonApplication rec {
-  version = "0.1.0";
-  pname = "server";
-  src = gitignoreSource ./.;
-  dependencies = with pkgs.python313Packages; [
-    fastapi
-    pydantic
-    uvicorn
+pkgs.stdenv.mkDerivation {
+  name = "python-server";
+  propagatedBuildInputs = [
+    (pkgs.python313.withPackages (
+      pypkg: with pypkg; [
+        fastapi
+        uvicorn
+        pydantic
+        notebook
+        pandas
+        duckdb
+      ]
 
-    jupyter
-    pandas
-    duckdb
+    ))
+
   ];
-  pyproject = true;
-  meta.mainProgram = pname;
+  dontUnpack = true;
+  installPhase = "install -Dm755 ${./src/main.py} $out/bin/server";
+  meta.mainProgram = "server";
 }

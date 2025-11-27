@@ -7,17 +7,17 @@
 
 ## ALWAYS RUN WITHIN CONTAINER
 {
-  systemd.services.python-server = {
+  systemd.services.py-sandbox = {
     wantedBy = [ "multi-user.target" ];
     serviceConfig = {
       ExecStart = lib.getExe self.packages.${pkgs.stdenv.hostPlatform.system}.python-server;
       Restart = "always";
-      User = "python-server";
-      WorkingDirectory = "/home/python-server";
+      User = "py-sandbox";
+      WorkingDirectory = "/home/py-sandbox";
     };
   };
 
-  users.users.python-server = {
+  users.users.py-sandbox = {
     isNormalUser = true;
   };
 
