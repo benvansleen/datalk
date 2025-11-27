@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Button } from '$lib/components/shadcn/button';
+  import { createChat, getChats } from '$lib/api/chat.remote';
   import { Spinner } from '$lib/components/shadcn/spinner';
   import * as Item from '$lib/components/shadcn/item';
   import { ArrowUp } from 'lucide-svelte';
@@ -7,6 +7,7 @@
   import { fly, slide } from 'svelte/transition';
 
   import MessageBlock from '$lib/components/message-block.svelte';
+  import Sidebar from '$lib/components/sidebar.svelte';
 
   let { params } = $props();
   let messages = $derived(await getChatMessages(params.chatId));
@@ -54,7 +55,6 @@
       scrollToBottom();
 
       const chunk = JSON.parse(e.data);
-      // console.log(chunk);
       switch (chunk.type) {
         case 'response.output_text.delta': {
           answer += chunk.delta;
@@ -91,69 +91,70 @@
   };
 </script>
 
-<Button variant="link" href="/">Go home</Button>
 
-<div class="m-20 grid gap-6">
-  <div class="grid gap-2">
-    {#each messages as message}
-      <MessageBlock {...message} />
-    {/each}
-
-    {#if generating}
-      <div in:fly={{ y: 20, duration: 500 }}>
-        <MessageBlock role="user" content={submittedUserInput} />
-      </div>
-      {#each toolState as tool}
-        {#if tool}
-          <div in:slide={{ duration: 200 }} out:slide={{ duration: 200 }}>
-            <MessageBlock role="tool" arguments={tool} />
-          </div>
-        {/if}
+<Sidebar chats={await getChats()}>
+  <div class="m-20 grid gap-6">
+    <div class="grid gap-2">
+      {#each messages as message}
+        <MessageBlock {...message} />
       {/each}
-    {/if}
-
-    {#if answer}
-      <div in:slide={{ duration: 100 }}>
-        <MessageBlock role="assistant" content={answer} />
-      </div>
-    {/if}
-  </div>
-
-  <form onsubmit={handleSubmit} class="grid gap-2">
-    <div
-      bind:this={scrollToDiv}
-      class="flex w-full max-w-2xl mx-auto border rounded-md overflow-hidden"
-    >
-      <textarea
-        bind:value={userInput}
-        placeholder="Type your question..."
-        class="resize-none flex-1 px-4 py-2 focus:outline-none"
-        rows="1"
-        oninput={(e) => {
-          e.target.style.height = 'auto';
-          e.target.style.height = `${e.target.scrollHeight}px`;
-        }}
-        onkeydown={(e) => {
-          if (e.key == 'Enter' && e.shiftKey) {
-            e.preventDefault();
-            e.target.style.height = 'auto';
-            const form = e.currentTarget.closest('form');
-            form?.requestSubmit();
-          }
-        }}
-      ></textarea>
 
       {#if generating}
-        <Item.Root variant="muted">
-          <Item.Media>
-            <Spinner />
-          </Item.Media>
-        </Item.Root>
-      {:else}
-        <button type="submit" class="bg-blue-500 text-white px-4 py-2 hover:bg-blue-600">
-          <ArrowUp class="w-5 h-5" />
-        </button>
+        <div in:fly={{ y: 20, duration: 500 }}>
+          <MessageBlock role="user" content={submittedUserInput} />
+        </div>
+        {#each toolState as tool}
+          {#if tool}
+            <div in:slide={{ duration: 200 }} out:slide={{ duration: 200 }}>
+              <MessageBlock role="tool" arguments={tool} />
+            </div>
+          {/if}
+        {/each}
+      {/if}
+
+      {#if answer}
+        <div in:slide={{ duration: 100 }}>
+          <MessageBlock role="assistant" content={answer} />
+        </div>
       {/if}
     </div>
-  </form>
-</div>
+
+    <form onsubmit={handleSubmit} class="grid gap-2">
+      <div
+        bind:this={scrollToDiv}
+        class="flex w-full max-w-2xl mx-auto border rounded-md overflow-hidden"
+      >
+        <textarea
+          bind:value={userInput}
+          placeholder="Type your question..."
+          class="resize-none flex-1 px-4 py-2 focus:outline-none"
+          rows="1"
+          oninput={(e) => {
+            e.target.style.height = 'auto';
+            e.target.style.height = `${e.target.scrollHeight}px`;
+          }}
+          onkeydown={(e) => {
+            if (e.key == 'Enter' && e.shiftKey) {
+              e.preventDefault();
+              e.target.style.height = 'auto';
+              const form = e.currentTarget.closest('form');
+              form?.requestSubmit();
+            }
+          }}
+        ></textarea>
+
+        {#if generating}
+          <Item.Root variant="muted">
+            <Item.Media>
+              <Spinner />
+            </Item.Media>
+          </Item.Root>
+        {:else}
+          <button type="submit" class="bg-blue-500 text-white px-4 py-2 hover:bg-blue-600">
+            <ArrowUp class="w-5 h-5" />
+          </button>
+        {/if}
+      </div>
+    </form>
+  </div>
+</Sidebar>

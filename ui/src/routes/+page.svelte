@@ -13,7 +13,7 @@
       </form>
     </Card.Header>
     <Card.Content class="grid gap-6">
-      <Card.Title class="mx-auto w-fit">Historical Chats</Card.Title>
+      <Card.Title class="mx-auto w-fit">Chat History</Card.Title>
       <div class="grid gap-2 max-h-128 overflow-y-auto">
         {#each await getChats() as chat}
           <Item.Root variant="outline">

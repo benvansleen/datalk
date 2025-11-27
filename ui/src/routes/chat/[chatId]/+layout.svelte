@@ -1,4 +1,4 @@
-<script>
+<script lang="ts">
   import hljs from 'highlight.js/lib/core';
   import markdown from 'highlight.js/lib/languages/markdown';
   import python from 'highlight.js/lib/languages/python';
@@ -9,9 +9,13 @@
   hljs.registerLanguage('markdown', markdown);
   hljs.registerLanguage('python', python);
   hljs.registerLanguage('sql', sql);
+
+  let { children }: LayoutProps = $props();
 </script>
 
-<slot />
+<div class="h-full">
+{@render children()}
+</div>
 
 <style>
   :global(.markdown body) {
