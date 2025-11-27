@@ -25,7 +25,6 @@
   let toolState: string[] = $state(['']);
   let userInput = $state('');
   let submittedUserInput = $state('');
-  let received_first_token = $state(false);
   let generating = $state(false);
 
   const handleSubmit = async (e: SubmitEvent) => {
@@ -46,7 +45,6 @@
     const messageRequestId = await res.text();
 
     submittedUserInput = userInput;
-    received_first_token = false;
     generating = true;
     (e.target as HTMLFormElement).reset();
 
@@ -60,7 +58,6 @@
       switch (chunk.type) {
         case 'response.output_text.delta': {
           answer += chunk.delta;
-          received_first_token = true;
           break;
         }
 
@@ -113,19 +110,6 @@
           </div>
         {/if}
       {/each}
-
-      {#if !received_first_token}
-        <div class="flex items-center justify-center h-full">
-          <Item.Root variant="muted">
-            <Item.Media>
-              <Spinner />
-            </Item.Media>
-            <Item.Content>
-              <Item.Title class="line-clamp-1">Thinking...</Item.Title>
-            </Item.Content>
-          </Item.Root>
-        </div>
-      {/if}
     {/if}
 
     {#if answer}
@@ -159,9 +143,17 @@
         }}
       ></textarea>
 
-      <button type="submit" class="bg-blue-500 text-white px-4 py-2 hover:bg-blue-600">
-        <ArrowUp class="w-5 h-5" />
-      </button>
+      {#if generating}
+        <Item.Root variant="muted">
+          <Item.Media>
+            <Spinner />
+          </Item.Media>
+        </Item.Root>
+      {:else}
+        <button type="submit" class="bg-blue-500 text-white px-4 py-2 hover:bg-blue-600">
+          <ArrowUp class="w-5 h-5" />
+        </button>
+      {/if}
     </div>
   </form>
 </div>
