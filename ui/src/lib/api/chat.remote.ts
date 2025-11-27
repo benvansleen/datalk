@@ -6,20 +6,23 @@ import { redirect } from '@sveltejs/kit';
 import { eq, and, desc } from 'drizzle-orm';
 import { requireAuth } from '$lib/server/auth';
 import { flattenMessages } from '$lib/server/responses/utils';
+import { getRedis } from '$lib/server/redis';
 
 export const createChat = form(async () => {
   const user = requireAuth();
-  const [{ chat_id }] = await getDb()
+  const [{ chatId }] = await getDb()
     .insert(T.chat)
     .values({
       userId: user.id,
       title: '...',
       currentMessageRequest: null,
     })
-    .returning({ chat_id: T.chat.id });
+    .returning({ chatId: T.chat.id });
 
-  console.log(chat_id);
-  redirect(300, `/chat/${chat_id}`);
+  console.log(chatId);
+  const redis = await getRedis();
+  await redis.publish('chat-status', JSON.stringify({ userId: user.id, type: 'chat-created' }));
+  redirect(300, `/chat/${chatId}`);
 });
 
 export const getChats = query(async () => {
@@ -28,7 +31,7 @@ export const getChats = query(async () => {
     .select()
     .from(T.chat)
     .where(eq(T.chat.userId, user.id))
-    .orderBy(desc(T.chat.createdAt));
+    .orderBy(desc(T.chat.updatedAt));
   return chats;
 });
 
