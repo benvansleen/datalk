@@ -6,7 +6,7 @@ import KeyvRedis from '@keyv/redis';
 import { env } from '$env/dynamic/private';
 
 let redisUrl: string;
-const getRedisUrl = () => {
+export const getRedisUrl = () => {
   if (!redisUrl) {
     const { REDIS_USER, REDIS_PASSWORD, REDIS_HOST, REDIS_PORT } = env;
     redisUrl = `redis://${REDIS_USER}:${REDIS_PASSWORD}@${REDIS_HOST}:${REDIS_PORT}`;

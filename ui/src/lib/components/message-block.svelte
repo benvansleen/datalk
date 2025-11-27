@@ -59,13 +59,17 @@ ${python_code.join('\n')}
     }
 
     if (typeof output === 'string') {
-      const outputs = JSON.parse(output).outputs;
-      if (outputs) {
-        result += `
+      try {
+        const outputs = JSON.parse(output).outputs;
+        if (outputs) {
+          result += `
   \`\`\`
   > ${outputs}
   \`\`\`
   `;
+        }
+      } catch {
+        result += output;
       }
     }
 

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { createChat, getChats } from '$lib/api/chat.remote';
+  import { getChats } from '$lib/api/chat.remote';
   import { Spinner } from '$lib/components/shadcn/spinner';
   import * as Item from '$lib/components/shadcn/item';
   import { ArrowUp } from 'lucide-svelte';
@@ -8,9 +8,17 @@
 
   import MessageBlock from '$lib/components/message-block.svelte';
   import Sidebar from '$lib/components/sidebar.svelte';
+  import { onMount } from 'svelte';
 
   let { params } = $props();
-  let messages = $derived(await getChatMessages(params.chatId));
+  const { currentMessageRequestId, messages } = $derived(await getChatMessages(params.chatId));
+
+  onMount(() => {
+    if (currentMessageRequestId) {
+      console.log(`Resuming message request: ${currentMessageRequestId}`);
+      subscribe(currentMessageRequestId);
+    }
+  });
 
   // svelte-ignore non_reactive_update
   let scrollToDiv: HTMLDivElement;
@@ -28,28 +36,9 @@
   let submittedUserInput = $state('');
   let generating = $state(false);
 
-  const handleSubmit = async (e: SubmitEvent) => {
-    e.preventDefault();
-    scrollToBottom();
-
-    if (!userInput) {
-      return;
-    }
-
-    const res = await fetch(`/chat/${params.chatId}`, {
-      method: 'POST',
-      body: userInput,
-      headers: {
-        'Content-Type': 'text/plain',
-      },
-    });
-    const messageRequestId = await res.text();
-
-    submittedUserInput = userInput;
-    generating = true;
-    (e.target as HTMLFormElement).reset();
-
+  const subscribe = (messageRequestId: string) => {
     const eventSource = new EventSource(`/message-request/${messageRequestId}`);
+    generating = true;
 
     eventSource.addEventListener('message', (e) => {
       scrollToBottom();
@@ -86,11 +75,32 @@
         }
       }
     });
+  };
+
+  const handleSubmit = async (e: SubmitEvent) => {
+    e.preventDefault();
+    scrollToBottom();
+
+    if (!userInput) {
+      return;
+    }
+
+    const res = await fetch(`/chat/${params.chatId}`, {
+      method: 'POST',
+      body: userInput,
+      headers: {
+        'Content-Type': 'text/plain',
+      },
+    });
+    const messageRequestId = await res.text();
+    subscribe(messageRequestId);
+
+    submittedUserInput = userInput;
+    (e.target as HTMLFormElement).reset();
 
     scrollToBottom();
   };
 </script>
-
 
 <Sidebar chats={await getChats()}>
   <div class="m-20 grid gap-6">
@@ -100,9 +110,11 @@
       {/each}
 
       {#if generating}
-        <div in:fly={{ y: 20, duration: 500 }}>
-          <MessageBlock role="user" content={submittedUserInput} />
-        </div>
+        {#if submittedUserInput}
+          <div in:fly={{ y: 20, duration: 500 }}>
+            <MessageBlock role="user" content={submittedUserInput} />
+          </div>
+        {/if}
         {#each toolState as tool}
           {#if tool}
             <div in:slide={{ duration: 200 }} out:slide={{ duration: 200 }}>
@@ -126,7 +138,7 @@
       >
         <textarea
           bind:value={userInput}
-          placeholder="Type your question..."
+          placeholder="Type your question... (shift+enter to send)"
           class="resize-none flex-1 px-4 py-2 focus:outline-none"
           rows="1"
           oninput={(e) => {

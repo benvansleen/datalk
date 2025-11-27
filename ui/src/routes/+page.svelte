@@ -1,8 +1,13 @@
 <script lang="ts">
   import { createChat, getChats } from '$lib/api/chat.remote';
   import { Button } from '$lib/components/shadcn/button';
-  import * as Item from '$lib/components/shadcn/item';
   import * as Card from '$lib/components/shadcn/card';
+  import Separator from '$lib/components/shadcn/separator/separator.svelte';
+  import ChatSummary from '$lib/components/chat-summary.svelte';
+
+  const chats = await getChats();
+  const waitingChats = chats.filter((chat) => chat.currentMessageRequest === null);
+  const workingChats = chats.filter((chat) => chat.currentMessageRequest !== null);
 </script>
 
 <div class="grid place-items-center h-screen">
@@ -12,20 +17,19 @@
         <Button type="submit">Create new chat</Button>
       </form>
     </Card.Header>
-    <Card.Content class="grid gap-6">
-      <Card.Title class="mx-auto w-fit">Chat History</Card.Title>
-      <div class="grid gap-2 max-h-128 overflow-y-auto">
-        {#each await getChats() as chat}
-          <Item.Root variant="outline">
-            <Item.Content class="flex flex-row items-center justify-between">
-              <Item.Title>{chat.title}</Item.Title>
-              <Item.Actions>
-                <Button variant="outline" size="sm" href={`/chat/${chat.id}`}>Open</Button>
-              </Item.Actions>
-            </Item.Content>
-          </Item.Root>
-        {/each}
-      </div>
-    </Card.Content>
+    {#if chats.length > 0}
+      <Card.Content class="grid gap-6">
+        <Card.Title class="mx-auto w-fit">Chat Dashboard</Card.Title>
+        <div class="grid gap-2 max-h-128 overflow-y-auto">
+          {#each workingChats as chat}
+            <ChatSummary {chat} />
+          {/each}
+          <Separator />
+          {#each waitingChats as chat}
+            <ChatSummary {chat} />
+          {/each}
+        </div>
+      </Card.Content>
+    {/if}
   </Card.Root>
 </div>

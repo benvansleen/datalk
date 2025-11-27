@@ -120,7 +120,7 @@ export const chat = pgTable('chat', {
   updatedAt: timestamp('updated_at')
     .$onUpdate(() => /* @__PURE__ */ new Date())
     .notNull(),
-
+  currentMessageRequest: uuid('currentMessageRequest'),
   title: text('title'),
 });
 

@@ -4,12 +4,16 @@ import * as T from '$lib/server/db/schema';
 import { and, eq } from 'drizzle-orm';
 import type { RequestHandler } from './$types';
 import { flattenMessages, runChatTitleGenerator } from '$lib/server/responses/utils';
+import { PostgresMemorySession } from '$lib/server/responses/session';
+import { getModel } from '$lib/server/responses/model';
+import { run } from '@openai/agents';
+import { getRedis } from '$lib/server/redis';
 
 const generateChatTitle = async (chatId: string, currentMessage: string) => {
   const recentMessages = await getDb().query.ResponsesApiMessage.findMany({
     where: and(eq(T.ResponsesApiMessage.chatId, chatId), eq(T.ResponsesApiMessage.role, 'user')),
     with: { messageContents: true },
-    limit: 3,
+    limit: 5,
   });
   const flattenedMessages = flattenMessages(recentMessages).map(({ content }) => content);
   const conversationSnapshot = [...flattenedMessages, currentMessage];
@@ -18,6 +22,40 @@ const generateChatTitle = async (chatId: string, currentMessage: string) => {
     .set({ title: await runChatTitleGenerator(conversationSnapshot) })
     .where(eq(T.chat.id, chatId));
 };
+
+const generateResponse = async (chatId: string, messageId: string, currentMessage: string) => {
+  const session = new PostgresMemorySession({
+    sessionId: chatId,
+  });
+  const res = await run(getModel(), currentMessage, {
+    session,
+    context: { chatId },
+    stream: true,
+  });
+
+  const redis = await getRedis();
+  for await (const event of res) {
+    if (event.type == 'raw_model_stream_event' && event.data.type === 'model') {
+      switch (event.data.event.type) {
+        case 'response.output_text.delta':
+        case 'response.function_call_arguments.delta':
+        case 'response.function_call_arguments.done': {
+          const chunk = JSON.stringify(event.data.event);
+          await redis.lPush(`gen:${messageId}:history`, chunk);
+          await redis.publish(`gen:${messageId}`, chunk);
+          break;
+        }
+
+        default: {
+          // console.log(JSON.stringify(event));
+        }
+      }
+    }
+  }
+  await redis.publish(`gen:${messageId}`, JSON.stringify({ type: 'response_done' }));
+  await redis.set(`gen:${messageId}:done`, '1');
+  await getDb().update(T.chat).set({ currentMessageRequest: null }).where(eq(T.chat.id, chatId));
+}
 
 export const POST: RequestHandler = async ({ request, params }) => {
   const user = requireAuth();
@@ -39,6 +77,14 @@ export const POST: RequestHandler = async ({ request, params }) => {
     })
     .returning({ messageRequestId: T.messageRequests.id });
 
+  await getDb()
+    .update(T.chat)
+    .set({ currentMessageRequest: messageRequestId })
+    .where(eq(T.chat.id, chatId));
+
+  generateResponse(chatId, messageRequestId, content).catch((err) =>
+    console.log(`Error generating response for ${messageRequestId}: ${err}`)
+  );
   return new Response(messageRequestId, {
     headers: {
       'Content-Type': 'text/plain',

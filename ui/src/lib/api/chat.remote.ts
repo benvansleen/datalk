@@ -14,6 +14,7 @@ export const createChat = form(async () => {
     .values({
       userId: user.id,
       title: '...',
+      currentMessageRequest: null,
     })
     .returning({ chat_id: T.chat.id });
 
@@ -74,5 +75,5 @@ export const getChatMessages = query(v.pipe(v.string(), v.uuid()), async (chatId
     return 0;
   });
 
-  return messages;
+  return { currentMessageRequestId: chat.currentMessageRequest, messages };
 });

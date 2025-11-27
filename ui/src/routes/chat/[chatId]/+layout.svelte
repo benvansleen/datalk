@@ -13,9 +13,7 @@
   let { children }: LayoutProps = $props();
 </script>
 
-<div class="h-full">
 {@render children()}
-</div>
 
 <style>
   :global(.markdown body) {

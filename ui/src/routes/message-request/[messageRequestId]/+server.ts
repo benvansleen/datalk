@@ -1,65 +1,58 @@
+import { requireAuth } from '$lib/server/auth';
+import type { RequestHandler } from './$types';
+import { getRedis } from '$lib/server/redis';
 import { eq } from 'drizzle-orm';
-import { run } from '@openai/agents';
-import { error } from '@sveltejs/kit';
 import { getDb } from '$lib/server/db';
 import * as T from '$lib/server/db/schema';
-import { requireAuth } from '$lib/server/auth';
-import { PostgresMemorySession } from '$lib/server/responses/session';
-import { getModel } from '$lib/server/responses/model';
-import type { RequestHandler } from './$types';
+import { error } from '@sveltejs/kit';
 
 export const GET: RequestHandler = async ({ params }) => {
   const user = requireAuth();
   const { messageRequestId } = params;
   console.log(`fired: ${messageRequestId}`);
+
   const [messageRequest] = await getDb()
-    .delete(T.messageRequests)
+    .select()
+    .from(T.messageRequests)
     .where(eq(T.messageRequests.id, messageRequestId))
-    .returning();
+    .limit(1);
   if (!messageRequest || messageRequest.userId !== user.id) {
     error(404, 'Could not find messageRequest');
   }
-  const { chatId, content } = messageRequest;
-  if (!content) {
-    error(400, 'No message!');
-  }
 
-  const session = new PostgresMemorySession({
-    sessionId: chatId,
-  });
-  const res = await run(getModel(), content, {
-    session,
-    context: { chatId },
-    stream: true,
-  });
-
+  const redis = await getRedis();
   const stream = new ReadableStream({
     async start(controller) {
-      const send = (obj: object) => controller.enqueue(`data: ${JSON.stringify(obj)}\n\n`);
+      const send = (data: string) => {
+        console.log(data);
+        controller.enqueue(`data: ${data}\n\n`)
+      };
 
       try {
-        for await (const event of res) {
-          if (event.type == 'raw_model_stream_event' && event.data.type === 'model') {
-            switch (event.data.event.type) {
-              case 'response.output_text.delta':
-              case 'response.function_call_arguments.delta':
-              case 'response.function_call_arguments.done': {
-                send(event.data.event);
-                break;
-              }
-
-              default: {
-                // console.log(JSON.stringify(event));
-              }
-            }
-          }
+        const history = await redis.lRange(`gen:${messageRequestId}:history`, 0, -1);
+        for (const chunk of history.reverse()) {
+          send(chunk);
         }
-        send({ type: 'response_done' });
+      } catch (err) {
+        console.log(err);
+      }
+
+      try {
+        await redis.subscribe(`gen:${messageRequestId}`, (chunk) => {
+          send(chunk);
+        });
       } catch (err) {
         console.log(err);
       }
     },
-  });
+    async cancel() {
+      try {
+        await redis.unsubscribe(`gen:${messageRequestId}`);
+      } catch {}
+      await redis.quit();
+    }
+  })
+
   return new Response(stream, {
     headers: {
       'Content-Type': 'text/event-stream',
