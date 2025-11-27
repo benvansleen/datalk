@@ -5,6 +5,7 @@ import * as T from '$lib/server/db/schema';
 import { redirect } from '@sveltejs/kit';
 import { eq, and, desc } from 'drizzle-orm';
 import { requireAuth } from '$lib/server/auth';
+import { flattenMessages } from '$lib/server/responses/utils';
 
 export const createChat = form(async () => {
   const user = requireAuth();
@@ -12,7 +13,7 @@ export const createChat = form(async () => {
     .insert(T.chat)
     .values({
       userId: user.id,
-      title: 'test title',
+      title: '...',
     })
     .returning({ chat_id: T.chat.id });
 
@@ -46,13 +47,7 @@ export const getChatMessages = query(v.pipe(v.string(), v.uuid()), async (chatId
     redirect(307, `/`);
   }
 
-  const flattenedMessages = [];
-  for (const { role, messageContents, eventIdx } of chat.messages) {
-    for (const { content } of messageContents) {
-      flattenedMessages.push({ eventIdx, role, content });
-    }
-  }
-
+  const flattenedMessages = flattenMessages(chat.messages);
   const flattenedFunctions = [];
   // really ugly n^2 search here. Not really worth optimizing
   // since n is pretty reliably < 10

@@ -82,6 +82,7 @@
           answer = '';
           submittedUserInput = '';
           getChatMessages(params.chatId).refresh();
+          scrollToBottom();
           break;
         }
       }

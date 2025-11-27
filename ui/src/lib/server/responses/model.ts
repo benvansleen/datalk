@@ -8,8 +8,7 @@ export const getModel = () => {
       name: 'Datalk',
       instructions: `
       # Instructions
-      - I must utilize the available \`run_python\` and \`run_sql\` tools to fulfill the user's request
-      - I will always make sure to call as many tools as required to best answer the user's question
+      - When appropriate, I must utilize the available \`run_python\` or \`run_sql\` tools to fulfill the user's request
       - I will always make use of Markdown formatting to enhance my final response to the user
 
       # Helpful tips
