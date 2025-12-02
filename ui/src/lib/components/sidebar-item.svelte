@@ -2,17 +2,16 @@
   import { goto } from '$app/navigation';
   import { Button } from '$lib/components/shadcn/button';
 
-  const { Icon, label, collapsed, link } = $props();
+  const { Icon, label, collapsed, link, focused = false } = $props();
 </script>
 
 <div class="relative group inline-block overflow-visible">
   <Button
     variant="ghost"
-    class="flex items-center relative justify-start"
+    class={`flex items-center relative justify-start ${focused ? "bg-white" : ""}`}
     onclick={() => goto(link)}
   >
     <Icon />
-
     {#if !collapsed}
       <span class="truncate w-45 text-start">{label}</span>
     {/if}

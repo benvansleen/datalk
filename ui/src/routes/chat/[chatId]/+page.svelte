@@ -111,7 +111,7 @@
   };
 </script>
 
-<Sidebar {chats}>
+<Sidebar {chats} currentChatId={params.chatId}>
   <div class="m-20 grid gap-6">
     <div class="grid gap-2">
       {#each messages as message}

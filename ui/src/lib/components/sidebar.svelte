@@ -5,7 +5,7 @@
   import { Home, MessageCircle, MessageCircleDashed } from 'lucide-svelte';
   let collapsed = $state(true);
 
-  const { chats, children } = $props();
+  const { currentChatId, chats, children } = $props();
 </script>
 
 <div class="flex min-h-screen">
@@ -31,6 +31,7 @@
           label={chat.title}
           {collapsed}
           link={`/chat/${chat.id}`}
+          focused={chat.id === currentChatId}
         />
       {/each}
     </nav>
