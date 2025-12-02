@@ -4,6 +4,7 @@
 }:
 {
   self,
+  config,
   lib,
   ...
 }:
@@ -40,12 +41,17 @@
       privateNetwork = true;
       config =
         { pkgs, ... }:
-        (lib.recursiveUpdate { } (
-          import ../services/python-server.nix {
-            inherit self pkgs;
-            inherit (pkgs) lib;
+        (lib.recursiveUpdate
+          {
+            system.stateVersion = config.system.stateVersion;
           }
-        ));
+          (
+            import ../services/python-server.nix {
+              inherit self pkgs;
+              inherit (pkgs) lib;
+            }
+          )
+        );
     };
   };
 }

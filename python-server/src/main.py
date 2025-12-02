@@ -77,11 +77,11 @@ async def execute(request: ExecutionRequest) -> ExecutionResult:
                 code_without_newlines = [
                     line.replace("\n", " ") for line in request.code
                 ]
-                code = f"""
+                code = f'''
                 import duckdb
-                sql_output = duckdb.sql('''{"\n".join(code_without_newlines)}''').df()
+                sql_output = duckdb.sql(""" {"\n".join(code_without_newlines)} """).df()
                 print(sql_output)
-                """
+                '''
         outputs = await wait_for(
             execute_code(kc=kc, code=code),
             timeout=120,
