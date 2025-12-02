@@ -9,7 +9,7 @@
 
 <Item.Root variant="outline">
   <Item.Content class="flex flex-row justify-start">
-    <form {...deleteChat}>
+    <form {...deleteChat.for(chat.id)}>
       <input {...deleteChat.fields.chatId.as('hidden', chat.id)} />
       <Button variant="link" type="submit"><SquareX></SquareX></Button>
     </form>
