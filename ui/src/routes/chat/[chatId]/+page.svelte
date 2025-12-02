@@ -20,7 +20,10 @@
     chatStatusEvents.addEventListener('message', (e) => {
       // See other `getChats().refresh()` call for short-term
       // explanation for why this is so expensive
-      getChats().refresh();
+      const event = JSON.parse(e.data);
+      if (event.type === 'chat-created' || event.type === 'chat-deleted') {
+        getChats().refresh();
+      }
     });
 
     if (currentMessageRequestId) {
