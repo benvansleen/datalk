@@ -1,13 +1,14 @@
 import { requireAuth } from '$lib/server/auth';
 import { getDb } from '$lib/server/db';
 import * as T from '$lib/server/db/schema';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, isNull } from 'drizzle-orm';
 import type { RequestHandler } from './$types';
 import { flattenMessages, runChatTitleGenerator } from '$lib/server/responses/utils';
 import { PostgresMemorySession } from '$lib/server/responses/session';
 import { getModel } from '$lib/server/responses/model';
 import { run } from '@openai/agents';
 import { getRedis } from '$lib/server/redis';
+import { error } from '@sveltejs/kit';
 
 const generateChatTitle = async (userId: string, chatId: string, currentMessage: string) => {
   const recentMessages = await getDb().query.ResponsesApiMessage.findMany({
@@ -96,12 +97,16 @@ export const POST: RequestHandler = async ({ request, params }) => {
     })
     .returning({ messageRequestId: T.messageRequests.id });
 
-  const [{ dataset }] = await getDb()
+  const res = await getDb()
     .update(T.chat)
     .set({ currentMessageRequest: messageRequestId })
-    .where(eq(T.chat.id, chatId))
+    .where(and(eq(T.chat.id, chatId), isNull(T.chat.currentMessageRequest)))
     .returning({ dataset: T.chat.dataset });
+  if (res.length === 0) {
+    error(400, 'Already generating a response for this chat.')
+  }
 
+  const [{ dataset }] = res;
   generateResponse(user.id, chatId, dataset, messageRequestId, content).catch((err) =>
     console.log(`Error generating response for ${messageRequestId}: ${err}`),
   );
