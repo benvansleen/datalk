@@ -103,7 +103,7 @@ export const POST: RequestHandler = async ({ request, params }) => {
     .where(and(eq(T.chat.id, chatId), isNull(T.chat.currentMessageRequest)))
     .returning({ dataset: T.chat.dataset });
   if (res.length === 0) {
-    error(400, 'Already generating a response for this chat.')
+    error(400, 'Already generating a response for this chat.');
   }
 
   const [{ dataset }] = res;
