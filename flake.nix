@@ -108,18 +108,17 @@
                           enable = true;
                           bind = "0.0.0.0";
                           port = 6379;
-                          # user = "redis";
-                          # group = "users";
                           requirePass = "letmein";
                           openFirewall = true;
                         };
                       }
-                      (
-                        import ./nix/services/ui { self-sign-certs = true; } {
-                          inherit self pkgs;
-                          inherit (pkgs) lib;
-                        }
-                      );
+                      # (
+                      #   import ./nix/services/ui { self-sign-certs = true; } {
+                      #     inherit self pkgs;
+                      #     inherit (pkgs) lib;
+                      #   }
+                      # );
+                      { };
                 };
               };
             };
