@@ -17,7 +17,7 @@ export const effectSignup = async (request: SignupRequest): Promise<{ error?: st
   const program = Effect.gen(function* () {
     const auth = yield* Auth;
     yield* auth.signup(request, headers);
-  }).pipe(Effect.withSpan('auth.signup'));
+  });
 
   const exit = await runEffectExit(program);
 
@@ -47,7 +47,7 @@ export const effectLogin = async (request: LoginRequest): Promise<{ error?: stri
   const program = Effect.gen(function* () {
     const auth = yield* Auth;
     yield* auth.login(request, headers);
-  }).pipe(Effect.withSpan('auth.login'));
+  });
 
   const exit = await runEffectExit(program);
 
@@ -73,7 +73,7 @@ export const effectLogout = async (): Promise<void> => {
   const program = Effect.gen(function* () {
     const auth = yield* Auth;
     yield* auth.logout(headers);
-  }).pipe(Effect.withSpan('auth.logout'));
+  });
 
   await runEffect(program);
 };
