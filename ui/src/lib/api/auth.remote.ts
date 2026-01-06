@@ -1,58 +1,25 @@
-import * as v from 'valibot';
 import { redirect } from '@sveltejs/kit';
-import { form, getRequestEvent, query } from '$app/server';
-import { getAuth } from '$lib/server/auth';
+import { form, getRequestEvent, query, command } from '$app/server';
+import { effectSignup, effectLogin, effectLogout } from '$lib/server/effect/api/auth';
+import { LoginRequest, SignupRequest } from '$lib/server/effect';
+import { Schema } from 'effect';
 
-const SignupS = v.object({
-  name: v.pipe(v.string(), v.minLength(3)),
-  email: v.pipe(v.string(), v.email()),
-  password: v.pipe(v.string(), v.minLength(8)),
-});
-const LoginS = v.object({
-  email: v.pipe(v.string(), v.email()),
-  password: v.pipe(v.string(), v.minLength(8)),
+// Signup - delegates to Effect implementation
+export const signup = form(Schema.standardSchemaV1(SignupRequest), async (user) => {
+  return await effectSignup(user);
 });
 
-const WHITELIST_SIGNUPS = new Set(['benvansleen@gmail.com', 'jbm@textql.com', 'mark@textql.com']);
-
-export const signup = form(SignupS, async (user) => {
-  // Hooked up to my credit card! Let's not put it out in the world for just anyone!
-  if (process.env.ENVIRONMENT === 'production' && !WHITELIST_SIGNUPS.has(user.email)) {
-    return { error: '**Extremely** private beta only!' };
-  }
-
-  try {
-    await getAuth().api.signUpEmail({ body: user });
-  } catch (err) {
-    console.log(err);
-    return { error: "There's already an account associated with this email." };
-  }
-  redirect(307, `/`);
+// Login - delegates to Effect implementation
+export const login = form(Schema.standardSchemaV1(LoginRequest), async (user) => {
+  return await effectLogin(user);
 });
 
-export const login = form(LoginS, async (user) => {
-  const {
-    request: { headers },
-  } = getRequestEvent();
-  try {
-    await getAuth().api.signInEmail({ body: user, headers });
-  } catch (err: unknown) {
-    console.log(err);
-    return { error: 'No account exists with this email/password combination.' };
-  }
-
-  console.log('User logged in:', user);
-  redirect(303, `/`);
+// Logout - delegates to Effect implementation
+export const logout = command(async () => {
+  return await effectLogout();
 });
 
-export const signout = form(async () => {
-  const {
-    request: { headers },
-  } = getRequestEvent();
-  await getAuth().api.signOut({ headers });
-  redirect(303, `/login`);
-});
-
+// These don't need Effect (just read from locals)
 export const requireAuth = query(async () => {
   const {
     locals: { user },
