@@ -4,6 +4,10 @@ export { Auth, AuthLive } from './services/Auth';
 export { Redis, RedisLive } from './services/Redis';
 export { Database, DatabaseLive } from './services/Database';
 export { PythonServer, PythonServerLive } from './services/PythonServer';
+export { DatalkAgent, DatalkAgentLive, type DatalkStreamPart } from './services/DatalkAgent';
+export { ChatContext, type ChatContextData } from './services/ChatContext';
+export { ChatBackingPersistenceLive } from './services/ChatPersistence';
+export { DatalkToolkit, DatalkToolHandlersLive, makeDatalkToolHandlers, type DatalkTools } from './services/DatalkTools';
 
 // Schemas
 export { SignupRequest, LoginRequest } from './schemas/auth';
@@ -23,7 +27,7 @@ export { LiveLayer, type AppServices } from './layers/Live';
 // TestLayer is a placeholder - will be expanded when we add @effect/vitest
 
 // Runtime
-export { getRuntime, runEffect, runEffectExit, getFailure } from './runtime';
+export { getRuntime, runEffect, runEffectExit, runEffectFork, getFailure } from './runtime';
 
 // Observability
 export { ObservabilityLive } from './observability';

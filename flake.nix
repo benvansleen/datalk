@@ -184,6 +184,7 @@
               inherit (self.checks.${system}.pre-commit-check) shellHook;
               packages = with pkgs; [
                 svelte-language-server
+                oxlint
 
                 self.packages.${pkgs.stdenv.hostPlatform.system}.python-server
                 (python313.withPackages (

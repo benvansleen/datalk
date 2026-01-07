@@ -33,6 +33,11 @@ export const runEffectExit = <A, E>(
   effect: Effect.Effect<A, E, AppServices>,
 ): Promise<Exit.Exit<A, E | RuntimeError>> => getRuntime().runPromiseExit(effect);
 
+// Helper to fork Effects 
+export const runEffectFork = <A, E>(
+  effect: Effect.Effect<A, E, AppServices>,
+) => getRuntime().runFork(effect);
+
 // Helper to extract error from Exit for error handling in routes
 export const getFailure = <E>(exit: Exit.Exit<unknown, E>): E | null => {
   if (Exit.isFailure(exit)) {

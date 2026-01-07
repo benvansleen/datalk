@@ -12,14 +12,26 @@ export type ChatStatusEvent =
   | { type: 'status-changed'; userId: string; chatId: string; currentMessageId: string | null };
 
 /**
- * Generation event types (from AI response streaming)
+ * Generation event types (from @effect/ai response streaming)
+ * These match the Response.StreamPart types from @effect/ai
  */
 export type GenerationEvent =
-  | { type: 'response.output_text.delta'; delta: string }
-  | { type: 'response.function_call_arguments.delta'; delta: string }
-  | { type: 'response.function_call_arguments.done' }
+  // Text streaming
+  | { type: 'text-start'; id: string }
+  | { type: 'text-delta'; id: string; delta: string }
+  | { type: 'text-end'; id: string }
+  // Tool parameter streaming
+  | { type: 'tool-params-start'; id: string; name: string }
+  | { type: 'tool-params-delta'; id: string; delta: string }
+  | { type: 'tool-params-end'; id: string }
+  // Tool call and result
+  | { type: 'tool-call'; id: string; name: string; params: unknown }
+  | { type: 'tool-result'; id: string; name: string; result: unknown; isFailure: boolean }
+  // Finish and metadata
+  | { type: 'finish'; reason: string }
   | { type: 'response_done' }
-  | { type: string; [key: string]: unknown }; // Allow other event types
+  // Allow other event types for forward compatibility
+  | { type: string; [key: string]: unknown };
 
 /**
  * Publish a chat status event to Redis

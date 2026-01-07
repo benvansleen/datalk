@@ -40,8 +40,16 @@
     });
   };
 
+  // Tool state: keyed by tool call ID
+  interface ToolCall {
+    name: string;
+    params: string;
+    result?: string;
+  }
+
   let answer = $state('');
-  let toolState: string[] = $state(['']);
+  let toolCalls = $state<Record<string, ToolCall>>({});
+  let toolOrder = $state<string[]>([]); // Track order of tool calls
   let userInput = $state('');
   let submittedUserInput = $state('');
   let generating = $state(false);
@@ -53,7 +61,8 @@
     const cleanup = () => {
       eventSource.close();
       generating = false;
-      toolState = [''];
+      toolCalls = {};
+      toolOrder = [];
       answer = '';
       submittedUserInput = '';
     };
@@ -63,22 +72,62 @@
 
       const chunk = JSON.parse(e.data);
       switch (chunk.type) {
-        case 'response.output_text.delta': {
+        // Text streaming
+        case 'text-delta': {
           answer += chunk.delta;
           break;
         }
 
-        case 'response.function_call_arguments.delta': {
-          let currentTool = toolState[toolState.length - 1];
-          toolState[toolState.length - 1] = currentTool + chunk.delta;
+        // Tool parameter streaming (new format)
+        case 'tool-params-start': {
+          const id = chunk.id;
+          if (!toolCalls[id]) {
+            toolCalls[id] = { name: chunk.name, params: '' };
+            toolOrder = [...toolOrder, id];
+          }
           break;
         }
 
-        case 'response.function_call_arguments.done': {
-          toolState.push('');
+        case 'tool-params-delta': {
+          const id = chunk.id;
+          if (toolCalls[id]) {
+            toolCalls[id] = { ...toolCalls[id], params: toolCalls[id].params + chunk.delta };
+          }
           break;
         }
 
+        case 'tool-params-end': {
+          // Tool params complete, waiting for execution
+          break;
+        }
+
+        // Complete tool call with parsed params
+        case 'tool-call': {
+          const id = chunk.id;
+          if (!toolCalls[id]) {
+            toolOrder = [...toolOrder, id];
+          }
+          toolCalls[id] = {
+            name: chunk.name,
+            params: typeof chunk.params === 'string' ? chunk.params : JSON.stringify(chunk.params),
+          };
+          break;
+        }
+
+        // Tool result
+        case 'tool-result': {
+          const id = chunk.id;
+          if (toolCalls[id]) {
+            toolCalls[id] = {
+              ...toolCalls[id],
+              result: typeof chunk.result === 'string' ? chunk.result : JSON.stringify(chunk.result),
+            };
+          }
+          break;
+        }
+
+        // Finish events
+        case 'finish':
         case 'response_done': {
           console.log('Stream ended!');
           cleanup();
@@ -120,6 +169,11 @@
 
     scrollToBottom();
   };
+
+  // Derive tool state for rendering
+  const activeToolCalls = $derived(
+    toolOrder.map((id) => toolCalls[id]).filter((tool): tool is ToolCall => !!tool && !!tool.params),
+  );
 </script>
 
 <Sidebar chats={data.chats} currentChatId={data.chatId}>
@@ -135,12 +189,10 @@
             <MessageBlock role="user" content={submittedUserInput} />
           </div>
         {/if}
-        {#each toolState as tool}
-          {#if tool}
-            <div in:slide={{ duration: 200 }} out:slide={{ duration: 200 }}>
-              <MessageBlock role="tool" arguments={tool} />
-            </div>
-          {/if}
+        {#each activeToolCalls as tool}
+          <div in:slide={{ duration: 200 }} out:slide={{ duration: 200 }}>
+            <MessageBlock role="tool" name={tool.name} arguments={tool.params} output={tool.result} />
+          </div>
         {/each}
         {#if answer}
           <div in:slide={{ duration: 100 }}>

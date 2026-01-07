@@ -3,88 +3,111 @@ import { getDb } from '$lib/server/db';
 import * as T from '$lib/server/db/schema';
 import { and, eq, isNull } from 'drizzle-orm';
 import type { RequestHandler } from './$types';
-import { flattenMessages } from '$lib/server/responses/utils';
-import { PostgresMemorySession } from '$lib/server/responses/session';
-import { getModel } from '$lib/server/responses/model';
-import { run } from '@openai/agents';
 import { error } from '@sveltejs/kit';
-import { Database, runEffect } from '$lib/server/effect';
+import { Database, runEffect, runEffectFork } from '$lib/server/effect';
 import {
   publishChatStatus,
   publishGenerationEvent,
   markGenerationComplete,
 } from '$lib/server/effect/api/chat';
-import { Effect } from 'effect';
+import { Effect, Stream } from 'effect';
 import { ChatTitleGenerator } from '$lib/server/effect/services/ChatTitleGenerator';
+import { DatalkAgent, type DatalkStreamPart } from '$lib/server/effect/services/DatalkAgent';
 
-const generateChatTitle = async (userId: string, chatId: string, currentMessage: string) => {
-  await runEffect(Effect.gen(function*() {
-    const db = yield* Database;
-    const chatTitleGenerator = yield* ChatTitleGenerator;
+/**
+ * Generate a title for the chat based on recent messages.
+ * This runs in the background and doesn't block the response.
+ */
+const generateChatTitle = Effect.fn('generateChatTitle')(function*(userId: string, chatId: string, currentMessage:string) {
+      const db = yield* Database;
+      const chatTitleGenerator = yield* ChatTitleGenerator;
 
-    const recentMessages = yield* getDb().query.ResponsesApiMessage.findMany({
-      where: and(eq(T.ResponsesApiMessage.chatId, chatId), eq(T.ResponsesApiMessage.role, 'user')),
-      with: { messageContents: true },
-      limit: 5,
-    });
-    const flattenedMessages = flattenMessages(recentMessages).map(({ content }) => content);
-    const conversationSnapshot = [...flattenedMessages, currentMessage];
-    const title = yield* chatTitleGenerator.run(conversationSnapshot);
+      // Get recent user messages from the new chat history
+      // For now, just use the current message as the snapshot
+      const conversationSnapshot = [currentMessage];
+      const title = yield* chatTitleGenerator.run(conversationSnapshot);
 
-    yield* db.update(T.chat).set({ title }).where(eq(T.chat.id, chatId));
-    yield* publishChatStatus({ type: 'title-changed', userId, chatId, title });
-  }));
-};
+      yield* db.update(T.chat).set({ title }).where(eq(T.chat.id, chatId));
+      yield* publishChatStatus({ type: 'title-changed', userId, chatId, title });
+});
 
-const generateResponse = async (
-  userId: string,
-  chatId: string,
-  dataset: string,
-  messageId: string,
-  currentMessage: string,
-) => {
-  // Publish status change via Effect Redis
-  await runEffect(
-    publishChatStatus({ type: 'status-changed', userId, chatId, currentMessageId: messageId }),
-  );
+/**
+ * Convert an @effect/ai stream part to a GenerationEvent for the frontend.
+ * This maps the new Effect AI event format to the format expected by the frontend.
+ */
+const streamPartToEvent = (part: DatalkStreamPart): object => {
+  switch (part.type) {
+    case 'text-start':
+      return { type: 'text-start', id: part.id };
 
-  const session = new PostgresMemorySession({
-    sessionId: chatId,
-  });
-  const res = await run(getModel(), currentMessage, {
-    session,
-    context: { chatId, dataset },
-    stream: true,
-  });
+    case 'text-delta':
+      return { type: 'text-delta', id: part.id, delta: part.delta };
 
-  for await (const event of res) {
-    if (event.type == 'raw_model_stream_event' && event.data.type === 'model') {
-      switch (event.data.event.type) {
-        case 'response.output_text.delta':
-        case 'response.function_call_arguments.delta':
-        case 'response.function_call_arguments.done': {
-          // Publish generation event via Effect Redis
-          await runEffect(publishGenerationEvent(messageId, event.data.event));
-          break;
-        }
+    case 'text-end':
+      return { type: 'text-end', id: part.id };
 
-        default: {
-          // console.log(JSON.stringify(event));
-        }
-      }
-    }
+    case 'tool-params-start':
+      return { type: 'tool-params-start', id: part.id, name: part.name };
+
+    case 'tool-params-delta':
+      return { type: 'tool-params-delta', id: part.id, delta: part.delta };
+
+    case 'tool-params-end':
+      return { type: 'tool-params-end', id: part.id };
+
+    case 'tool-call':
+      return {
+        type: 'tool-call',
+        id: part.id,
+        name: part.name,
+        params: part.params,
+      };
+
+    case 'tool-result':
+      return {
+        type: 'tool-result',
+        id: part.id,
+        name: part.name,
+        result: 'result' in part ? part.result : null,
+        isFailure: 'isFailure' in part ? part.isFailure : false,
+      };
+
+    case 'finish':
+      return { type: 'finish', reason: part.reason };
+
+    default:
+      // For other events (reasoning, file, etc.), pass them through
+      return part;
   }
-
-  // Mark generation as complete via Effect Redis
-  await runEffect(markGenerationComplete(messageId));
-
-  // Publish status change (no longer generating)
-  await runEffect(
-    publishChatStatus({ type: 'status-changed', userId, chatId, currentMessageId: null }),
-  );
-
-  await getDb().update(T.chat).set({ currentMessageRequest: null }).where(eq(T.chat.id, chatId));
 };
+
+/**
+ * Generate a response using the DatalkAgent and stream events to Redis.
+ */
+const generateResponse = Effect.fn('generateResponse')(function* (userId: string, chatId: string, dataset: string, messageId: string, currentMessage: string) {
+    // Publish status change - now generating
+    yield* publishChatStatus({ type: 'status-changed', userId, chatId, currentMessageId: messageId });
+
+    const agent = yield* DatalkAgent;
+
+    // Get the stream from the agent
+    const stream = yield* agent.run(chatId, dataset, currentMessage);
+
+    // Process each stream part and publish to Redis
+    yield* Stream.runForEach(stream, (part) => {
+        const event = streamPartToEvent(part);
+        return publishGenerationEvent(messageId, event);
+      });
+
+    yield* Effect.all([
+      markGenerationComplete(messageId),
+    publishChatStatus({ type: 'status-changed', userId, chatId, currentMessageId: null }),
+  ]);
+
+    // Update chat to clear current message request
+    const db = yield* Database;
+    yield* db.update(T.chat).set({ currentMessageRequest: null }).where(eq(T.chat.id, chatId));
+  });
 
 export const POST: RequestHandler = async ({ request, params }) => {
   const user = requireAuth();
@@ -92,11 +115,10 @@ export const POST: RequestHandler = async ({ request, params }) => {
   const content = await request.text();
   console.log(content);
 
-  // fire-and-forget. Don't really care if this fails or when it happens!
-  generateChatTitle(user.id, chatId, content).catch((err) =>
-    console.log(`Error setting chat title for ${chatId}: ${err}`),
-  );
+  // Fire-and-forget title generation
+  runEffectFork(generateChatTitle(user.id, chatId, content));
 
+  // TODO: migrate to effect
   const [{ messageRequestId }] = await getDb()
     .insert(T.messageRequests)
     .values({
@@ -111,6 +133,7 @@ export const POST: RequestHandler = async ({ request, params }) => {
     .set({ currentMessageRequest: messageRequestId })
     .where(and(eq(T.chat.id, chatId), isNull(T.chat.currentMessageRequest)))
     .returning({ dataset: T.chat.dataset });
+
   if (res.length === 0) {
     error(400, 'Already generating a response for this chat.');
   }
@@ -119,9 +142,10 @@ export const POST: RequestHandler = async ({ request, params }) => {
   if (!dataset) {
     error(400, 'Chat has no dataset configured.');
   }
-  generateResponse(user.id, chatId, dataset, messageRequestId, content).catch((err) =>
-    console.log(`Error generating response for ${messageRequestId}: ${err}`),
-  );
+
+  // Fire-and-forget response generation
+  runEffectFork(generateResponse(user.id, chatId, dataset, messageRequestId, content));
+
   return new Response(messageRequestId, {
     headers: {
       'Content-Type': 'text/plain',

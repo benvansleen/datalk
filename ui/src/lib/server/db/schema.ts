@@ -9,6 +9,8 @@ import {
   boolean,
   index,
   json,
+  jsonb,
+  unique,
 } from 'drizzle-orm/pg-core';
 
 export const ResponsesApiMessageContent = pgTable('responses_api_message_content', {
@@ -130,9 +132,38 @@ export const chatRelations = relations(chat, ({ many, one }) => ({
   functionCalls: many(ResponsesApiFunctionCall),
   functionResults: many(ResponsesApiFunctionResult),
   providerData: many(ResponsesApiProviderData),
+  history: one(chatHistory),
   user: one(user, {
     fields: [chat.userId],
     references: [user.id],
+  }),
+}));
+
+/**
+ * Chat history table for @effect/ai Chat.Persisted.
+ * Stores the serialized conversation history as JSONB.
+ */
+export const chatHistory = pgTable(
+  'chat_history',
+  {
+    id: serial('id').notNull().primaryKey(),
+    chatId: uuid('chat_id')
+      .notNull()
+      .references(() => chat.id, { onDelete: 'cascade' }),
+    storeId: text('store_id').notNull(),
+    history: jsonb('history').notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => [
+    unique('chat_history_chat_id_store_id_unique').on(table.chatId, table.storeId),
+    index('chat_history_chat_id_idx').on(table.chatId),
+  ],
+);
+
+export const chatHistoryRelations = relations(chatHistory, ({ one }) => ({
+  chat: one(chat, {
+    fields: [chatHistory.chatId],
+    references: [chat.id],
   }),
 }));
 
