@@ -127,7 +127,11 @@
         }
 
         // Finish events
-        case 'finish':
+        case 'finish': {
+          // Intermediate finish event from model iterations - ignore
+          // (only used during agentic loops between tool calls)
+          break;
+        }
         case 'response_done': {
           console.log('Stream ended!');
           cleanup();
