@@ -2,6 +2,14 @@ import { requireAuth } from '$lib/server/auth';
 import { getRedis } from '$lib/server/redis';
 import type { RequestHandler } from './$types';
 
+/**
+ * SSE endpoint for chat status events.
+ * 
+ * Note: This uses getRedis() directly instead of the Effect Redis service
+ * because SSE connections are long-lived and need their own subscription lifecycle.
+ * The Effect Redis service is scoped to the ManagedRuntime and better suited
+ * for short-lived operations (publish, get, set).
+ */
 export const GET: RequestHandler = async () => {
   const user = requireAuth();
 

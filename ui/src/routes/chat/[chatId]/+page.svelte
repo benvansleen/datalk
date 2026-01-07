@@ -1,35 +1,33 @@
 <script lang="ts">
-  import { getChats } from '$lib/api/chat.remote';
+  import type { PageProps } from './$types';
+  import { invalidateAll } from '$app/navigation';
   import { Spinner } from '$lib/components/shadcn/spinner';
   import * as Item from '$lib/components/shadcn/item';
   import { ArrowUp } from 'lucide-svelte';
-  import { getChatMessages } from '$lib/api/chat.remote';
   import { fly, slide } from 'svelte/transition';
 
   import MessageBlock from '$lib/components/message-block.svelte';
   import Sidebar from '$lib/components/sidebar.svelte';
-  import { onMount } from 'svelte';
 
-  let { params } = $props();
-  const { currentMessageRequestId, messages } = $derived(await getChatMessages(params.chatId));
+  let { data }: PageProps = $props();
 
-  const chats = $derived(await getChats());
-
-  onMount(() => {
+  $effect(() => {
     const chatStatusEvents = new EventSource('/chat-status-events');
     chatStatusEvents.addEventListener('message', (e) => {
-      // See other `getChats().refresh()` call for short-term
-      // explanation for why this is so expensive
       const event = JSON.parse(e.data);
       if (event.type === 'chat-created' || event.type === 'chat-deleted') {
-        getChats().refresh();
+        invalidateAll();
       }
     });
 
-    if (currentMessageRequestId) {
-      console.log(`Resuming message request: ${currentMessageRequestId}`);
-      subscribe(currentMessageRequestId);
+    if (data.currentMessageRequestId) {
+      console.log(`Resuming message request: ${data.currentMessageRequestId}`);
+      subscribe(data.currentMessageRequestId);
     }
+
+    return () => {
+      chatStatusEvents.close();
+    };
   });
 
   // svelte-ignore non_reactive_update
@@ -79,7 +77,7 @@
           toolState = [];
           answer = '';
           submittedUserInput = '';
-          getChatMessages(params.chatId).refresh();
+          invalidateAll();
           setTimeout(() => {
             scrollToBottom();
           }, 500);
@@ -97,7 +95,7 @@
       return;
     }
 
-    const res = await fetch(`/chat/${params.chatId}`, {
+    const res = await fetch(`/chat/${data.chatId}`, {
       method: 'POST',
       body: userInput,
       headers: {
@@ -114,10 +112,10 @@
   };
 </script>
 
-<Sidebar {chats} currentChatId={params.chatId}>
+<Sidebar chats={data.chats} currentChatId={data.chatId}>
   <div class="m-20 grid gap-6">
     <div class="grid gap-2">
-      {#each messages as message}
+      {#each data.messages as message}
         <MessageBlock {...message} />
       {/each}
 
@@ -154,13 +152,15 @@
           class="resize-none flex-1 px-4 py-2 focus:outline-none"
           rows="1"
           oninput={(e) => {
-            e.target.style.height = 'auto';
-            e.target.style.height = `${e.target.scrollHeight}px`;
+            const target = e.target as HTMLTextAreaElement;
+            target.style.height = 'auto';
+            target.style.height = `${target.scrollHeight}px`;
           }}
           onkeydown={(e) => {
             if (!generating && e.key == 'Enter' && e.shiftKey) {
               e.preventDefault();
-              e.target.style.height = 'auto';
+              const target = e.target as HTMLTextAreaElement;
+              target.style.height = 'auto';
               const form = e.currentTarget.closest('form');
               form?.requestSubmit();
             }

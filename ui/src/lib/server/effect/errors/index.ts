@@ -6,6 +6,11 @@ export class DatabaseError extends Schema.TaggedError<DatabaseError>()('Database
   cause: Schema.optional(Schema.Defect),
 }) {}
 
+export class ChatError extends Schema.TaggedError<DatabaseError>()('DatabaseError', {
+  message: Schema.String,
+  cause: Schema.optional(Schema.Defect),
+}) {}
+
 // Configuration error
 export class ConfigError extends Schema.TaggedError<ConfigError>()('ConfigError', {
   message: Schema.String,

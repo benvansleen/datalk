@@ -6,6 +6,14 @@ import { getDb } from '$lib/server/db';
 import * as T from '$lib/server/db/schema';
 import { error } from '@sveltejs/kit';
 
+/**
+ * SSE endpoint for message generation events.
+ * 
+ * Note: This uses getRedis() directly instead of the Effect Redis service
+ * because SSE connections are long-lived and need their own subscription lifecycle.
+ * The Effect Redis service is scoped to the ManagedRuntime and better suited
+ * for short-lived operations (publish, get, set).
+ */
 export const GET: RequestHandler = async ({ params }) => {
   const user = requireAuth();
   const { messageRequestId } = params;
@@ -28,6 +36,7 @@ export const GET: RequestHandler = async ({ params }) => {
       };
 
       try {
+        // Replay history for reconnecting clients
         const history = await redis.lRange(`gen:${messageRequestId}:history`, 0, -1);
         for (const chunk of history.reverse()) {
           send(chunk);
@@ -37,6 +46,7 @@ export const GET: RequestHandler = async ({ params }) => {
       }
 
       try {
+        // Subscribe to live events
         await redis.subscribe(`gen:${messageRequestId}`, (chunk) => {
           send(chunk);
         });
@@ -45,6 +55,7 @@ export const GET: RequestHandler = async ({ params }) => {
       }
     },
     async cancel() {
+      // Cleanup subscription when client disconnects
       try {
         await redis.unsubscribe(`gen:${messageRequestId}`);
       } catch {}

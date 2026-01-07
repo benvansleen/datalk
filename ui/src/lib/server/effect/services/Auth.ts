@@ -1,8 +1,12 @@
-import { Effect, Context, Layer } from 'effect';
-import { getAuth } from '$lib/server/auth';
+import { Effect, Option } from 'effect';
 import { Config } from './Config';
+import { Database, DatabaseLive } from './Database';
 import { AuthError, WhitelistError } from '../errors';
 import type { SignupRequest, LoginRequest } from '../schemas/auth';
+import { drizzleAdapter } from 'better-auth/adapters/drizzle';
+import { betterAuth } from 'better-auth';
+import { sveltekitCookies } from 'better-auth/svelte-kit';
+import { getRequestEvent } from '$app/server';
 
 const WHITELIST_SIGNUPS = new Set([
   'benvansleen@gmail.com',
@@ -10,45 +14,29 @@ const WHITELIST_SIGNUPS = new Set([
   'mark@textql.com',
 ]);
 
-// Auth service interface
-export interface AuthService {
-  readonly signup: (
-    request: SignupRequest,
-    headers: Headers,
-  ) => Effect.Effect<unknown, AuthError | WhitelistError, never>;
-  readonly login: (
-    request: LoginRequest,
-    headers: Headers,
-  ) => Effect.Effect<unknown, AuthError, never>;
-  readonly logout: (headers: Headers) => Effect.Effect<void, never, never>;
-  readonly getSession: (headers: Headers) => Effect.Effect<unknown, AuthError, never>;
-}
-
-// Auth service tag
-export class Auth extends Context.Tag('Auth')<Auth, AuthService>() {
-  // Create a layer that provides Auth by using the existing getAuth() singleton
-  // This works because getAuth() is designed to be called during requests
-  static readonly Default = Layer.effect(
-    Auth,
-    Effect.gen(function* () {
+export class Auth extends Effect.Service<Auth>()("app/Auth", {
+  effect: Effect.gen(function*() {
       const config = yield* Config;
+      const db = yield* Database;
+      
+      const auth = betterAuth({
+      database: drizzleAdapter(db, { provider: 'pg' }),
+      plugins: [sveltekitCookies(getRequestEvent)],
+      emailAndPassword: { enabled: true },
+    });
 
-      // Return methods that use getAuth() at call time (during request)
-      // rather than at service construction time
       const signup = Effect.fn('Auth.signup')(function* (request: SignupRequest, headers: Headers) {
         yield* Effect.annotateCurrentSpan({ email: request.email });
+        yield* Effect.logInfo('Attempting signup', JSON.stringify(request));
 
-        // Check whitelist in production
         if (config.isProduction && !WHITELIST_SIGNUPS.has(request.email)) {
           return yield* Effect.fail(
             new WhitelistError({ message: '**Extremely** private beta only!' }),
           );
         }
 
-        yield* Effect.logInfo('Attempting signup', JSON.stringify(request));
-
         const result = yield* Effect.tryPromise({
-          try: () => getAuth().api.signUpEmail({ body: { email: request.email, name: request.name, password: request.password } }),
+          try: () => auth.api.signUpEmail({ body: { email: request.email, name: request.name, password: request.password } }),
           catch: (error) => {
             console.error('Signup error:', error);
 
@@ -80,7 +68,7 @@ export class Auth extends Context.Tag('Auth')<Auth, AuthService>() {
         yield* Effect.logInfo('Attempting login', { email: request.email });
 
         const result = yield* Effect.tryPromise({
-          try: () => getAuth().api.signInEmail({ headers, body: request }),
+          try: () => auth.api.signInEmail({ headers, body: request }),
           catch: (error) => {
             console.error('Login error:', error);
 
@@ -99,16 +87,16 @@ export class Auth extends Context.Tag('Auth')<Auth, AuthService>() {
         yield* Effect.logInfo('Signing out user');
 
         return yield* Effect.tryPromise({
-          try: () => getAuth().api.signOut({ headers }),
+          try: () => auth.api.signOut({ headers }),
           catch: () => new AuthError({ message: 'Signout failed' }),
         }).pipe(Effect.catchAll(() => Effect.void));
       });
 
       const getSession = Effect.fn('Auth.getSession')(function* (headers: Headers) {
-        return yield* Effect.tryPromise({
-          try: () => getAuth().api.getSession({ headers }),
+        return Option.fromNullable(yield* Effect.tryPromise({
+          try: () => auth.api.getSession({ headers }),
           catch: () => new AuthError({ message: 'Failed to get session' }),
-        });
+        }));
       });
 
       return {
@@ -116,10 +104,10 @@ export class Auth extends Context.Tag('Auth')<Auth, AuthService>() {
         login,
         logout,
         getSession,
-      } satisfies AuthService;
-    }),
-  );
-}
+        __raw: auth,
+      };
+  }),
+  dependencies: [DatabaseLive],
+}) {};
 
-// Re-export for convenience
 export const AuthLive = Auth.Default;

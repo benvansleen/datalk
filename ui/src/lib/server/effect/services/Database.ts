@@ -1,23 +1,23 @@
-import { Effect, Layer, Redacted } from 'effect';
+import { Effect, Layer, Redacted, Context } from 'effect';
 import { PgClient } from '@effect/sql-pg';
 import * as Pg from '@effect/sql-drizzle/Pg';
+import type { PgRemoteDatabase } from 'drizzle-orm/pg-proxy';
 import { Config } from './Config';
+import * as schema from '$lib/server/db/schema';
 
-// Create PgClient layer from Config
+type DatabaseWithSchema = PgRemoteDatabase<typeof schema>;
+export class Database extends Context.Tag('Database')<Database, DatabaseWithSchema>() {}
+
 const PgClientLive = Layer.unwrapEffect(
   Effect.gen(function* () {
     const config = yield* Config;
     return PgClient.layer({
-      // PgClient expects a Redacted url for security
       url: Redacted.make(config.databaseUrl),
     });
   }),
 );
 
-// PgDrizzle layer depends on PgClient
-// This gives us access to Drizzle's query builder with Effect integration
-export const DatabaseLive = Pg.layer.pipe(Layer.provideMerge(PgClientLive));
-
-// Re-export PgDrizzle for use in effects
-export { Pg as Database };
-export const { PgDrizzle } = Pg;
+export const DatabaseLive = Layer.effect(
+  Database,
+  Pg.make({ schema }),
+).pipe(Layer.provide(PgClientLive));

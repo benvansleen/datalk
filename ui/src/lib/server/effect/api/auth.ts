@@ -1,4 +1,4 @@
-import { Effect, Schema, Exit } from 'effect';
+import { Effect, Exit } from 'effect';
 import { redirect } from '@sveltejs/kit';
 import { getRequestEvent } from '$app/server';
 import { Auth } from '../services/Auth';
@@ -66,7 +66,7 @@ export const effectLogin = async (request: LoginRequest): Promise<{ error?: stri
 /**
  * Effect-based signout handler
  */
-export const effectLogout = async (): Promise<void> => {
+export const effectSignout = async (): Promise<void> => {
   const event = getRequestEvent();
   const headers = event.request.headers;
 

@@ -33,7 +33,7 @@ const environmentExists = async (chatId: string, dataset: string) => {
   return available_dataframes;
 };
 
-const executeInEnvironment = async (chatId: string, execute) => {
+const executeInEnvironment = async (chatId: string, execute: { code: string[]; language: string }) => {
   const url = getPythonServerUrl();
   const result = await fetch(`${url}/execute`, {
     method: 'POST',

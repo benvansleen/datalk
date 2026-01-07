@@ -1,8 +1,17 @@
-import { ManagedRuntime, Effect, Exit, Cause, ConfigError as EffectConfigError } from 'effect';
+import {
+  ManagedRuntime,
+  Effect,
+  Exit,
+  Cause,
+  ConfigError as EffectConfigError,
+  Layer,
+} from 'effect';
+import { SqlError } from '@effect/sql/SqlError';
 import { LiveLayer, type AppServices } from './layers/Live';
+import { RedisError } from './errors';
 
-// Type for the runtime including potential config errors
-type RuntimeError = EffectConfigError.ConfigError;
+// Type for the runtime including potential layer construction errors
+type RuntimeError = EffectConfigError.ConfigError | RedisError | SqlError;
 
 // Singleton runtime - initialized once at server startup
 // ManagedRuntime handles resource lifecycle automatically

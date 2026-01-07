@@ -43,10 +43,27 @@ export const getAuth = () => {
   return auth;
 };
 
-export const requireAuth = () => {
+/**
+ * Get the current user or null if not authenticated.
+ * Use this in remote functions (query/form) where you need to handle
+ * the redirect manually.
+ */
+export const getUser = () => {
   const {
     locals: { user },
   } = getRequestEvent();
+  return user ?? null;
+};
+
+/**
+ * Require authentication and throw a redirect if not authenticated.
+ * Use this in +server.ts files where SvelteKit will catch the redirect.
+ * 
+ * WARNING: Do not use in remote functions (query/form) - use getUser() instead
+ * and handle the redirect at the call site.
+ */
+export const requireAuth = () => {
+  const user = getUser();
   if (!user) {
     redirect(307, '/login');
   }

@@ -7,8 +7,13 @@ import { flattenMessages, runChatTitleGenerator } from '$lib/server/responses/ut
 import { PostgresMemorySession } from '$lib/server/responses/session';
 import { getModel } from '$lib/server/responses/model';
 import { run } from '@openai/agents';
-import { getRedis } from '$lib/server/redis';
 import { error } from '@sveltejs/kit';
+import { runEffect } from '$lib/server/effect';
+import {
+  publishChatStatus,
+  publishGenerationEvent,
+  markGenerationComplete,
+} from '$lib/server/effect/api/chat';
 
 const generateChatTitle = async (userId: string, chatId: string, currentMessage: string) => {
   const recentMessages = await getDb().query.ResponsesApiMessage.findMany({
@@ -19,13 +24,14 @@ const generateChatTitle = async (userId: string, chatId: string, currentMessage:
   const flattenedMessages = flattenMessages(recentMessages).map(({ content }) => content);
   const conversationSnapshot = [...flattenedMessages, currentMessage];
   const title = await runChatTitleGenerator(conversationSnapshot);
+  if (!title) {
+    console.log(`Failed to generate title for chat ${chatId}`);
+    return;
+  }
   await getDb().update(T.chat).set({ title }).where(eq(T.chat.id, chatId));
 
-  const redis = await getRedis();
-  await redis.publish(
-    'chat-status',
-    JSON.stringify({ type: 'title-changed', userId, chatId, title }),
-  );
+  // Publish title change via Effect Redis
+  await runEffect(publishChatStatus({ type: 'title-changed', userId, chatId, title }));
 };
 
 const generateResponse = async (
@@ -35,10 +41,9 @@ const generateResponse = async (
   messageId: string,
   currentMessage: string,
 ) => {
-  const redis = await getRedis();
-  await redis.publish(
-    'chat-status',
-    JSON.stringify({ type: 'status-changed', userId, chatId, currentMessageId: messageId }),
+  // Publish status change via Effect Redis
+  await runEffect(
+    publishChatStatus({ type: 'status-changed', userId, chatId, currentMessageId: messageId }),
   );
 
   const session = new PostgresMemorySession({
@@ -56,9 +61,8 @@ const generateResponse = async (
         case 'response.output_text.delta':
         case 'response.function_call_arguments.delta':
         case 'response.function_call_arguments.done': {
-          const chunk = JSON.stringify(event.data.event);
-          await redis.lPush(`gen:${messageId}:history`, chunk);
-          await redis.publish(`gen:${messageId}`, chunk);
+          // Publish generation event via Effect Redis
+          await runEffect(publishGenerationEvent(messageId, event.data.event));
           break;
         }
 
@@ -68,12 +72,15 @@ const generateResponse = async (
       }
     }
   }
-  await redis.publish(`gen:${messageId}`, JSON.stringify({ type: 'response_done' }));
-  await redis.set(`gen:${messageId}:done`, '1');
-  await redis.publish(
-    'chat-status',
-    JSON.stringify({ type: 'status-changed', userId, chatId, currentMessageId: null }),
+
+  // Mark generation as complete via Effect Redis
+  await runEffect(markGenerationComplete(messageId));
+
+  // Publish status change (no longer generating)
+  await runEffect(
+    publishChatStatus({ type: 'status-changed', userId, chatId, currentMessageId: null }),
   );
+
   await getDb().update(T.chat).set({ currentMessageRequest: null }).where(eq(T.chat.id, chatId));
 };
 
@@ -107,6 +114,9 @@ export const POST: RequestHandler = async ({ request, params }) => {
   }
 
   const [{ dataset }] = res;
+  if (!dataset) {
+    error(400, 'Chat has no dataset configured.');
+  }
   generateResponse(user.id, chatId, dataset, messageRequestId, content).catch((err) =>
     console.log(`Error generating response for ${messageRequestId}: ${err}`),
   );

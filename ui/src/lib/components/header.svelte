@@ -2,13 +2,12 @@
   import { Button } from '$lib/components/shadcn/button';
   import { goto, invalidateAll } from '$app/navigation';
   import { page } from '$app/state';
-  import { logout } from '$lib/api/auth.remote';
 
   let { data }: { data: { user?: any } } = $props();
 
   const handleLogout = async () => {
     try {
-      await logout();
+      await fetch('/api/logout', { method: 'POST' });
     } catch (error) {
       console.error('Logout failed:', error);
     } finally {
@@ -16,8 +15,6 @@
       goto('/login');
     }
   };
-
-  const navigationItems = [{ href: '/', label: 'Home' }];
 
   const currentPath = $derived(page.url.pathname);
   const showLoginLink = $derived(currentPath !== '/login');
@@ -29,21 +26,7 @@
 >
   <div class="w-full px-4 flex h-14 items-center">
     <div class="mr-4 hidden md:flex">
-      <a class="mr-6 flex items-center space-x-2" href="/">
-        <span class="hidden font-bold sm:inline-block">Datalk</span>
-      </a>
-      <nav class="flex items-center space-x-6 text-sm font-medium">
-        {#if data?.user}
-          {#each navigationItems as item}
-            <a
-              href={item.href}
-              class="transition-colors hover:text-foreground/80 text-foreground/60"
-            >
-              {item.label}
-            </a>
-          {/each}
-        {/if}
-      </nav>
+      <a href="/" class="hidden font-bold sm:inline-block">Datalk</a>
     </div>
 
     <div class="flex flex-1 items-center justify-between space-x-2 md:justify-end md:items-center">
