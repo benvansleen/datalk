@@ -3,35 +3,37 @@ import { getDb } from '$lib/server/db';
 import * as T from '$lib/server/db/schema';
 import { and, eq, isNull } from 'drizzle-orm';
 import type { RequestHandler } from './$types';
-import { flattenMessages, runChatTitleGenerator } from '$lib/server/responses/utils';
+import { flattenMessages } from '$lib/server/responses/utils';
 import { PostgresMemorySession } from '$lib/server/responses/session';
 import { getModel } from '$lib/server/responses/model';
 import { run } from '@openai/agents';
 import { error } from '@sveltejs/kit';
-import { runEffect } from '$lib/server/effect';
+import { Database, runEffect } from '$lib/server/effect';
 import {
   publishChatStatus,
   publishGenerationEvent,
   markGenerationComplete,
 } from '$lib/server/effect/api/chat';
+import { Effect } from 'effect';
+import { ChatTitleGenerator } from '$lib/server/effect/services/ChatTitleGenerator';
 
 const generateChatTitle = async (userId: string, chatId: string, currentMessage: string) => {
-  const recentMessages = await getDb().query.ResponsesApiMessage.findMany({
-    where: and(eq(T.ResponsesApiMessage.chatId, chatId), eq(T.ResponsesApiMessage.role, 'user')),
-    with: { messageContents: true },
-    limit: 5,
-  });
-  const flattenedMessages = flattenMessages(recentMessages).map(({ content }) => content);
-  const conversationSnapshot = [...flattenedMessages, currentMessage];
-  const title = await runChatTitleGenerator(conversationSnapshot);
-  if (!title) {
-    console.log(`Failed to generate title for chat ${chatId}`);
-    return;
-  }
-  await getDb().update(T.chat).set({ title }).where(eq(T.chat.id, chatId));
+  await runEffect(Effect.gen(function*() {
+    const db = yield* Database;
+    const chatTitleGenerator = yield* ChatTitleGenerator;
 
-  // Publish title change via Effect Redis
-  await runEffect(publishChatStatus({ type: 'title-changed', userId, chatId, title }));
+    const recentMessages = yield* getDb().query.ResponsesApiMessage.findMany({
+      where: and(eq(T.ResponsesApiMessage.chatId, chatId), eq(T.ResponsesApiMessage.role, 'user')),
+      with: { messageContents: true },
+      limit: 5,
+    });
+    const flattenedMessages = flattenMessages(recentMessages).map(({ content }) => content);
+    const conversationSnapshot = [...flattenedMessages, currentMessage];
+    const title = yield* chatTitleGenerator.run(conversationSnapshot);
+
+    yield* db.update(T.chat).set({ title }).where(eq(T.chat.id, chatId));
+    yield* publishChatStatus({ type: 'title-changed', userId, chatId, title });
+  }));
 };
 
 const generateResponse = async (

@@ -2,7 +2,7 @@ import { Effect, Option } from 'effect';
 import { Database } from '../services/Database';
 import * as T from '$lib/server/db/schema';
 import { eq, and, desc } from 'drizzle-orm';
-import { AuthError, DatabaseError } from '../errors';
+import { DatabaseError } from '../errors';
 
 /**
  * Get all chats for a user, ordered by most recently updated
@@ -146,4 +146,26 @@ export const clearCurrentMessageRequest = (chatId: string) =>
         }),
     ),
     Effect.withSpan('db.clearCurrentMessageRequest'),
+  );
+
+/**
+ * Get a message request by ID
+ */
+export const getMessageRequest = (messageRequestId: string) =>
+  Effect.gen(function* () {
+    const db = yield* Database;
+    const [result] = yield* db
+      .select()
+      .from(T.messageRequests)
+      .where(eq(T.messageRequests.id, messageRequestId))
+      .limit(1);
+    return Option.fromNullable(result);
+  }).pipe(
+    Effect.mapError(
+      (error) =>
+        new DatabaseError({
+          message: `Failed to get message request: ${error instanceof Error ? error.message : String(error)}`,
+        }),
+    ),
+    Effect.withSpan('db.getMessageRequest'),
   );

@@ -1,21 +1,35 @@
-import { Layer } from 'effect';
-import { Config } from '../services/Config';
+import { Effect, Layer, Redacted } from 'effect';
 import { Auth } from '../services/Auth';
-import { Redis } from '../services/Redis';
+import { ChatTitleGenerator } from '../services/ChatTitleGenerator';
+import { Config } from '../services/Config';
 import { DatabaseLive } from '../services/Database';
-import { PythonServer } from '../services/PythonServer';
 import { ObservabilityLive } from '../observability';
+import { PythonServer } from '../services/PythonServer';
+import { Redis } from '../services/Redis';
+import { RedisSubscriber } from '../services/RedisSubscriber';
+import { OpenAiClient } from '@effect/ai-openai';
+import { NodeHttpClient } from '@effect/platform-node';
 
-// Compose all production layers
-// Auth.Default, Redis.Default, and PythonServer.Default already depend on Config.Default
-// DatabaseLive provides PgDrizzle for database operations
+// OpenAI client layer - requires Config for API key and HttpClient
+const OpenAiClientLive = Layer.unwrapEffect(
+  Effect.gen(function* () {
+    const config = yield* Config;
+    return OpenAiClient.layer({ apiKey: config.openaiApiKey });
+  })
+);
+
 export const LiveLayer = Layer.mergeAll(
   Auth.Default,
-  Redis.Default,
   DatabaseLive,
-  PythonServer.Default,
   ObservabilityLive,
-).pipe(Layer.provide(Config.Default));
+  PythonServer.Default,
+  Redis.Default,
+  RedisSubscriber.Default,
+  ChatTitleGenerator.Default,
+).pipe(
+  Layer.provide(OpenAiClientLive.pipe(Layer.provide(NodeHttpClient.layerUndici))),
+  Layer.provideMerge(Config.Default),
+);
 
 // Type helper for the services provided by the live layer
 export type AppServices = Layer.Layer.Success<typeof LiveLayer>;

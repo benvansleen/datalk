@@ -1,73 +1,42 @@
-import { requireAuth } from '$lib/server/auth';
 import type { RequestHandler } from './$types';
-import { getRedis } from '$lib/server/redis';
-import { eq } from 'drizzle-orm';
-import { getDb } from '$lib/server/db';
-import * as T from '$lib/server/db/schema';
-import { error } from '@sveltejs/kit';
+import { Effect, Option } from 'effect';
+import {
+  runEffect,
+  requireAuthEffect,
+  requireOwnership,
+  getMessageRequest,
+  subscribeGenerationEvents,
+  streamToSSE,
+} from '$lib/server/effect';
 
 /**
  * SSE endpoint for message generation events.
- * 
- * Note: This uses getRedis() directly instead of the Effect Redis service
- * because SSE connections are long-lived and need their own subscription lifecycle.
- * The Effect Redis service is scoped to the ManagedRuntime and better suited
- * for short-lived operations (publish, get, set).
+ *
+ * Streams AI response generation events for a specific message request.
+ * Includes history replay for reconnecting clients.
  */
-export const GET: RequestHandler = async ({ params }) => {
-  const user = requireAuth();
-  const { messageRequestId } = params;
-  console.log(`fired: ${messageRequestId}`);
+export const GET: RequestHandler = async (event) => {
+  const { messageRequestId } = event.params;
 
-  const [messageRequest] = await getDb()
-    .select()
-    .from(T.messageRequests)
-    .where(eq(T.messageRequests.id, messageRequestId))
-    .limit(1);
-  if (!messageRequest || messageRequest.userId !== user.id) {
-    error(404, 'Could not find messageRequest');
-  }
+  return runEffect(
+    Effect.gen(function* () {
+      // Authenticate the user
+      const user = yield* requireAuthEffect(event);
 
-  const redis = await getRedis();
-  const stream = new ReadableStream({
-    async start(controller) {
-      const send = (data: string) => {
-        controller.enqueue(`data: ${data}\n\n`);
-      };
-
-      try {
-        // Replay history for reconnecting clients
-        const history = await redis.lRange(`gen:${messageRequestId}:history`, 0, -1);
-        for (const chunk of history.reverse()) {
-          send(chunk);
-        }
-      } catch (err) {
-        console.log(err);
+      // Get the message request and verify ownership
+      const messageRequestOption = yield* getMessageRequest(messageRequestId);
+      if (Option.isNone(messageRequestOption)) {
+        return yield* Effect.fail(new Error('Message request not found'));
       }
+      yield* requireOwnership(user, messageRequestOption.value, 'message request');
 
-      try {
-        // Subscribe to live events
-        await redis.subscribe(`gen:${messageRequestId}`, (chunk) => {
-          send(chunk);
-        });
-      } catch (err) {
-        console.log(err);
-      }
-    },
-    async cancel() {
-      // Cleanup subscription when client disconnects
-      try {
-        await redis.unsubscribe(`gen:${messageRequestId}`);
-      } catch {}
-      await redis.quit();
-    },
-  });
+      yield* Effect.logDebug(`Subscribing to generation events for: ${messageRequestId}`);
 
-  return new Response(stream, {
-    headers: {
-      'Content-Type': 'text/event-stream',
-      'Cache-Control': 'no-cache',
-      Connection: 'keep-alive',
-    },
-  });
+      // Create the SSE stream for this message request's generation events
+      const generationStream = subscribeGenerationEvents(messageRequestId);
+
+      // Convert to SSE Response
+      return yield* streamToSSE(generationStream);
+    }).pipe(Effect.withSpan('GET /message-request/:id'))
+  );
 };

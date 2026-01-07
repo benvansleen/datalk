@@ -37,8 +37,20 @@ export {
   publishGenerationEvent,
   markGenerationComplete,
   getGenerationHistory,
+  subscribeChatStatus,
+  subscribeGenerationEvents,
   type ChatStatusEvent,
+  type GenerationEvent,
 } from './api/chat';
+
+// API functions - Auth check
+export { requireAuthEffect, getAuthEffect, requireOwnership } from './api/auth-check';
+
+// SSE utilities
+export { streamToSSE, withHeartbeat } from './sse';
+
+// Redis subscriber service
+export { RedisSubscriber, RedisSubscriberLive } from './services/RedisSubscriber';
 
 // API functions - Database
 export {
@@ -49,6 +61,7 @@ export {
   createMessageRequest,
   updateChatTitle,
   clearCurrentMessageRequest,
+  getMessageRequest,
 } from './api/db';
 
 // API functions - Python Server

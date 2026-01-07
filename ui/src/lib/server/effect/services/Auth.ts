@@ -105,7 +105,7 @@ export class Auth extends Effect.Service<Auth>()("app/Auth", {
         logout,
         getSession,
         __raw: auth,
-      };
+      } as const;
   }),
   dependencies: [DatabaseLive],
 }) {};

@@ -50,6 +50,14 @@
     const eventSource = new EventSource(`/message-request/${messageRequestId}`);
     generating = true;
 
+    const cleanup = () => {
+      eventSource.close();
+      generating = false;
+      toolState = [''];
+      answer = '';
+      submittedUserInput = '';
+    };
+
     eventSource.addEventListener('message', (e) => {
       scrollToBottom();
 
@@ -73,10 +81,7 @@
 
         case 'response_done': {
           console.log('Stream ended!');
-          generating = false;
-          toolState = [];
-          answer = '';
-          submittedUserInput = '';
+          cleanup();
           invalidateAll();
           setTimeout(() => {
             scrollToBottom();
@@ -84,6 +89,11 @@
           break;
         }
       }
+    });
+
+    eventSource.addEventListener('error', () => {
+      console.log('EventSource error, closing connection');
+      cleanup();
     });
   };
 
@@ -132,12 +142,11 @@
             </div>
           {/if}
         {/each}
-      {/if}
-
-      {#if answer}
-        <div in:slide={{ duration: 100 }}>
-          <MessageBlock role="assistant" content={answer} />
-        </div>
+        {#if answer}
+          <div in:slide={{ duration: 100 }}>
+            <MessageBlock role="assistant" content={answer} />
+          </div>
+        {/if}
       {/if}
     </div>
 

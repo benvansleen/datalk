@@ -1,4 +1,4 @@
-import { Effect, Layer, Redacted, Context } from 'effect';
+import { Effect, Layer, Context } from 'effect';
 import { PgClient } from '@effect/sql-pg';
 import * as Pg from '@effect/sql-drizzle/Pg';
 import type { PgRemoteDatabase } from 'drizzle-orm/pg-proxy';
@@ -12,7 +12,7 @@ const PgClientLive = Layer.unwrapEffect(
   Effect.gen(function* () {
     const config = yield* Config;
     return PgClient.layer({
-      url: Redacted.make(config.databaseUrl),
+      url: config.databaseUrl,
     });
   }),
 );

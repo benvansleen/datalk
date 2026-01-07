@@ -16,6 +16,8 @@
     "repl": "node"
   },
   "devDependencies": {
+    "@effect/ai": "^0.33.2",
+    "@effect/ai-openai": "^0.37.2",
     "@effect/opentelemetry": "^0.60.0",
     "@effect/platform": "^0.94.1",
     "@effect/platform-node": "^0.104.0",
