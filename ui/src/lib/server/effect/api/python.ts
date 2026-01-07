@@ -4,10 +4,10 @@ import { PythonServer } from '../services/PythonServer';
 /**
  * List available datasets from the Python server
  */
-export const listDatasets = Effect.gen(function* () {
+export const listDatasets = Effect.fn('Python.listDatasets')(function* () {
   const pythonServer = yield* PythonServer;
   return yield* pythonServer.listDatasets;
-}).pipe(Effect.withSpan('Python.listDatasets'));
+});
 
 /**
  * Create or get an execution environment for a chat

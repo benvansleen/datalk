@@ -1,7 +1,7 @@
 import type { Actions, PageServerLoad } from './$types';
 import { redirect, fail } from '@sveltejs/kit';
-import { Effect, Exit } from 'effect';
-import { runEffectExit, getFailure } from '$lib/server/effect';
+import { Effect, Exit, Cause } from 'effect';
+import { runEffectExit } from '$lib/server/effect';
 import { Auth } from '$lib/server/effect/services/Auth';
 import { AuthError } from '$lib/server/effect/errors';
 
@@ -23,22 +23,17 @@ export const actions: Actions = {
       return fail(400, { error: 'Email and password are required', email });
     }
 
-    const program = Effect.gen(function* () {
+    return Exit.match(await runEffectExit(Effect.gen(function*() {
       const auth = yield* Auth;
       yield* auth.login({ email, password }, request.headers);
-    });
-
-    const exit = await runEffectExit(program);
-
-    if (Exit.isSuccess(exit)) {
-      redirect(303, '/');
-    }
-
-    const error = getFailure(exit);
-    if (error instanceof AuthError) {
-      return fail(400, { error: error.message, email });
-    }
-
-    return fail(500, { error: 'An unexpected error occurred', email });
+    })), {
+        onSuccess: () => redirect(303, '/'),
+        onFailure: (cause) => {
+          if (Cause.isFailType(cause) && cause.error instanceof AuthError) {
+              return fail(400, { error: cause.error.message, email });
+          }
+          return fail(500, { error: 'An unexpected error occurred', email });
+        } 
+      });
   },
 };

@@ -1,6 +1,6 @@
 import type { Actions, PageServerLoad } from './$types';
 import { redirect, fail } from '@sveltejs/kit';
-import { Effect, Exit } from 'effect';
+import { Effect, Exit, Cause } from 'effect';
 import { runEffectExit, getFailure } from '$lib/server/effect';
 import { Auth } from '$lib/server/effect/services/Auth';
 import { AuthError, WhitelistError } from '$lib/server/effect/errors';
@@ -24,25 +24,20 @@ export const actions: Actions = {
       return fail(400, { error: 'All fields are required', name, email });
     }
 
-    const program = Effect.gen(function* () {
+    return Exit.match(await runEffectExit(Effect.gen(function*() {
       const auth = yield* Auth;
       yield* auth.signup({ name, email, password }, request.headers);
-    });
-
-    const exit = await runEffectExit(program);
-
-    if (Exit.isSuccess(exit)) {
-      redirect(307, '/');
-    }
-
-    const error = getFailure(exit);
-    if (error instanceof WhitelistError) {
-      return fail(400, { error: error.message, name, email });
-    }
-    if (error instanceof AuthError) {
-      return fail(400, { error: error.message, name, email });
-    }
-
+    })), {
+        onSuccess: () => redirect(307, '/'),
+        onFailure: (cause) => {
+          if (Cause.isFailType(cause) && (
+            cause.error instanceof AuthError
+            || cause.error instanceof WhitelistError
+          )) {
+            return fail(400, { error: cause.error.message, name, email });
+          }
     return fail(500, { error: 'An unexpected error occurred', name, email });
+        }
+      });
   },
 };

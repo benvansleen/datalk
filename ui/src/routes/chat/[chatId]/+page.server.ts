@@ -9,13 +9,8 @@ export const load: PageServerLoad = async ({ locals, params }) => {
   const user = locals.user;
   const { chatId } = params;
 
-  const [chats, chatData] = await Promise.all([
-    runEffect(
-      Effect.gen(function* () {
-        return yield* getChatsForUser(user.id);
-      }).pipe(Effect.withSpan('Chat.get-chats'))
-    ),
-    runEffect(
+  const [chats, chatData] = await runEffect(Effect.all([
+      getChatsForUser(user.id),
       Effect.gen(function* () {
         const chat = yield* getChatWithMessages(user.id, chatId);
         if (Option.isNone(chat)) {
@@ -58,10 +53,9 @@ export const load: PageServerLoad = async ({ locals, params }) => {
         return {
           currentMessageRequestId: chat.value.currentMessageRequest,
           messages,
-        };
-      }).pipe(Effect.withSpan('Chat.get-chat-messages'))
-    ),
-  ]);
+        } as const;
+      }).pipe(Effect.withSpan('Chat.get-chat-messages')),
+  ], { concurrency: 'unbounded' }));
 
   if (!chatData) {
     redirect(303, '/');

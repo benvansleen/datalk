@@ -13,14 +13,10 @@ import { listDatasets } from '$lib/server/effect/api/python';
 export const load: PageServerLoad = async ({ locals }) => {
   const user = locals.user;
 
-  const [datasets, chats] = await Promise.all([
-    runEffect(listDatasets),
-    runEffect(
-      Effect.gen(function* () {
-        return yield* getChatsForUser(user.id);
-      }).pipe(Effect.withSpan('Chat.get-chats'))
-    ),
-  ]);
+  const [datasets, chats] = await runEffect(Effect.all([
+    listDatasets(),
+    getChatsForUser(user.id),
+  ]));
 
   return {
     datasets,
@@ -41,8 +37,10 @@ export const actions: Actions = {
     const chatId = await runEffect(
       Effect.gen(function* () {
         const chatId = yield* dbCreateChat(user.id, dataset);
-        yield* Console.log(`created: ${chatId}`);
-        yield* publishChatStatus({ type: 'chat-created', userId: user.id, chatId });
+        yield* Effect.all([
+          publishChatStatus({ type: 'chat-created', userId: user.id, chatId }),
+          Console.log(`created: ${chatId}`),
+        ], { concurrency: 'unbounded' });
         return chatId;
       }).pipe(Effect.withSpan('Chat.creation-request'))
     );
@@ -60,11 +58,12 @@ export const actions: Actions = {
     }
 
     await runEffect(
-      Effect.gen(function* () {
-        yield* dbDeleteChat(user.id, chatId);
-        yield* publishChatStatus({ type: 'chat-deleted', userId: user.id, chatId });
-      }).pipe(Effect.withSpan('Chat.deletion-request'))
-    );
+      Effect.all([
+        dbDeleteChat(user.id, chatId),
+        publishChatStatus({ type: 'chat-deleted', userId: user.id, chatId}),
+      ], { concurrency: 'unbounded' }).pipe(
+          Effect.withSpan('Chat.deletion-request'),
+    ));
 
     return { success: true };
   },

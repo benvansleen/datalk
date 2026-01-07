@@ -168,7 +168,7 @@ export class PythonServer extends Effect.Service<PythonServer>()('app/PythonServ
       execute,
       destroyEnvironment,
       environmentExists,
-    };
+    } as const;
   }),
   dependencies: [Config.Default],
 }) {}
