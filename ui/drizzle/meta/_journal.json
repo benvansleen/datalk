@@ -218,6 +218,20 @@
       "when": 1767823697824,
       "tag": "0030_equal_tempest",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1767842434388,
+      "tag": "0031_sleepy_lady_ursula",
+      "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1767842848104,
+      "tag": "0032_bizarre_victor_mancha",
+      "breakpoints": true
     }
   ]
 }

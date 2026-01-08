@@ -1,8 +1,68 @@
 import { Effect, Layer, Option, Duration, Scope, Context } from 'effect';
 import { Persistence } from '@effect/experimental';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, asc } from 'drizzle-orm';
 import { Database } from './Database';
 import * as T from '$lib/server/db/schema';
+
+// ============================================================================
+// Types for @effect/ai Prompt format
+// ============================================================================
+
+interface PromptEncoded {
+  readonly content: ReadonlyArray<MessageEncoded>;
+}
+
+interface MessageEncoded {
+  readonly role: 'system' | 'user' | 'assistant' | 'tool';
+  readonly content: string | ReadonlyArray<PartEncoded>;
+  readonly options?: Record<string, unknown>;
+}
+
+interface TextPartEncoded {
+  readonly type: 'text';
+  readonly text: string;
+  readonly options?: Record<string, unknown>;
+}
+
+interface ToolCallPartEncoded {
+  readonly type: 'tool-call';
+  readonly id: string;
+  readonly name: string;
+  readonly params: unknown;
+  readonly providerExecuted?: boolean;
+  readonly options?: Record<string, unknown>;
+}
+
+interface ToolResultPartEncoded {
+  readonly type: 'tool-result';
+  readonly id: string;
+  readonly name: string;
+  readonly isFailure: boolean;
+  readonly result: unknown;
+  readonly providerExecuted?: boolean;
+  readonly options?: Record<string, unknown>;
+}
+
+interface ReasoningPartEncoded {
+  readonly type: 'reasoning';
+  readonly text: string;
+  readonly options?: Record<string, unknown>;
+}
+
+interface FilePartEncoded {
+  readonly type: 'file';
+  readonly mediaType: string;
+  readonly url?: string;
+  readonly data?: string;
+  readonly options?: Record<string, unknown>;
+}
+
+type PartEncoded =
+  | TextPartEncoded
+  | ToolCallPartEncoded
+  | ToolResultPartEncoded
+  | ReasoningPartEncoded
+  | FilePartEncoded;
 
 // ============================================================================
 // BackingPersistence Implementation
@@ -11,26 +71,35 @@ import * as T from '$lib/server/db/schema';
 /**
  * Creates a BackingPersistenceStore for a given storeId.
  * This implements the key-value interface required by @effect/ai Chat.Persisted.
+ * Uses normalized tables for storage.
  */
 const makeStore = (
   storeId: string,
   db: Context.Tag.Service<typeof Database>,
 ): Effect.Effect<Persistence.BackingPersistenceStore, never, Scope.Scope> =>
   Effect.gen(function* () {
-    // Add a finalizer for the scope (no-op for our PostgreSQL implementation)
     yield* Effect.addFinalizer(() => Effect.void);
 
+    /**
+     * Get chat history by reconstructing the Prompt format from normalized tables
+     */
     const get = (
       key: string,
     ): Effect.Effect<Option.Option<unknown>, Persistence.PersistenceError> =>
       Effect.gen(function* () {
-        yield* Effect.logInfo(`[ChatPersistence.get] Getting history for ${key}`);
-        const result = yield* Effect.tryPromise({
+        yield* Effect.logDebug(`[ChatPersistence.get] Getting history for ${key}`);
+
+        const messages = yield* Effect.tryPromise({
           try: async () => {
-            const r = await db.query.chatHistory.findFirst({
-              where: and(eq(T.chatHistory.chatId, key), eq(T.chatHistory.storeId, storeId)),
+            return await db.query.chatMessage.findMany({
+              where: eq(T.chatMessage.chatId, key),
+              orderBy: [asc(T.chatMessage.sequence)],
+              with: {
+                parts: {
+                  orderBy: [asc(T.chatMessagePart.sequence)],
+                },
+              },
             });
-            return r;
           },
           catch: (error) =>
             new Persistence.PersistenceBackingError({
@@ -39,12 +108,80 @@ const makeStore = (
               cause: error,
             }),
         });
-        yield* Effect.logInfo(
-          `[ChatPersistence.get] Got result: ${result ? 'found' : 'not found'}`,
-        );
-        // The @effect/ai Chat expects a JSON string, not a parsed object
-        // So we need to stringify the JSONB value we stored
-        return result ? Option.some(JSON.stringify(result.history)) : Option.none();
+
+        if (messages.length === 0) {
+          yield* Effect.logDebug(`[ChatPersistence.get] No messages found`);
+          return Option.none();
+        }
+
+        // Reconstruct the Prompt format
+        const prompt: PromptEncoded = {
+          content: messages.map((msg) => {
+            // System messages have string content
+            if (msg.role === 'system') {
+              const textPart = msg.parts.find((p) => p.type === 'text');
+              return {
+                role: msg.role,
+                content: textPart ? (textPart.content as T.TextPartContent).text : '',
+              } as MessageEncoded;
+            }
+
+            // Other messages have array content
+            const parts: PartEncoded[] = msg.parts.map((part) => {
+              switch (part.type) {
+                case 'text': {
+                  const content = part.content as T.TextPartContent;
+                  return { type: 'text', text: content.text } as TextPartEncoded;
+                }
+                case 'tool-call': {
+                  const content = part.content as T.ToolCallPartContent;
+                  return {
+                    type: 'tool-call',
+                    id: content.id,
+                    name: content.name,
+                    params: content.params,
+                    providerExecuted: content.providerExecuted ?? false,
+                  } as ToolCallPartEncoded;
+                }
+                case 'tool-result': {
+                  const content = part.content as T.ToolResultPartContent;
+                  return {
+                    type: 'tool-result',
+                    id: content.id,
+                    name: content.name,
+                    result: content.result,
+                    isFailure: content.isFailure,
+                    providerExecuted: content.providerExecuted ?? false,
+                  } as ToolResultPartEncoded;
+                }
+                case 'reasoning': {
+                  const content = part.content as T.ReasoningPartContent;
+                  return { type: 'reasoning', text: content.text } as ReasoningPartEncoded;
+                }
+                case 'file': {
+                  const content = part.content as T.FilePartContent;
+                  return {
+                    type: 'file',
+                    mediaType: content.mediaType,
+                    url: content.url,
+                    data: content.data,
+                  } as FilePartEncoded;
+                }
+                default:
+                  return { type: 'text', text: '' } as TextPartEncoded;
+              }
+            });
+
+            return {
+              role: msg.role,
+              content: parts,
+            } as MessageEncoded;
+          }),
+        };
+
+        yield* Effect.logDebug(`[ChatPersistence.get] Reconstructed ${messages.length} messages`);
+        // Return as JSON string - @effect/ai expects this format
+        return Option.some(JSON.stringify(prompt));
       });
 
     const getMany = (
@@ -52,30 +189,99 @@ const makeStore = (
     ): Effect.Effect<Array<Option.Option<unknown>>, Persistence.PersistenceError> =>
       Effect.all(keys.map(get), { concurrency: 'unbounded' });
 
+    /**
+     * Save chat history by parsing the Prompt and storing in normalized tables
+     */
     const set = (
       key: string,
       value: unknown,
       _ttl: Option.Option<Duration.Duration>,
     ): Effect.Effect<void, Persistence.PersistenceError> =>
       Effect.gen(function* () {
-        yield* Effect.logInfo(`[ChatPersistence.set] Saving history for ${key}`);
+        yield* Effect.logDebug(`[ChatPersistence.set] Saving history for ${key}`);
+
+        // Parse the prompt - value is a JSON string from @effect/ai
+        const promptJson = typeof value === 'string' ? value : JSON.stringify(value);
+        const prompt = JSON.parse(promptJson) as PromptEncoded;
+
         yield* Effect.tryPromise({
           try: async () => {
-            await db
-              .insert(T.chatHistory)
-              .values({
-                chatId: key,
-                storeId,
-                history: value,
-                updatedAt: new Date(),
-              })
-              .onConflictDoUpdate({
-                target: [T.chatHistory.chatId, T.chatHistory.storeId],
-                set: {
-                  history: value,
-                  updatedAt: new Date(),
-                },
-              });
+            // Delete existing messages for this chat (full replace strategy)
+            await db.delete(T.chatMessage).where(eq(T.chatMessage.chatId, key));
+
+            // Insert new messages
+            for (let msgIdx = 0; msgIdx < prompt.content.length; msgIdx++) {
+              const msg = prompt.content[msgIdx];
+
+              // Insert the message
+              const [insertedMessage] = await db
+                .insert(T.chatMessage)
+                .values({
+                  chatId: key,
+                  role: msg.role,
+                  sequence: msgIdx,
+                })
+                .returning({ id: T.chatMessage.id });
+
+              // Insert parts
+              const parts =
+                typeof msg.content === 'string'
+                  ? [{ type: 'text' as const, text: msg.content }]
+                  : msg.content;
+
+              for (let partIdx = 0; partIdx < parts.length; partIdx++) {
+                const part = parts[partIdx];
+                let partType: 'text' | 'tool-call' | 'tool-result' | 'file' | 'reasoning';
+                let content: T.MessagePartContent;
+
+                switch (part.type) {
+                  case 'text':
+                    partType = 'text';
+                    content = { text: part.text };
+                    break;
+                  case 'tool-call':
+                    partType = 'tool-call';
+                    content = {
+                      id: part.id,
+                      name: part.name,
+                      params: part.params,
+                      providerExecuted: part.providerExecuted,
+                    };
+                    break;
+                  case 'tool-result':
+                    partType = 'tool-result';
+                    content = {
+                      id: part.id,
+                      name: part.name,
+                      result: part.result,
+                      isFailure: part.isFailure,
+                      providerExecuted: part.providerExecuted,
+                    };
+                    break;
+                  case 'reasoning':
+                    partType = 'reasoning';
+                    content = { text: part.text };
+                    break;
+                  case 'file':
+                    partType = 'file';
+                    content = {
+                      mediaType: part.mediaType,
+                      url: part.url,
+                      data: part.data,
+                    };
+                    break;
+                  default:
+                    continue;
+                }
+
+                await db.insert(T.chatMessagePart).values({
+                  messageId: insertedMessage.id,
+                  type: partType,
+                  sequence: partIdx,
+                  content,
+                });
+              }
+            }
           },
           catch: (error) =>
             new Persistence.PersistenceBackingError({
@@ -84,7 +290,8 @@ const makeStore = (
               cause: error,
             }),
         });
-        yield* Effect.logInfo(`[ChatPersistence.set] Saved successfully`);
+
+        yield* Effect.logDebug(`[ChatPersistence.set] Saved ${prompt.content.length} messages`);
       });
 
     const setMany = (
@@ -100,9 +307,8 @@ const makeStore = (
     const remove = (key: string): Effect.Effect<void, Persistence.PersistenceError> =>
       Effect.tryPromise({
         try: async () => {
-          await db
-            .delete(T.chatHistory)
-            .where(and(eq(T.chatHistory.chatId, key), eq(T.chatHistory.storeId, storeId)));
+          // Deleting messages will cascade to parts
+          await db.delete(T.chatMessage).where(eq(T.chatMessage.chatId, key));
         },
         catch: (error) =>
           new Persistence.PersistenceBackingError({
@@ -114,7 +320,9 @@ const makeStore = (
 
     const clear: Effect.Effect<void, Persistence.PersistenceError> = Effect.tryPromise({
       try: async () => {
-        await db.delete(T.chatHistory).where(eq(T.chatHistory.storeId, storeId));
+        // This would delete all messages - we don't filter by storeId since normalized
+        // For now, this is a no-op as we don't have a storeId concept in normalized tables
+        // If needed, we could add a storeId column to chatMessage
       },
       catch: (error) =>
         new Persistence.PersistenceBackingError({
@@ -139,13 +347,12 @@ const makeStore = (
 // ============================================================================
 
 /**
- * BackingPersistence implementation using PostgreSQL.
+ * BackingPersistence implementation using PostgreSQL with normalized tables.
  * This is used by @effect/ai Chat.Persisted to store conversation history.
  */
 export const ChatBackingPersistenceLive = Layer.effect(
   Persistence.BackingPersistence,
   Effect.gen(function* () {
-    // Capture the database at layer construction time
     const db = yield* Database;
 
     return {

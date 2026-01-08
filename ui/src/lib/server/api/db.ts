@@ -1,7 +1,7 @@
 import { Effect, Option } from 'effect';
 import { Database } from '../services/Database';
 import * as T from '$lib/server/db/schema';
-import { eq, and, desc } from 'drizzle-orm';
+import { eq, and, desc, asc } from 'drizzle-orm';
 import { DatabaseError } from '../errors';
 
 /**
@@ -66,31 +66,6 @@ export const deleteChat = (userId: string, chatId: string) =>
         }),
     ),
     Effect.withSpan('db.deleteChat'),
-  );
-
-/**
- * Get a chat with all related messages and function calls using relational query
- */
-export const getChatWithMessages = (userId: string, chatId: string) =>
-  Effect.gen(function* () {
-    const db = yield* Database;
-    const result = yield* db.query.chat.findFirst({
-      where: and(eq(T.chat.userId, userId), eq(T.chat.id, chatId)),
-      with: {
-        messages: { with: { messageContents: true } },
-        functionCalls: true,
-        functionResults: true,
-      },
-    });
-    return Option.fromNullable(result);
-  }).pipe(
-    Effect.mapError(
-      (error) =>
-        new DatabaseError({
-          message: `Failed to get chat with messages: ${error instanceof Error ? error.message : String(error)}`,
-        }),
-    ),
-    Effect.withSpan('db.getChatWithMessages'),
   );
 
 /**
@@ -171,50 +146,8 @@ export const getMessageRequest = (messageRequestId: string) =>
   );
 
 // ============================================================================
-// Chat History (@effect/ai Prompt format)
+// Chat History Display
 // ============================================================================
-
-/**
- * Type definitions for the @effect/ai Prompt format stored in chat_history.
- * These mirror the encoded format from @effect/ai/Prompt.
- */
-
-interface TextPartEncoded {
-  readonly type: 'text';
-  readonly text: string;
-  readonly options?: Record<string, unknown>;
-}
-
-interface ToolCallPartEncoded {
-  readonly type: 'tool-call';
-  readonly id: string;
-  readonly name: string;
-  readonly params: unknown;
-  readonly providerExecuted?: boolean;
-  readonly options?: Record<string, unknown>;
-}
-
-interface ToolResultPartEncoded {
-  readonly type: 'tool-result';
-  readonly id: string;
-  readonly name: string;
-  readonly isFailure: boolean;
-  readonly result: unknown;
-  readonly providerExecuted: boolean;
-  readonly options?: Record<string, unknown>;
-}
-
-type PartEncoded = TextPartEncoded | ToolCallPartEncoded | ToolResultPartEncoded;
-
-interface MessageEncoded {
-  readonly role: 'system' | 'user' | 'assistant' | 'tool';
-  readonly content: string | ReadonlyArray<PartEncoded>;
-  readonly options?: Record<string, unknown>;
-}
-
-interface PromptEncoded {
-  readonly content: ReadonlyArray<MessageEncoded>;
-}
 
 /**
  * Display message format expected by the frontend.
@@ -228,8 +161,8 @@ export interface DisplayMessage {
 }
 
 /**
- * Get chat with history from the new chat_history table.
- * Transforms the @effect/ai Prompt format into the display format expected by the frontend.
+ * Get chat with history from normalized tables (chatMessage + chatMessagePart).
+ * Transforms the data into the display format expected by the frontend.
  */
 export const getChatWithHistory = (userId: string, chatId: string) =>
   Effect.gen(function* () {
@@ -244,12 +177,18 @@ export const getChatWithHistory = (userId: string, chatId: string) =>
       return Option.none<{ currentMessageRequest: string | null; messages: DisplayMessage[] }>();
     }
 
-    // Get the chat history from the new table
-    const historyResult = yield* db.query.chatHistory.findFirst({
-      where: and(eq(T.chatHistory.chatId, chatId), eq(T.chatHistory.storeId, 'datalk-chats')),
+    // Get messages with parts from normalized tables
+    const messagesWithParts = yield* db.query.chatMessage.findMany({
+      where: eq(T.chatMessage.chatId, chatId),
+      orderBy: [asc(T.chatMessage.sequence)],
+      with: {
+        parts: {
+          orderBy: [asc(T.chatMessagePart.sequence)],
+        },
+      },
     });
 
-    if (!historyResult) {
+    if (messagesWithParts.length === 0) {
       // No history yet, return empty messages
       return Option.some({
         currentMessageRequest: chatResult.currentMessageRequest,
@@ -257,44 +196,48 @@ export const getChatWithHistory = (userId: string, chatId: string) =>
       });
     }
 
-    // Parse the stored Prompt format
-    const prompt = historyResult.history as PromptEncoded;
+    // Build a map of tool call ID -> tool result for quick lookup
+    const toolResultMap = new Map<string, T.ToolResultPartContent>();
+    for (const msg of messagesWithParts) {
+      for (const part of msg.parts) {
+        if (part.type === 'tool-result') {
+          const content = part.content as T.ToolResultPartContent;
+          toolResultMap.set(content.id, content);
+        }
+      }
+    }
+
+    // Transform to display format
     const messages: DisplayMessage[] = [];
 
-    for (const message of prompt.content) {
+    for (const msg of messagesWithParts) {
       // Skip system messages - they're not shown to the user
-      if (message.role === 'system') {
+      if (msg.role === 'system') {
         continue;
       }
 
-      // Handle string content (simple text message)
-      if (typeof message.content === 'string') {
-        messages.push({
-          role: message.role as 'user' | 'assistant',
-          content: message.content,
-        });
-        continue;
-      }
-
-      // Handle array content (parts)
-      for (const part of message.content) {
+      // Handle parts
+      for (const part of msg.parts) {
         switch (part.type) {
           case 'text': {
+            const content = part.content as T.TextPartContent;
             messages.push({
-              role: message.role as 'user' | 'assistant',
-              content: part.text,
+              role: msg.role as 'user' | 'assistant',
+              content: content.text,
             });
             break;
           }
 
           case 'tool-call': {
-            // Find the corresponding tool result in the same message or subsequent messages
-            const toolResult = findToolResult(prompt.content, part.id);
+            const content = part.content as T.ToolCallPartContent;
+            const toolResult = toolResultMap.get(content.id);
             messages.push({
               role: 'tool',
-              name: part.name,
+              name: content.name,
               arguments:
-                typeof part.params === 'string' ? part.params : JSON.stringify(part.params),
+                typeof content.params === 'string'
+                  ? content.params
+                  : JSON.stringify(content.params),
               output: toolResult?.result,
             });
             break;
@@ -302,6 +245,8 @@ export const getChatWithHistory = (userId: string, chatId: string) =>
 
           // tool-result parts are handled when we process tool-call parts
           case 'tool-result':
+          case 'reasoning':
+          case 'file':
             break;
         }
       }
@@ -320,22 +265,3 @@ export const getChatWithHistory = (userId: string, chatId: string) =>
     ),
     Effect.withSpan('db.getChatWithHistory'),
   );
-
-/**
- * Helper to find a tool result by tool call ID in the prompt messages.
- */
-function findToolResult(
-  messages: ReadonlyArray<MessageEncoded>,
-  toolCallId: string,
-): ToolResultPartEncoded | undefined {
-  for (const message of messages) {
-    if (typeof message.content === 'string') continue;
-
-    for (const part of message.content) {
-      if (part.type === 'tool-result' && part.id === toolCallId) {
-        return part;
-      }
-    }
-  }
-  return undefined;
-}
