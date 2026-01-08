@@ -103,25 +103,24 @@ const makeStore = (
       Effect.gen(function* () {
         yield* Effect.logDebug(`[ChatPersistence.get] Getting history for ${key}`);
 
-        const messages = yield* Effect.tryPromise({
-          try: async () => {
-            return await db.query.chatMessage.findMany({
-              where: eq(T.chatMessage.chatId, key),
-              orderBy: [asc(T.chatMessage.sequence)],
-              with: {
-                parts: {
-                  orderBy: [asc(T.chatMessagePart.sequence)],
-                },
-              },
-            });
+        const messages = yield* db.query.chatMessage.findMany({
+          where: eq(T.chatMessage.chatId, key),
+          orderBy: [asc(T.chatMessage.sequence)],
+          with: {
+            parts: {
+              orderBy: [asc(T.chatMessagePart.sequence)],
+            },
           },
-          catch: (error) =>
-            new Persistence.PersistenceBackingError({
-              reason: 'BackingError',
-              method: 'get',
-              cause: error,
-            }),
-        });
+        }).pipe(
+          Effect.mapError(
+            (error) =>
+              new Persistence.PersistenceBackingError({
+                reason: 'BackingError',
+                method: 'get',
+                cause: error,
+              }),
+          ),
+        );
 
         if (messages.length === 0) {
           yield* Effect.logDebug(`[ChatPersistence.get] No messages found`);
@@ -230,98 +229,145 @@ const makeStore = (
         );
         const prompt = parseResult;
 
-        const newMessagesInserted = yield* Effect.tryPromise({
-          try: async () => {
-            // Get count of existing messages to only insert new ones (append-only optimization)
-            // @effect/ai history is append-only, so we don't need to update existing messages
-            const [{ existingCount }] = await db
-              .select({ existingCount: count() })
-              .from(T.chatMessage)
-              .where(eq(T.chatMessage.chatId, key));
+        // Get count of existing messages to only insert new ones (append-only optimization)
+        // @effect/ai history is append-only, so we don't need to update existing messages
+        const [{ existingCount }] = yield* db
+          .select({ existingCount: count() })
+          .from(T.chatMessage)
+          .where(eq(T.chatMessage.chatId, key))
+          .pipe(
+            Effect.mapError(
+              (error) =>
+                new Persistence.PersistenceBackingError({
+                  reason: 'BackingError',
+                  method: 'set',
+                  cause: error,
+                }),
+            ),
+          );
 
-            // Only insert messages that are new (sequence >= existingCount)
-            for (let msgIdx = existingCount; msgIdx < prompt.content.length; msgIdx++) {
-              const msg = prompt.content[msgIdx];
+        // Build batch insert data for messages and parts
+        const messagesToInsert = [];
+        const partsToInsert = [];
 
-              // Insert the message
-              const [insertedMessage] = await db
-                .insert(T.chatMessage)
-                .values({
-                  chatId: key,
-                  role: msg.role,
-                  sequence: msgIdx,
-                })
-                .returning({ id: T.chatMessage.id });
+        // Only process messages that are new (sequence >= existingCount)
+        for (let msgIdx = existingCount; msgIdx < prompt.content.length; msgIdx++) {
+          const msg = prompt.content[msgIdx];
+          messagesToInsert.push({
+            chatId: key,
+            role: msg.role,
+            sequence: msgIdx,
+          });
 
-              // Insert parts
-              const parts =
-                typeof msg.content === 'string'
-                  ? [{ type: 'text' as const, text: msg.content }]
-                  : msg.content;
+          // Process parts for this message
+          const parts =
+            typeof msg.content === 'string'
+              ? [{ type: 'text' as const, text: msg.content }]
+              : msg.content;
 
-              for (let partIdx = 0; partIdx < parts.length; partIdx++) {
-                const part = parts[partIdx];
-                let partType: 'text' | 'tool-call' | 'tool-result' | 'file' | 'reasoning';
-                let content: T.MessagePartContent;
+          for (let partIdx = 0; partIdx < parts.length; partIdx++) {
+            const part = parts[partIdx];
+            let partType: 'text' | 'tool-call' | 'tool-result' | 'file' | 'reasoning';
+            let content: T.MessagePartContent;
 
-                switch (part.type) {
-                  case 'text':
-                    partType = 'text';
-                    content = { text: part.text };
-                    break;
-                  case 'tool-call':
-                    partType = 'tool-call';
-                    content = {
-                      id: part.id,
-                      name: part.name,
-                      params: part.params,
-                      providerExecuted: part.providerExecuted,
-                    };
-                    break;
-                  case 'tool-result':
-                    partType = 'tool-result';
-                    content = {
-                      id: part.id,
-                      name: part.name,
-                      result: part.result,
-                      isFailure: part.isFailure,
-                      providerExecuted: part.providerExecuted,
-                    };
-                    break;
-                  case 'reasoning':
-                    partType = 'reasoning';
-                    content = { text: part.text };
-                    break;
-                  case 'file':
-                    partType = 'file';
-                    content = {
-                      mediaType: part.mediaType,
-                      url: part.url,
-                      data: part.data,
-                    };
-                    break;
-                  default:
-                    continue;
-                }
-
-                await db.insert(T.chatMessagePart).values({
-                  messageId: insertedMessage.id,
-                  type: partType,
-                  sequence: partIdx,
-                  content,
-                });
-              }
+            switch (part.type) {
+              case 'text':
+                partType = 'text';
+                content = { text: part.text };
+                break;
+              case 'tool-call':
+                partType = 'tool-call';
+                content = {
+                  id: part.id,
+                  name: part.name,
+                  params: part.params,
+                  providerExecuted: part.providerExecuted,
+                };
+                break;
+              case 'tool-result':
+                partType = 'tool-result';
+                content = {
+                  id: part.id,
+                  name: part.name,
+                  result: part.result,
+                  isFailure: part.isFailure,
+                  providerExecuted: part.providerExecuted,
+                };
+                break;
+              case 'reasoning':
+                partType = 'reasoning';
+                content = { text: part.text };
+                break;
+              case 'file':
+                partType = 'file';
+                content = {
+                  mediaType: part.mediaType,
+                  url: part.url,
+                  data: part.data,
+                };
+                break;
+              default:
+                continue;
             }
 
-            return prompt.content.length - existingCount;
-          },
-          catch: (error) =>
-            new Persistence.PersistenceBackingError({
-              reason: 'BackingError',
-              method: 'set',
-              cause: error,
-            }),
-        });
+            partsToInsert.push({
+              messageSequence: msgIdx,
+              type: partType,
+              sequence: partIdx,
+              content,
+            });
+          }
+        }
+
+        // Batch insert messages and get their IDs
+        let newMessagesInserted = 0;
+        if (messagesToInsert.length > 0) {
+          const insertedMessages = yield* db
+            .insert(T.chatMessage)
+            .values(messagesToInsert)
+            .returning({ id: T.chatMessage.id, sequence: T.chatMessage.sequence })
+            .pipe(
+              Effect.mapError(
+                (error) =>
+                  new Persistence.PersistenceBackingError({
+                    reason: 'BackingError',
+                    method: 'set',
+                    cause: error,
+                  }),
+              ),
+            );
+
+          // Build a map of sequence -> message id for inserting parts
+          const messageIdMap = new Map(
+            insertedMessages.map(({ id, sequence }) => [sequence, id]),
+          );
+
+          // Batch insert all parts at once
+          if (partsToInsert.length > 0) {
+            yield* db
+              .insert(T.chatMessagePart)
+              .values(
+                partsToInsert.map(({ messageSequence, type, sequence, content }) => ({
+                  messageId: messageIdMap.get(messageSequence)!,
+                  type,
+                  sequence,
+                  content,
+                })),
+              )
+              .pipe(
+                Effect.mapError(
+                  (error) =>
+                    new Persistence.PersistenceBackingError({
+                      reason: 'BackingError',
+                      method: 'set',
+                      cause: error,
+                    }),
+                ),
+              );
+          }
+
+          newMessagesInserted = messagesToInsert.length;
+        }
 
         yield* Effect.logDebug(
           `[ChatPersistence.set] Saved ${newMessagesInserted} new messages (total: ${prompt.content.length})`,
@@ -339,32 +385,23 @@ const makeStore = (
       );
 
     const remove = (key: string): Effect.Effect<void, Persistence.PersistenceError> =>
-      Effect.tryPromise({
-        try: async () => {
-          // Deleting messages will cascade to parts
-          await db.delete(T.chatMessage).where(eq(T.chatMessage.chatId, key));
-        },
-        catch: (error) =>
-          new Persistence.PersistenceBackingError({
-            reason: 'BackingError',
-            method: 'remove',
-            cause: error,
-          }),
-      });
+      db
+        .delete(T.chatMessage)
+        .where(eq(T.chatMessage.chatId, key))
+        .pipe(
+          Effect.mapError(
+            (error) =>
+              new Persistence.PersistenceBackingError({
+                reason: 'BackingError',
+                method: 'remove',
+                cause: error,
+              }),
+          ),
+        );
 
-    const clear: Effect.Effect<void, Persistence.PersistenceError> = Effect.tryPromise({
-      try: async () => {
-        // This would delete all messages - we don't filter by storeId since normalized
-        // For now, this is a no-op as we don't have a storeId concept in normalized tables
-        // If needed, we could add a storeId column to chatMessage
-      },
-      catch: (error) =>
-        new Persistence.PersistenceBackingError({
-          reason: 'BackingError',
-          method: 'clear',
-          cause: error,
-        }),
-    });
+    // No-op: we don't filter by storeId since we use normalized tables
+    // If needed in the future, add a storeId column to chatMessage
+    const clear: Effect.Effect<void, Persistence.PersistenceError> = Effect.void;
 
     return {
       get,
