@@ -2,7 +2,7 @@
   import { enhance } from '$app/forms';
   import * as Item from '$lib/components/shadcn/item';
   import { Button } from '$lib/components/shadcn/button';
-  import { SquareX } from 'lucide-svelte';
+  import { SquareX } from '@lucide/svelte';
 
   const { chat } = $props();
 </script>

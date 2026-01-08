@@ -3,7 +3,7 @@
   import { invalidateAll } from '$app/navigation';
   import { Spinner } from '$lib/components/shadcn/spinner';
   import * as Item from '$lib/components/shadcn/item';
-  import { ArrowUp } from 'lucide-svelte';
+  import { ArrowUp } from '@lucide/svelte';
   import { fly, slide } from 'svelte/transition';
 
   import MessageBlock from '$lib/components/message-block.svelte';

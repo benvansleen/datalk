@@ -1,6 +1,6 @@
 import { Effect, Layer, pipe, Queue } from 'effect';
 import { Option, Ref, Stream } from 'effect';
-import { Chat, LanguageModel, Prompt, Response } from '@effect/ai';
+import { Chat, LanguageModel, Prompt, type Response } from '@effect/ai';
 import { OpenAiLanguageModel } from '@effect/ai-openai';
 import { DatalkToolkit, makeDatalkToolHandlers, type DatalkTools } from './DatalkTools';
 import { ChatBackingPersistenceLive } from './ChatPersistence';

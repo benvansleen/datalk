@@ -1,8 +1,7 @@
 <script lang="ts">
   import { Button } from '$lib/components/shadcn/button';
-  import { Menu, ChevronLeft } from 'lucide-svelte';
+  import { Menu, ChevronLeft, Home, MessageCircle, MessageCircleDashed } from '@lucide/svelte';
   import SidebarItem from './sidebar-item.svelte';
-  import { Home, MessageCircle, MessageCircleDashed } from 'lucide-svelte';
   let collapsed = $state(true);
 
   const { currentChatId, chats, children } = $props();
