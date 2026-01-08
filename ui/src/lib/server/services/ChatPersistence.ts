@@ -1,6 +1,6 @@
 import { Effect, Layer, Option, Duration, Scope, Context } from 'effect';
 import { Persistence } from '@effect/experimental';
-import { eq, and, asc } from 'drizzle-orm';
+import { eq, asc } from 'drizzle-orm';
 import { Database } from './Database';
 import * as T from '$lib/server/db/schema';
 
