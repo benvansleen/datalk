@@ -29,6 +29,9 @@ const SYSTEM_PROMPT = `
 /** Maximum number of agentic loop iterations to prevent infinite loops */
 const MAX_ITERATIONS = 10;
 
+/** Queue capacity for streaming parts - bounded to prevent memory exhaustion */
+const STREAM_QUEUE_CAPACITY = 1024;
+
 // ============================================================================
 // Stream Part Type
 // ============================================================================
@@ -86,8 +89,9 @@ export class DatalkAgent extends Effect.Service<DatalkAgent>()('app/DatalkAgent'
           Layer.succeed(LanguageModel.LanguageModel, languageModel),
         );
 
-        // Create a queue to push parts to for real-time streaming
-        const queue = yield* Queue.unbounded<DatalkStreamPart | null>();
+        // Create a bounded queue to push parts to for real-time streaming
+        // Bounded to prevent memory exhaustion if consumer is slower than producer
+        const queue = yield* Queue.bounded<DatalkStreamPart | null>(STREAM_QUEUE_CAPACITY);
 
         // Run the agentic loop in a background fiber, pushing parts to the queue
         const agenticLoop = Effect.gen(function* () {
@@ -144,7 +148,9 @@ export class DatalkAgent extends Effect.Service<DatalkAgent>()('app/DatalkAgent'
         );
 
         // Fork the agentic loop to run in background
-        yield* Effect.forkDaemon(agenticLoop);
+        // Using fork (not forkDaemon) ties the fiber to the current scope,
+        // so it will be interrupted if the consumer disconnects or errors
+        yield* Effect.fork(agenticLoop);
 
         // Return a stream that reads from the queue
         const outputStream: Stream.Stream<DatalkStreamPart, never, never> =

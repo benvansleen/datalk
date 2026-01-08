@@ -6,7 +6,7 @@ export class DatabaseError extends Schema.TaggedError<DatabaseError>()('Database
   cause: Schema.optional(Schema.Defect),
 }) {}
 
-export class ChatError extends Schema.TaggedError<DatabaseError>()('DatabaseError', {
+export class ChatError extends Schema.TaggedError<ChatError>()('ChatError', {
   message: Schema.String,
   cause: Schema.optional(Schema.Defect),
 }) {}

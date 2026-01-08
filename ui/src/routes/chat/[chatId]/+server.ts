@@ -141,8 +141,12 @@ export const POST: RequestHandler = async ({ request, params }) => {
       Effect.gen(function* () {
         yield* Effect.annotateCurrentSpan({ userId: user.id, chatId, content });
 
-        // Fire-and-forget title generation
-        runEffectFork(generateChatTitle(user.id, chatId, content));
+        // Fire-and-forget title generation (errors are logged by runEffectFork)
+        runEffectFork(
+          generateChatTitle(user.id, chatId, content).pipe(
+            Effect.withSpan('generateChatTitle', { attributes: { userId: user.id, chatId } }),
+          ),
+        );
 
         const db = yield* Database;
         const [{ messageRequestId }] = yield* db
@@ -166,9 +170,15 @@ export const POST: RequestHandler = async ({ request, params }) => {
           );
         }
 
-        // Fire-and-forget response generation
+        // Fire-and-forget response generation (errors are logged by runEffectFork)
         const [{ dataset }] = res;
-        runEffectFork(generateResponse(user.id, chatId, dataset, messageRequestId, content));
+        runEffectFork(
+          generateResponse(user.id, chatId, dataset, messageRequestId, content).pipe(
+            Effect.withSpan('generateResponse', {
+              attributes: { userId: user.id, chatId, messageRequestId },
+            }),
+          ),
+        );
         return new Response(messageRequestId, {
           headers: {
             'Content-Type': 'text/plain',

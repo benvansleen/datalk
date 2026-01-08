@@ -62,7 +62,6 @@ export {
   getChatWithHistory,
   createChat,
   deleteChat,
-  getChatWithMessages,
   createMessageRequest,
   updateChatTitle,
   clearCurrentMessageRequest,

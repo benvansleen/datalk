@@ -1,68 +1,82 @@
-import { Effect, Layer, Option, Duration, Scope, Context } from 'effect';
+import { Effect, Layer, Option, Duration, Scope, Context, Schema } from 'effect';
 import { Persistence } from '@effect/experimental';
-import { eq, asc } from 'drizzle-orm';
+import { eq, asc, count } from 'drizzle-orm';
 import { Database } from './Database';
 import * as T from '$lib/server/db/schema';
 
 // ============================================================================
-// Types for @effect/ai Prompt format
+// Schemas for @effect/ai Prompt format (used for parsing and validation)
 // ============================================================================
 
-interface PromptEncoded {
-  readonly content: ReadonlyArray<MessageEncoded>;
-}
+const TextPartEncodedSchema = Schema.Struct({
+  type: Schema.Literal('text'),
+  text: Schema.String,
+  options: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.Unknown })),
+});
 
-interface MessageEncoded {
-  readonly role: 'system' | 'user' | 'assistant' | 'tool';
-  readonly content: string | ReadonlyArray<PartEncoded>;
-  readonly options?: Record<string, unknown>;
-}
+const ToolCallPartEncodedSchema = Schema.Struct({
+  type: Schema.Literal('tool-call'),
+  id: Schema.String,
+  name: Schema.String,
+  params: Schema.Unknown,
+  providerExecuted: Schema.optional(Schema.Boolean),
+  options: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.Unknown })),
+});
 
-interface TextPartEncoded {
-  readonly type: 'text';
-  readonly text: string;
-  readonly options?: Record<string, unknown>;
-}
+const ToolResultPartEncodedSchema = Schema.Struct({
+  type: Schema.Literal('tool-result'),
+  id: Schema.String,
+  name: Schema.String,
+  isFailure: Schema.Boolean,
+  result: Schema.Unknown,
+  providerExecuted: Schema.optional(Schema.Boolean),
+  options: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.Unknown })),
+});
 
-interface ToolCallPartEncoded {
-  readonly type: 'tool-call';
-  readonly id: string;
-  readonly name: string;
-  readonly params: unknown;
-  readonly providerExecuted?: boolean;
-  readonly options?: Record<string, unknown>;
-}
+const ReasoningPartEncodedSchema = Schema.Struct({
+  type: Schema.Literal('reasoning'),
+  text: Schema.String,
+  options: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.Unknown })),
+});
 
-interface ToolResultPartEncoded {
-  readonly type: 'tool-result';
-  readonly id: string;
-  readonly name: string;
-  readonly isFailure: boolean;
-  readonly result: unknown;
-  readonly providerExecuted?: boolean;
-  readonly options?: Record<string, unknown>;
-}
+const FilePartEncodedSchema = Schema.Struct({
+  type: Schema.Literal('file'),
+  mediaType: Schema.String,
+  url: Schema.optional(Schema.String),
+  data: Schema.optional(Schema.String),
+  options: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.Unknown })),
+});
 
-interface ReasoningPartEncoded {
-  readonly type: 'reasoning';
-  readonly text: string;
-  readonly options?: Record<string, unknown>;
-}
+const PartEncodedSchema = Schema.Union(
+  TextPartEncodedSchema,
+  ToolCallPartEncodedSchema,
+  ToolResultPartEncodedSchema,
+  ReasoningPartEncodedSchema,
+  FilePartEncodedSchema,
+);
 
-interface FilePartEncoded {
-  readonly type: 'file';
-  readonly mediaType: string;
-  readonly url?: string;
-  readonly data?: string;
-  readonly options?: Record<string, unknown>;
-}
+const MessageEncodedSchema = Schema.Struct({
+  role: Schema.Literal('system', 'user', 'assistant', 'tool'),
+  content: Schema.Union(Schema.String, Schema.Array(PartEncodedSchema)),
+  options: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.Unknown })),
+});
 
-type PartEncoded =
-  | TextPartEncoded
-  | ToolCallPartEncoded
-  | ToolResultPartEncoded
-  | ReasoningPartEncoded
-  | FilePartEncoded;
+const PromptEncodedSchema = Schema.Struct({
+  content: Schema.Array(MessageEncodedSchema),
+});
+
+// ============================================================================
+// Types for @effect/ai Prompt format (derived from schemas)
+// ============================================================================
+
+type PromptEncoded = typeof PromptEncodedSchema.Type;
+type MessageEncoded = typeof MessageEncodedSchema.Type;
+type PartEncoded = typeof PartEncodedSchema.Type;
+type TextPartEncoded = typeof TextPartEncodedSchema.Type;
+type ToolCallPartEncoded = typeof ToolCallPartEncodedSchema.Type;
+type ToolResultPartEncoded = typeof ToolResultPartEncodedSchema.Type;
+type ReasoningPartEncoded = typeof ReasoningPartEncodedSchema.Type;
+type FilePartEncoded = typeof FilePartEncodedSchema.Type;
 
 // ============================================================================
 // BackingPersistence Implementation
@@ -200,17 +214,33 @@ const makeStore = (
       Effect.gen(function* () {
         yield* Effect.logDebug(`[ChatPersistence.set] Saving history for ${key}`);
 
-        // Parse the prompt - value is a JSON string from @effect/ai
+        // Parse and validate the prompt using Effect Schema
         const promptJson = typeof value === 'string' ? value : JSON.stringify(value);
-        const prompt = JSON.parse(promptJson) as PromptEncoded;
+        const parseResult = yield* Schema.decodeUnknown(Schema.parseJson(PromptEncodedSchema))(
+          promptJson,
+        ).pipe(
+          Effect.mapError(
+            (parseError) =>
+              new Persistence.PersistenceBackingError({
+                reason: 'BackingError',
+                method: 'set',
+                cause: parseError,
+              }),
+          ),
+        );
+        const prompt = parseResult;
 
-        yield* Effect.tryPromise({
+        const newMessagesInserted = yield* Effect.tryPromise({
           try: async () => {
-            // Delete existing messages for this chat (full replace strategy)
-            await db.delete(T.chatMessage).where(eq(T.chatMessage.chatId, key));
+            // Get count of existing messages to only insert new ones (append-only optimization)
+            // @effect/ai history is append-only, so we don't need to update existing messages
+            const [{ existingCount }] = await db
+              .select({ existingCount: count() })
+              .from(T.chatMessage)
+              .where(eq(T.chatMessage.chatId, key));
 
-            // Insert new messages
-            for (let msgIdx = 0; msgIdx < prompt.content.length; msgIdx++) {
+            // Only insert messages that are new (sequence >= existingCount)
+            for (let msgIdx = existingCount; msgIdx < prompt.content.length; msgIdx++) {
               const msg = prompt.content[msgIdx];
 
               // Insert the message
@@ -282,6 +312,8 @@ const makeStore = (
                 });
               }
             }
+
+            return prompt.content.length - existingCount;
           },
           catch: (error) =>
             new Persistence.PersistenceBackingError({
@@ -291,7 +323,9 @@ const makeStore = (
             }),
         });
 
-        yield* Effect.logDebug(`[ChatPersistence.set] Saved ${prompt.content.length} messages`);
+        yield* Effect.logDebug(
+          `[ChatPersistence.set] Saved ${newMessagesInserted} new messages (total: ${prompt.content.length})`,
+        );
       });
 
     const setMany = (

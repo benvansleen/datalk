@@ -26,9 +26,17 @@ export const runEffectExit = <A, E>(
   effect: Effect.Effect<A, E, AppServices>,
 ): Promise<Exit.Exit<A, E | RuntimeError>> => getRuntime().runPromiseExit(effect);
 
-// Helper to fork Effects
+// Helper to fork Effects with automatic error logging
+// Forked effects run in the background - errors are logged but don't propagate
 export const runEffectFork = <A, E>(effect: Effect.Effect<A, E, AppServices>) =>
-  getRuntime().runFork(effect);
+  getRuntime().runFork(
+    effect.pipe(
+      Effect.tapErrorCause((cause) =>
+        Effect.logError('Forked effect failed', Cause.pretty(cause)),
+      ),
+      Effect.catchAllCause(() => Effect.void),
+    ),
+  );
 
 // Helper to extract error from Exit for error handling in routes
 export const getFailure = <E>(exit: Exit.Exit<unknown, E>): E | null => {
