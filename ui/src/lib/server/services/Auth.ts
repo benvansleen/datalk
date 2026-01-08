@@ -25,7 +25,7 @@ export class Auth extends Effect.Service<Auth>()("app/Auth", {
       emailAndPassword: { enabled: true },
     });
 
-      const signup = Effect.fn('Auth.signup')(function* (request: SignupRequest, headers: Headers) {
+      const signup = Effect.fn('Auth.signup')(function* (request: SignupRequest) {
         yield* Effect.annotateCurrentSpan({ email: request.email });
         yield* Effect.logInfo('Attempting signup', JSON.stringify(request));
 

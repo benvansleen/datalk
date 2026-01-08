@@ -7,6 +7,7 @@ export { PythonServer, PythonServerLive } from './services/PythonServer';
 export { DatalkAgent, DatalkAgentLive, type DatalkStreamPart } from './services/DatalkAgent';
 export { ChatContext, type ChatContextData } from './services/ChatContext';
 export { ChatBackingPersistenceLive } from './services/ChatPersistence';
+export { ChatTitleGenerator } from './services/ChatTitleGenerator'
 export { DatalkToolkit, DatalkToolHandlersLive, makeDatalkToolHandlers, type DatalkTools } from './services/DatalkTools';
 
 // Schemas
@@ -32,9 +33,6 @@ export { getRuntime, runEffect, runEffectExit, runEffectFork, getFailure } from 
 // Observability
 export { ObservabilityLive } from './observability';
 
-// API functions - Auth
-export { effectSignup, effectLogin, effectSignout } from './api/auth';
-
 // API functions - Chat
 export {
   publishChatStatus,
@@ -47,11 +45,8 @@ export {
   type GenerationEvent,
 } from './api/chat';
 
-// API functions - Auth check
-export { requireAuthEffect, getAuthEffect, requireOwnership } from './api/auth-check';
-
 // SSE utilities
-export { streamToSSE, withHeartbeat } from './sse';
+export { streamToSSE } from './sse';
 
 // Redis subscriber service
 export { RedisSubscriber, RedisSubscriberLive } from './services/RedisSubscriber';
@@ -59,6 +54,7 @@ export { RedisSubscriber, RedisSubscriberLive } from './services/RedisSubscriber
 // API functions - Database
 export {
   getChatsForUser,
+  getChatWithHistory,
   createChat,
   deleteChat,
   getChatWithMessages,
@@ -67,13 +63,3 @@ export {
   clearCurrentMessageRequest,
   getMessageRequest,
 } from './api/db';
-
-// API functions - Python Server
-export {
-  listDatasets,
-  createEnvironment,
-  executePython,
-  executeSql,
-  destroyEnvironment,
-  environmentExists,
-} from './api/python';

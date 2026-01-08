@@ -1,6 +1,6 @@
 import type { RequestHandler } from './$types';
 import { Effect } from 'effect';
-import { runEffect, Auth } from '$lib/server/effect';
+import { runEffect, Auth } from '$lib/server';
 
 export const POST: RequestHandler = async ({ request }) => {
   await runEffect(

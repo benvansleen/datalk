@@ -4,7 +4,6 @@ import {
   Exit,
   Cause,
   ConfigError as EffectConfigError,
-  Layer,
 } from 'effect';
 import { SqlError } from '@effect/sql/SqlError';
 import { LiveLayer, type AppServices } from './layers/Live';

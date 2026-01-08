@@ -5,7 +5,6 @@
   import * as Card from '$lib/components/shadcn/card';
   import Separator from '$lib/components/shadcn/separator/separator.svelte';
   import ChatSummary from '$lib/components/chat-summary.svelte';
-  import { onMount } from 'svelte';
 
   let { data }: PageProps = $props();
 

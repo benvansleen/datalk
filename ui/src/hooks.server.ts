@@ -1,7 +1,7 @@
 import { svelteKitHandler } from 'better-auth/svelte-kit';
 import { building } from '$app/environment';
 import { redirect, type Handle, type HandleServerError } from '@sveltejs/kit';
-import { Auth, AuthError, runEffectExit } from '$lib/server/effect';
+import { Auth, AuthError, runEffectExit } from '$lib/server';
 import { Effect, Exit, Option } from 'effect';
 
 const UNPROTECTED_ROUTES = ['/login', '/signup'];

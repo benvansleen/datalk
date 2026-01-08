@@ -1,20 +1,16 @@
 import type { Actions, PageServerLoad } from './$types';
 import { redirect, fail } from '@sveltejs/kit';
 import { Effect, Console } from 'effect';
-import { runEffect } from '$lib/server/effect';
-import { publishChatStatus } from '$lib/server/effect/api/chat';
-import {
-  createChat as dbCreateChat,
-  deleteChat as dbDeleteChat,
-  getChatsForUser,
-} from '$lib/server/effect/api/db';
-import { listDatasets } from '$lib/server/effect/api/python';
+import { runEffect, publishChatStatus, createChat as dbCreateChat, deleteChat as dbDeleteChat, getChatsForUser, PythonServer } from '$lib/server';
 
 export const load: PageServerLoad = async ({ locals }) => {
   const user = locals.user;
 
   const [datasets, chats] = await runEffect(Effect.all([
-    listDatasets(),
+    Effect.gen(function*() {
+      const pythonServer = yield* PythonServer;
+      return yield* pythonServer.listDatasets;
+    }),
     getChatsForUser(user.id),
   ]));
 

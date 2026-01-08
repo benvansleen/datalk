@@ -1,4 +1,4 @@
-import { Effect, Stream, Schedule } from 'effect';
+import { Effect, Stream } from 'effect';
 
 /**
  * SSE Response headers
@@ -51,22 +51,3 @@ export const streamToSSE = <T, E, R>(
       headers: SSE_HEADERS,
     });
   }).pipe(Effect.withSpan('sse.streamToSSE'));
-
-/**
- * Create an SSE stream that emits a heartbeat to keep the connection alive.
- *
- * @param intervalMs - Heartbeat interval in milliseconds (default: 30000)
- * @returns A stream that emits SSE comment heartbeats
- */
-export const heartbeat = (intervalMs = 30000) =>
-  Stream.repeat(Stream.make(': heartbeat\n\n'), Schedule.spaced(intervalMs));
-
-/**
- * Merge a data stream with a heartbeat stream.
- * Useful for keeping SSE connections alive during periods of inactivity.
- */
-export const withHeartbeat = <T, E, R>(
-  stream: Stream.Stream<T, E, R>,
-  intervalMs = 30000
-): Stream.Stream<T | string, E, R> =>
-  Stream.merge(stream, heartbeat(intervalMs) as Stream.Stream<T | string, never, never>);

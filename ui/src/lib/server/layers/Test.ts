@@ -1,4 +1,4 @@
-import { Effect, Layer } from 'effect';
+import { Layer } from 'effect';
 
 // For test mocking with Effect.Service, we need to provide the actual service interface
 // Since Effect.Service creates complex types, we'll use a simpler approach for tests:

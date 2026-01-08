@@ -1,9 +1,7 @@
 import type { Actions, PageServerLoad } from './$types';
 import { redirect, fail } from '@sveltejs/kit';
 import { Effect, Exit, Cause } from 'effect';
-import { runEffectExit } from '$lib/server/effect';
-import { Auth } from '$lib/server/effect/services/Auth';
-import { AuthError } from '$lib/server/effect/errors';
+import { Auth, AuthError, runEffectExit } from '$lib/server';
 
 export const load: PageServerLoad = async ({ locals }) => {
   // Redirect to home if already logged in

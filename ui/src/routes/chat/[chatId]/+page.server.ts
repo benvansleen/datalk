@@ -1,8 +1,7 @@
 import type { PageServerLoad } from './$types';
 import { redirect } from '@sveltejs/kit';
 import { Effect, Option } from 'effect';
-import { runEffect } from '$lib/server/effect';
-import { getChatsForUser, getChatWithHistory } from '$lib/server/effect/api/db';
+import { runEffect, getChatsForUser, getChatWithHistory } from '$lib/server';
 
 export const load: PageServerLoad = async ({ locals, params }) => {
   const user = locals.user;

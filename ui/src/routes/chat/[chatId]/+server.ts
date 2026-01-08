@@ -2,15 +2,8 @@ import * as T from '$lib/server/db/schema';
 import { and, eq, isNull } from 'drizzle-orm';
 import type { RequestHandler } from './$types';
 import { error } from '@sveltejs/kit';
-import { Database, DatabaseError, runEffectExit, runEffectFork } from '$lib/server/effect';
-import {
-  publishChatStatus,
-  publishGenerationEvent,
-  markGenerationComplete,
-} from '$lib/server/effect/api/chat';
+import { ChatTitleGenerator, Database, DatabaseError, DatalkAgent, type DatalkStreamPart, runEffectExit, runEffectFork, publishChatStatus, publishGenerationEvent, markGenerationComplete } from '$lib/server';
 import { Effect, Stream, Option, Exit, Cause } from 'effect';
-import { ChatTitleGenerator } from '$lib/server/effect/services/ChatTitleGenerator';
-import { DatalkAgent, type DatalkStreamPart } from '$lib/server/effect/services/DatalkAgent';
 import { getRequestEvent } from '$app/server';
 
 /**
