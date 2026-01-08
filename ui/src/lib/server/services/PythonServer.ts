@@ -113,7 +113,9 @@ export class PythonServer extends Effect.Service<PythonServer>()('app/PythonServ
           body: JSON.stringify({ chat_id: chatId, dataset }),
         },
         EnvironmentCreateResponse,
-      ).pipe(Effect.withSpan('PythonServer.createEnvironment', { attributes: { chatId, dataset } }));
+      ).pipe(
+        Effect.withSpan('PythonServer.createEnvironment', { attributes: { chatId, dataset } }),
+      );
 
     /**
      * Execute code in a chat's environment
@@ -127,7 +129,9 @@ export class PythonServer extends Effect.Service<PythonServer>()('app/PythonServ
         },
         ExecuteResult,
       ).pipe(
-        Effect.withSpan('PythonServer.execute', { attributes: { chatId, language, codeLines: code.length } }),
+        Effect.withSpan('PythonServer.execute', {
+          attributes: { chatId, language, codeLines: code.length },
+        }),
       );
 
     /**
@@ -145,7 +149,10 @@ export class PythonServer extends Effect.Service<PythonServer>()('app/PythonServ
           new PythonServerError({
             message: `Failed to destroy environment: ${error instanceof Error ? error.message : String(error)}`,
           }),
-      }).pipe(Effect.asVoid, Effect.withSpan('PythonServer.destroyEnvironment', { attributes: { chatId } }));
+      }).pipe(
+        Effect.asVoid,
+        Effect.withSpan('PythonServer.destroyEnvironment', { attributes: { chatId } }),
+      );
 
     /**
      * Check if an environment exists for a chat

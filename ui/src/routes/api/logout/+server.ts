@@ -7,7 +7,7 @@ export const POST: RequestHandler = async ({ request }) => {
     Effect.gen(function* () {
       const auth = yield* Auth;
       yield* auth.logout(request.headers);
-    })
+    }),
   );
 
   return new Response(null, { status: 200 });

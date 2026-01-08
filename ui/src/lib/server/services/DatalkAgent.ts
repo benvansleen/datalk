@@ -123,7 +123,9 @@ export class DatalkAgent extends Effect.Service<DatalkAgent>()('app/DatalkAgent'
               }),
             );
 
-            yield* Effect.logInfo(`[Agent] Iteration ${iteration} complete, hasToolResults: ${hasToolResults}`);
+            yield* Effect.logInfo(
+              `[Agent] Iteration ${iteration} complete, hasToolResults: ${hasToolResults}`,
+            );
 
             // If continuing, use empty prompt (history already updated)
             prompt = [];
@@ -145,16 +147,17 @@ export class DatalkAgent extends Effect.Service<DatalkAgent>()('app/DatalkAgent'
         yield* Effect.forkDaemon(agenticLoop);
 
         // Return a stream that reads from the queue
-        const outputStream: Stream.Stream<DatalkStreamPart, never, never> = Stream.repeatEffectOption(
-          Effect.gen(function* () {
-            const part = yield* Queue.take(queue);
-            if (part === null) {
-              // End of stream signal
-              return yield* Effect.fail(Option.none());
-            }
-            return part;
-          }).pipe(Effect.mapError(() => Option.none())),
-        ).pipe(Stream.catchAll(() => Stream.empty));
+        const outputStream: Stream.Stream<DatalkStreamPart, never, never> =
+          Stream.repeatEffectOption(
+            Effect.gen(function* () {
+              const part = yield* Queue.take(queue);
+              if (part === null) {
+                // End of stream signal
+                return yield* Effect.fail(Option.none());
+              }
+              return part;
+            }).pipe(Effect.mapError(() => Option.none())),
+          ).pipe(Stream.catchAll(() => Stream.empty));
 
         return outputStream;
       });
@@ -163,7 +166,9 @@ export class DatalkAgent extends Effect.Service<DatalkAgent>()('app/DatalkAgent'
   }),
   dependencies: [
     OpenAiLanguageModel.model('gpt-5-nano'),
-    Chat.layerPersisted({ storeId: 'datalk-chats' }).pipe(Layer.provide(ChatBackingPersistenceLive)),
+    Chat.layerPersisted({ storeId: 'datalk-chats' }).pipe(
+      Layer.provide(ChatBackingPersistenceLive),
+    ),
   ],
 }) {}
 

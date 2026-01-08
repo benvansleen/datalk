@@ -22,20 +22,25 @@ export const actions: Actions = {
       return fail(400, { error: 'All fields are required', name, email });
     }
 
-    return Exit.match(await runEffectExit(Effect.gen(function*() {
-      const auth = yield* Auth;
-      yield* auth.signup({ name, email, password });
-    })), {
+    return Exit.match(
+      await runEffectExit(
+        Effect.gen(function* () {
+          const auth = yield* Auth;
+          yield* auth.signup({ name, email, password });
+        }),
+      ),
+      {
         onSuccess: () => redirect(307, '/'),
         onFailure: (cause) => {
-          if (Cause.isFailType(cause) && (
-            cause.error instanceof AuthError
-            || cause.error instanceof WhitelistError
-          )) {
+          if (
+            Cause.isFailType(cause) &&
+            (cause.error instanceof AuthError || cause.error instanceof WhitelistError)
+          ) {
             return fail(400, { error: cause.error.message, name, email });
           }
-    return fail(500, { error: 'An unexpected error occurred', name, email });
-        }
-      });
+          return fail(500, { error: 'An unexpected error occurred', name, email });
+        },
+      },
+    );
   },
 };

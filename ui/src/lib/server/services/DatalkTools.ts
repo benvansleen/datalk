@@ -80,12 +80,10 @@ export const DatalkToolHandlersLive = DatalkToolkit.toLayer(
 
     return {
       check_environment: () =>
-        pythonServer
-          .createEnvironment(ctx.chatId, ctx.dataset)
-          .pipe(
-            Effect.map((r) => r.available_dataframes),
-            Effect.orDie,
-          ),
+        pythonServer.createEnvironment(ctx.chatId, ctx.dataset).pipe(
+          Effect.map((r) => r.available_dataframes),
+          Effect.orDie,
+        ),
 
       run_python: ({ python_code }) =>
         pythonServer.createEnvironment(ctx.chatId, ctx.dataset).pipe(

@@ -16,7 +16,9 @@ import { getRequestEvent } from '$app/server';
  * Includes history replay for reconnecting clients.
  */
 export const GET: RequestHandler = async (event) => {
-  const { locals: { user } } = getRequestEvent();
+  const {
+    locals: { user },
+  } = getRequestEvent();
   const { messageRequestId } = event.params;
 
   return runEffect(
@@ -27,7 +29,11 @@ export const GET: RequestHandler = async (event) => {
         return yield* Effect.fail(new Error('Message request not found'));
       }
       if (messageRequestOption.value.userId !== user.id) {
-        return yield* Effect.fail(new AuthError({ message: `user (${user.id}) does not own message request (${messageRequestId})`}))
+        return yield* Effect.fail(
+          new AuthError({
+            message: `user (${user.id}) does not own message request (${messageRequestId})`,
+          }),
+        );
       }
 
       // Create the SSE stream for this message request's generation events
@@ -36,6 +42,6 @@ export const GET: RequestHandler = async (event) => {
 
       // Convert to SSE Response
       return yield* streamToSSE(generationStream);
-    }).pipe(Effect.withSpan('GET /message-request/:id'))
+    }).pipe(Effect.withSpan('GET /message-request/:id')),
   );
 };

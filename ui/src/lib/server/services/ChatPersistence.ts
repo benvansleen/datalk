@@ -20,7 +20,9 @@ const makeStore = (
     // Add a finalizer for the scope (no-op for our PostgreSQL implementation)
     yield* Effect.addFinalizer(() => Effect.void);
 
-    const get = (key: string): Effect.Effect<Option.Option<unknown>, Persistence.PersistenceError> =>
+    const get = (
+      key: string,
+    ): Effect.Effect<Option.Option<unknown>, Persistence.PersistenceError> =>
       Effect.gen(function* () {
         yield* Effect.logInfo(`[ChatPersistence.get] Getting history for ${key}`);
         const result = yield* Effect.tryPromise({
@@ -37,7 +39,9 @@ const makeStore = (
               cause: error,
             }),
         });
-        yield* Effect.logInfo(`[ChatPersistence.get] Got result: ${result ? 'found' : 'not found'}`);
+        yield* Effect.logInfo(
+          `[ChatPersistence.get] Got result: ${result ? 'found' : 'not found'}`,
+        );
         // The @effect/ai Chat expects a JSON string, not a parsed object
         // So we need to stringify the JSONB value we stored
         return result ? Option.some(JSON.stringify(result.history)) : Option.none();
@@ -84,7 +88,9 @@ const makeStore = (
       });
 
     const setMany = (
-      entries: ReadonlyArray<readonly [key: string, value: unknown, ttl: Option.Option<Duration.Duration>]>,
+      entries: ReadonlyArray<
+        readonly [key: string, value: unknown, ttl: Option.Option<Duration.Duration>]
+      >,
     ): Effect.Effect<void, Persistence.PersistenceError> =>
       Effect.all(
         entries.map(([key, value, ttl]) => set(key, value, ttl)),

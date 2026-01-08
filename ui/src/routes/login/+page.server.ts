@@ -21,17 +21,22 @@ export const actions: Actions = {
       return fail(400, { error: 'Email and password are required', email });
     }
 
-    return Exit.match(await runEffectExit(Effect.gen(function*() {
-      const auth = yield* Auth;
-      yield* auth.login({ email, password }, request.headers);
-    })), {
+    return Exit.match(
+      await runEffectExit(
+        Effect.gen(function* () {
+          const auth = yield* Auth;
+          yield* auth.login({ email, password }, request.headers);
+        }),
+      ),
+      {
         onSuccess: () => redirect(303, '/'),
         onFailure: (cause) => {
           if (Cause.isFailType(cause) && cause.error instanceof AuthError) {
-              return fail(400, { error: cause.error.message, email });
+            return fail(400, { error: cause.error.message, email });
           }
           return fail(500, { error: 'An unexpected error occurred', email });
-        } 
-      });
+        },
+      },
+    );
   },
 };

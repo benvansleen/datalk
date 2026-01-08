@@ -26,8 +26,12 @@ export class Config extends Effect.Service<Config>()('Config', {
     const openaiApiKey = yield* EffectConfig.redacted('OPENAI_API_KEY');
 
     return {
-      databaseUrl: Redacted.make(`postgres://${dbUser}:${dbPasswordValue}@${dbHost}:${dbPort}/${dbName}?sslmode=disable`),
-      redisUrl: Redacted.make(`redis://${redisUser}:${redisPasswordValue}@${redisHost}:${redisPort}`),
+      databaseUrl: Redacted.make(
+        `postgres://${dbUser}:${dbPasswordValue}@${dbHost}:${dbPort}/${dbName}?sslmode=disable`,
+      ),
+      redisUrl: Redacted.make(
+        `redis://${redisUser}:${redisPasswordValue}@${redisHost}:${redisPort}`,
+      ),
       pythonServerUrl: `http://${pythonServerHost}:${pythonServerPort}`,
       environment,
       isProduction: environment === 'production',

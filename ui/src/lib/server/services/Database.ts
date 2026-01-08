@@ -17,7 +17,6 @@ const PgClientLive = Layer.unwrapEffect(
   }),
 );
 
-export const DatabaseLive = Layer.effect(
-  Database,
-  Pg.make({ schema }),
-).pipe(Layer.provide(PgClientLive));
+export const DatabaseLive = Layer.effect(Database, Pg.make({ schema })).pipe(
+  Layer.provide(PgClientLive),
+);

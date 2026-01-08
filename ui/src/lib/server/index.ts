@@ -7,8 +7,13 @@ export { PythonServer, PythonServerLive } from './services/PythonServer';
 export { DatalkAgent, DatalkAgentLive, type DatalkStreamPart } from './services/DatalkAgent';
 export { ChatContext, type ChatContextData } from './services/ChatContext';
 export { ChatBackingPersistenceLive } from './services/ChatPersistence';
-export { ChatTitleGenerator } from './services/ChatTitleGenerator'
-export { DatalkToolkit, DatalkToolHandlersLive, makeDatalkToolHandlers, type DatalkTools } from './services/DatalkTools';
+export { ChatTitleGenerator } from './services/ChatTitleGenerator';
+export {
+  DatalkToolkit,
+  DatalkToolHandlersLive,
+  makeDatalkToolHandlers,
+  type DatalkTools,
+} from './services/DatalkTools';
 
 // Schemas
 export { SignupRequest, LoginRequest } from './schemas/auth';

@@ -120,7 +120,8 @@
           if (toolCalls[id]) {
             toolCalls[id] = {
               ...toolCalls[id],
-              result: typeof chunk.result === 'string' ? chunk.result : JSON.stringify(chunk.result),
+              result:
+                typeof chunk.result === 'string' ? chunk.result : JSON.stringify(chunk.result),
             };
           }
           break;
@@ -176,7 +177,9 @@
 
   // Derive tool state for rendering
   const activeToolCalls = $derived(
-    toolOrder.map((id) => toolCalls[id]).filter((tool): tool is ToolCall => !!tool && !!tool.params),
+    toolOrder
+      .map((id) => toolCalls[id])
+      .filter((tool): tool is ToolCall => !!tool && !!tool.params),
   );
 </script>
 
@@ -195,7 +198,12 @@
         {/if}
         {#each activeToolCalls as tool}
           <div in:slide={{ duration: 200 }} out:slide={{ duration: 200 }}>
-            <MessageBlock role="tool" name={tool.name} arguments={tool.params} output={tool.result} />
+            <MessageBlock
+              role="tool"
+              name={tool.name}
+              arguments={tool.params}
+              output={tool.result}
+            />
           </div>
         {/each}
         {#if answer}

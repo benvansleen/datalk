@@ -2,7 +2,6 @@ import { NodeSdk } from '@effect/opentelemetry';
 import { BatchSpanProcessor } from '@opentelemetry/sdk-trace-base';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-proto';
 
-
 //  podman run --name jaeger \
 //   -e COLLECTOR_ZIPKIN_HOST_PORT=:9411 \
 //   -e COLLECTOR_OTLP_ENABLED=true \

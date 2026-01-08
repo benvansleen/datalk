@@ -28,7 +28,7 @@ const formatSSEMessage = <T>(data: T): string => {
  * @returns An Effect that produces an SSE Response
  */
 export const streamToSSE = <T, E, R>(
-  stream: Stream.Stream<T, E, R>
+  stream: Stream.Stream<T, E, R>,
 ): Effect.Effect<Response, never, R> =>
   Effect.gen(function* () {
     // Transform stream values to SSE-formatted strings
@@ -36,8 +36,8 @@ export const streamToSSE = <T, E, R>(
       Stream.map(formatSSEMessage),
       // On error, emit an error event and end the stream
       Stream.catchAll((error) =>
-        Stream.make(`event: error\ndata: ${JSON.stringify({ error: String(error) })}\n\n`)
-      )
+        Stream.make(`event: error\ndata: ${JSON.stringify({ error: String(error) })}\n\n`),
+      ),
     );
 
     // Convert to ReadableStream

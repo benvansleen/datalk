@@ -84,16 +84,16 @@ export const subscribeChatStatus = (userId: string) =>
   Stream.unwrap(
     Effect.gen(function* () {
       const subscriber = yield* RedisSubscriber;
-      return subscriber.subscribeToChannelJson<ChatStatusEvent>('chat-status').pipe(
-        Stream.filter((event) => event.userId === userId)
-      );
-    })
+      return subscriber
+        .subscribeToChannelJson<ChatStatusEvent>('chat-status')
+        .pipe(Stream.filter((event) => event.userId === userId));
+    }),
   ).pipe(Stream.withSpan('chat.subscribeChatStatus', { attributes: { userId } }));
 
 /**
  * Subscribe to generation events for a specific message request.
  * Includes history replay for reconnecting clients.
- * 
+ *
  * The stream:
  * 1. First emits all historical events (replayed from Redis list)
  * 2. Then emits live events as they arrive via pub/sub
@@ -107,23 +107,28 @@ export const subscribeGenerationEvents = (messageRequestId: string) =>
 
       // Get historical events (stored in reverse order, so we reverse them back)
       const history = yield* redis.lRange(`gen:${messageRequestId}:history`, 0, -1);
-      const historicalEvents = history.reverse().map((chunk) => {
-        try {
-          return JSON.parse(chunk) as GenerationEvent;
-        } catch {
-          return null;
-        }
-      }).filter((event): event is GenerationEvent => event !== null);
+      const historicalEvents = history
+        .reverse()
+        .map((chunk) => {
+          try {
+            return JSON.parse(chunk) as GenerationEvent;
+          } catch {
+            return null;
+          }
+        })
+        .filter((event): event is GenerationEvent => event !== null);
 
       // Create stream of historical events
       const historyStream = Stream.fromIterable(historicalEvents);
 
       // Create stream of live events
-      const liveStream = subscriber.subscribeToChannelJson<GenerationEvent>(`gen:${messageRequestId}`);
+      const liveStream = subscriber.subscribeToChannelJson<GenerationEvent>(
+        `gen:${messageRequestId}`,
+      );
 
       // Concatenate history with live events, and end on 'response_done'
       return Stream.concat(historyStream, liveStream).pipe(
-        Stream.takeUntil((event) => event.type === 'response_done')
+        Stream.takeUntil((event) => event.type === 'response_done'),
       );
-    })
+    }),
   ).pipe(Stream.withSpan('chat.subscribeGenerationEvents', { attributes: { messageRequestId } }));

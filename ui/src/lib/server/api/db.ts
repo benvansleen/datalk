@@ -293,7 +293,8 @@ export const getChatWithHistory = (userId: string, chatId: string) =>
             messages.push({
               role: 'tool',
               name: part.name,
-              arguments: typeof part.params === 'string' ? part.params : JSON.stringify(part.params),
+              arguments:
+                typeof part.params === 'string' ? part.params : JSON.stringify(part.params),
               output: toolResult?.result,
             });
             break;

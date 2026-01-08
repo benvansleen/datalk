@@ -27,7 +27,9 @@ export class RedisSubscriber extends Effect.Service<RedisSubscriber>()('app/Redi
             yield* Effect.logDebug(`Creating Redis subscriber for channel: ${channel}`);
 
             // Create a dedicated client for this subscription
-            const client = createClient({ url: Redacted.value(config.redisUrl) }) as RedisClientType;
+            const client = createClient({
+              url: Redacted.value(config.redisUrl),
+            }) as RedisClientType;
 
             // Connect to Redis
             yield* Effect.tryPromise({
@@ -58,18 +60,18 @@ export class RedisSubscriber extends Effect.Service<RedisSubscriber>()('app/Redi
                 yield* Effect.logDebug(`Unsubscribing from Redis channel: ${channel}`);
                 yield* Effect.tryPromise(() => client.unsubscribe(channel)).pipe(
                   Effect.catchAll((error) =>
-                    Effect.logWarning(`Failed to unsubscribe from ${channel}: ${error}`)
-                  )
+                    Effect.logWarning(`Failed to unsubscribe from ${channel}: ${error}`),
+                  ),
                 );
                 yield* Effect.tryPromise(() => client.quit()).pipe(
                   Effect.catchAll((error) =>
-                    Effect.logWarning(`Failed to close Redis subscriber: ${error}`)
-                  )
+                    Effect.logWarning(`Failed to close Redis subscriber: ${error}`),
+                  ),
                 );
-              })
+              }),
             );
           }),
-        { bufferSize: 256, strategy: 'sliding' }
+        { bufferSize: 256, strategy: 'sliding' },
       ).pipe(Stream.withSpan('RedisSubscriber.subscribeToChannel', { attributes: { channel } }));
 
     /**
@@ -85,7 +87,7 @@ export class RedisSubscriber extends Effect.Service<RedisSubscriber>()('app/Redi
             return null;
           }
         }),
-        Stream.filter((value): value is T => value !== null)
+        Stream.filter((value): value is T => value !== null),
       );
 
     /**
