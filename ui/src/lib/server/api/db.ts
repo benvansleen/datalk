@@ -1,8 +1,8 @@
-import { Effect, Option } from 'effect';
+import { Effect, Match, Option } from 'effect';
 import { Database } from '../services/Database';
 import * as T from '$lib/server/db/schema';
 import { eq, and, desc, asc } from 'drizzle-orm';
-import { DatabaseError } from '../errors';
+import { AuthError, DatabaseError } from '../errors';
 
 /**
  * Get all chats for a user, ordered by most recently updated
@@ -23,6 +23,35 @@ export const getChatsForUser = (userId: string) =>
         }),
     ),
     Effect.withSpan('db.getChatsForUser'),
+  );
+
+/**
+ * Ensure a chat is owned by the current user.
+ */
+export const requireChatOwnership = (userId: string, chatId: string) =>
+  Effect.gen(function* () {
+    const db = yield* Database;
+    const chatResult = yield* db.query.chat.findFirst({
+      where: and(eq(T.chat.userId, userId), eq(T.chat.id, chatId)),
+    });
+
+    if (!chatResult) {
+      return yield* Effect.fail(
+        new AuthError({ message: `user (${userId}) does not own chat (${chatId})` }),
+      );
+    }
+
+    return chatResult;
+  }).pipe(
+    Effect.mapError((error) => {
+      if (error instanceof AuthError) {
+        return error;
+      }
+      return new DatabaseError({
+        message: `Failed to verify chat ownership: ${error instanceof Error ? error.message : String(error)}`,
+      });
+    }),
+    Effect.withSpan('db.requireChatOwnership'),
   );
 
 /**
@@ -158,6 +187,13 @@ export interface DisplayMessage {
   name?: string;
   arguments?: string;
   output?: unknown;
+  toolCallId?: string;
+}
+
+export interface ChatHistory {
+  currentMessageRequest: string | null;
+  currentMessageRequestContent: string | null;
+  messages: DisplayMessage[];
 }
 
 /**
@@ -174,7 +210,17 @@ export const getChatWithHistory = (userId: string, chatId: string) =>
     });
 
     if (!chatResult) {
-      return Option.none<{ currentMessageRequest: string | null; messages: DisplayMessage[] }>();
+      return Option.none<ChatHistory>();
+    }
+
+    let currentMessageRequestContent: string | null = null;
+    if (chatResult.currentMessageRequest) {
+      const [messageRequest] = yield* db
+        .select({ content: T.messageRequests.content })
+        .from(T.messageRequests)
+        .where(eq(T.messageRequests.id, chatResult.currentMessageRequest))
+        .limit(1);
+      currentMessageRequestContent = messageRequest?.content ?? null;
     }
 
     // Get messages with parts from normalized tables
@@ -192,6 +238,7 @@ export const getChatWithHistory = (userId: string, chatId: string) =>
       // No history yet, return empty messages
       return Option.some({
         currentMessageRequest: chatResult.currentMessageRequest,
+        currentMessageRequestContent,
         messages: [] as DisplayMessage[],
       });
     }
@@ -207,6 +254,41 @@ export const getChatWithHistory = (userId: string, chatId: string) =>
       }
     }
 
+    type MessagePart = (typeof messagesWithParts)[number]['parts'][number];
+
+    const partToDisplayMessage = (
+      msgRole: 'system' | 'user' | 'assistant' | 'tool',
+      part: MessagePart,
+    ) =>
+      Match.value(part).pipe(
+        Match.when(
+          (value): value is MessagePart & { type: 'text' } => value.type === 'text',
+          (value) =>
+            Option.some({
+              role: msgRole as 'user' | 'assistant',
+              content: (value.content as T.TextPartContent).text,
+            }),
+        ),
+        Match.when(
+          (value): value is MessagePart & { type: 'tool-call' } => value.type === 'tool-call',
+          (value) => {
+            const content = value.content as T.ToolCallPartContent;
+            const toolResult = toolResultMap.get(content.id);
+            return Option.some({
+              role: 'tool' as const,
+              name: content.name,
+              arguments:
+                typeof content.params === 'string'
+                  ? content.params
+                  : JSON.stringify(content.params),
+              output: toolResult?.result,
+              toolCallId: content.id,
+            });
+          },
+        ),
+        Match.orElse(() => Option.none()),
+      );
+
     // Transform to display format
     const messages: DisplayMessage[] = [];
 
@@ -218,42 +300,16 @@ export const getChatWithHistory = (userId: string, chatId: string) =>
 
       // Handle parts
       for (const part of msg.parts) {
-        switch (part.type) {
-          case 'text': {
-            const content = part.content as T.TextPartContent;
-            messages.push({
-              role: msg.role as 'user' | 'assistant',
-              content: content.text,
-            });
-            break;
-          }
-
-          case 'tool-call': {
-            const content = part.content as T.ToolCallPartContent;
-            const toolResult = toolResultMap.get(content.id);
-            messages.push({
-              role: 'tool',
-              name: content.name,
-              arguments:
-                typeof content.params === 'string'
-                  ? content.params
-                  : JSON.stringify(content.params),
-              output: toolResult?.result,
-            });
-            break;
-          }
-
-          // tool-result parts are handled when we process tool-call parts
-          case 'tool-result':
-          case 'reasoning':
-          case 'file':
-            break;
+        const displayMessage = partToDisplayMessage(msg.role, part);
+        if (Option.isSome(displayMessage)) {
+          messages.push(displayMessage.value);
         }
       }
     }
 
     return Option.some({
       currentMessageRequest: chatResult.currentMessageRequest,
+      currentMessageRequestContent,
       messages,
     });
   }).pipe(

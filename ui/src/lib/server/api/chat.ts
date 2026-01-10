@@ -33,6 +33,7 @@ export type GenerationEvent =
   // Finish and metadata
   | { type: 'finish'; reason: string }
   | { type: 'response_done' }
+  | { type: 'response_error'; message: string }
   // Allow other event types for forward compatibility
   | { type: string; [key: string]: unknown };
 

@@ -3,6 +3,7 @@ import { and, eq, isNull } from 'drizzle-orm';
 import type { RequestHandler } from './$types';
 import { error } from '@sveltejs/kit';
 import {
+  AuthError,
   ChatTitleGenerator,
   Database,
   DatabaseError,
@@ -13,6 +14,7 @@ import {
   publishChatStatus,
   publishGenerationEvent,
   markGenerationComplete,
+  requireChatOwnership,
 } from '$lib/server';
 import { Effect, Stream, Option, Exit, Cause } from 'effect';
 import { getRequestEvent } from '$app/server';
@@ -92,6 +94,31 @@ const streamPartToEvent = (part: DatalkStreamPart): Option.Option<object> => {
 };
 
 /**
+ * Finalize a generation request (success or failure).
+ */
+const finalizeGeneration = Effect.fn('finalizeGeneration')(function* (
+  userId: string,
+  chatId: string,
+  messageId: string,
+  errorMessage?: string,
+) {
+  const db = yield* Database;
+
+  if (errorMessage) {
+    yield* publishGenerationEvent(messageId, { type: 'response_error', message: errorMessage });
+  }
+
+  yield* Effect.all(
+    [
+      markGenerationComplete(messageId),
+      publishChatStatus({ type: 'status-changed', userId, chatId, currentMessageId: null }),
+      db.update(T.chat).set({ currentMessageRequest: null }).where(eq(T.chat.id, chatId)),
+    ],
+    { concurrency: 'unbounded' },
+  );
+});
+
+/**
  * Generate a response using the DatalkAgent and stream events to Redis.
  */
 const generateResponse = Effect.fn('generateResponse')(function* (
@@ -110,23 +137,22 @@ const generateResponse = Effect.fn('generateResponse')(function* (
   const stream = yield* agent.run(chatId, dataset, currentMessage);
 
   // Process each stream part and publish to Redis
-  yield* Stream.runForEach(stream, (part) => {
+  const runStream = Stream.runForEach(stream, (part) => {
     const event = streamPartToEvent(part);
     return Option.match(event, {
       onSome: (event) => publishGenerationEvent(messageId, event),
       onNone: () => Effect.void,
     });
-  });
-
-  const db = yield* Database;
-  yield* Effect.all(
-    [
-      markGenerationComplete(messageId),
-      publishChatStatus({ type: 'status-changed', userId, chatId, currentMessageId: null }),
-      db.update(T.chat).set({ currentMessageRequest: null }).where(eq(T.chat.id, chatId)),
-    ],
-    { concurrency: 'unbounded' },
+  }).pipe(
+    Effect.catchAllCause((cause) =>
+      finalizeGeneration(userId, chatId, messageId, Cause.pretty(cause)).pipe(
+        Effect.andThen(Effect.failCause(cause)),
+      ),
+    ),
   );
+
+  yield* runStream;
+  yield* finalizeGeneration(userId, chatId, messageId);
 });
 
 export const POST: RequestHandler = async ({ request, params }) => {
@@ -140,6 +166,8 @@ export const POST: RequestHandler = async ({ request, params }) => {
     await runEffectExit(
       Effect.gen(function* () {
         yield* Effect.annotateCurrentSpan({ userId: user.id, chatId, content });
+
+        yield* requireChatOwnership(user.id, chatId);
 
         // Fire-and-forget title generation (errors are logged by runEffectFork)
         runEffectFork(
@@ -161,7 +189,13 @@ export const POST: RequestHandler = async ({ request, params }) => {
         const res = yield* db
           .update(T.chat)
           .set({ currentMessageRequest: messageRequestId })
-          .where(and(eq(T.chat.id, chatId), isNull(T.chat.currentMessageRequest)))
+          .where(
+            and(
+              eq(T.chat.id, chatId),
+              eq(T.chat.userId, user.id),
+              isNull(T.chat.currentMessageRequest),
+            ),
+          )
           .returning({ dataset: T.chat.dataset });
 
         if (res.length === 0) {
@@ -190,8 +224,13 @@ export const POST: RequestHandler = async ({ request, params }) => {
     {
       onSuccess: (response) => response,
       onFailure: (cause) => {
-        if (Cause.isFailType(cause) && cause.error instanceof DatabaseError) {
-          return error(400, cause.error.message);
+        if (Cause.isFailType(cause)) {
+          if (cause.error instanceof AuthError) {
+            return error(403, cause.error.message);
+          }
+          if (cause.error instanceof DatabaseError) {
+            return error(400, cause.error.message);
+          }
         }
         return error(500, 'An unexpected error occurred');
       },

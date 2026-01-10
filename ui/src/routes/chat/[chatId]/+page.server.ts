@@ -19,6 +19,7 @@ export const load: PageServerLoad = async ({ locals, params }) => {
 
           return {
             currentMessageRequestId: result.value.currentMessageRequest,
+            currentMessageRequestContent: result.value.currentMessageRequestContent,
             messages: result.value.messages,
           } as const;
         }).pipe(Effect.withSpan('Chat.get-chat-history')),

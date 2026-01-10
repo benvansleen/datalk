@@ -11,6 +11,18 @@
 
   let { data }: PageProps = $props();
 
+  const pendingMessageContent = $derived(
+    'currentMessageRequestContent' in data
+      ? (data.currentMessageRequestContent)
+      : null,
+  );
+  const hasPendingUserMessage = $derived(
+    !!pendingMessageContent &&
+      data.messages.some(
+        (message) => message.role === 'user' && message.content === pendingMessageContent,
+      ),
+  );
+
   $effect(() => {
     const chatStatusEvents = new EventSource('/chat-status-events');
     chatStatusEvents.addEventListener('message', (e) => {
@@ -22,6 +34,9 @@
 
     if (data.currentMessageRequestId) {
       console.log(`Resuming message request: ${data.currentMessageRequestId}`);
+      if (pendingMessageContent && !hasPendingUserMessage && !submittedUserInput) {
+        submittedUserInput = pendingMessageContent;
+      }
       subscribe(data.currentMessageRequestId);
     }
 
@@ -42,6 +57,7 @@
 
   // Tool state: keyed by tool call ID
   interface ToolCall {
+    id: string;
     name: string;
     params: string;
     result?: string;
@@ -54,17 +70,21 @@
   let submittedUserInput = $state('');
   let generating = $state(false);
 
+  const resetGenerationState = () => {
+    generating = false;
+    toolCalls = {};
+    toolOrder = [];
+    answer = '';
+    submittedUserInput = '';
+  };
+
   const subscribe = (messageRequestId: string) => {
     const eventSource = new EventSource(`/message-request/${messageRequestId}`);
     generating = true;
 
     const cleanup = () => {
       eventSource.close();
-      generating = false;
-      toolCalls = {};
-      toolOrder = [];
-      answer = '';
-      submittedUserInput = '';
+      resetGenerationState();
     };
 
     eventSource.addEventListener('message', (e) => {
@@ -82,7 +102,7 @@
         case 'tool-params-start': {
           const id = chunk.id;
           if (!toolCalls[id]) {
-            toolCalls[id] = { name: chunk.name, params: '' };
+            toolCalls[id] = { id, name: chunk.name, params: '' };
             toolOrder = [...toolOrder, id];
           }
           break;
@@ -108,6 +128,7 @@
             toolOrder = [...toolOrder, id];
           }
           toolCalls[id] = {
+            id,
             name: chunk.name,
             params: typeof chunk.params === 'string' ? chunk.params : JSON.stringify(chunk.params),
           };
@@ -131,6 +152,11 @@
         case 'finish': {
           // Intermediate finish event from model iterations - ignore
           // (only used during agentic loops between tool calls)
+          break;
+        }
+        case 'response_error': {
+          console.error('Generation error:', chunk.message);
+          answer += `\n\n**Error:** ${chunk.message}`;
           break;
         }
         case 'response_done': {
@@ -167,6 +193,14 @@
       },
     });
     const messageRequestId = await res.text();
+
+    if (!res.ok) {
+      console.error('Message request failed:', messageRequestId);
+      resetGenerationState();
+      answer += `\n\n**Error:** ${messageRequestId}`;
+      return;
+    }
+
     subscribe(messageRequestId);
 
     submittedUserInput = userInput;
@@ -175,11 +209,22 @@
     scrollToBottom();
   };
 
+  const historyToolCallIds = $derived(
+    new Set(
+      data.messages
+        .filter((message) => message.role === 'tool')
+        .map((message) => (message as { toolCallId?: string }).toolCallId)
+        .filter((id): id is string => !!id),
+    ),
+  );
+
   // Derive tool state for rendering
   const activeToolCalls = $derived(
     toolOrder
-      .map((id) => toolCalls[id])
-      .filter((tool): tool is ToolCall => !!tool && !!tool.params),
+      .map((id) => (toolCalls[id] ? { ...toolCalls[id], id } : null))
+      .filter(
+        (tool): tool is ToolCall => !!tool && !!tool.params && !historyToolCallIds.has(tool.id),
+      ),
   );
 </script>
 
@@ -191,7 +236,7 @@
       {/each}
 
       {#if generating}
-        {#if submittedUserInput}
+        {#if submittedUserInput && !hasPendingUserMessage}
           <div in:fly={{ y: 20, duration: 500 }}>
             <MessageBlock role="user" content={submittedUserInput} />
           </div>

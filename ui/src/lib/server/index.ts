@@ -59,6 +59,7 @@ export { RedisSubscriber, RedisSubscriberLive } from './services/RedisSubscriber
 export {
   getChatsForUser,
   getChatWithHistory,
+  requireChatOwnership,
   createChat,
   deleteChat,
   createMessageRequest,
