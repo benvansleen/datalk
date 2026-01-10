@@ -96,7 +96,7 @@ const streamPartToEvent = (part: DatalkStreamPart): Option.Option<object> => {
 /**
  * Finalize a generation request (success or failure).
  */
-const finalizeGeneration = Effect.fn('finalizeGeneration')(function* (
+export const finalizeGeneration = Effect.fn('finalizeGeneration')(function* (
   userId: string,
   chatId: string,
   messageId: string,
@@ -121,7 +121,7 @@ const finalizeGeneration = Effect.fn('finalizeGeneration')(function* (
 /**
  * Generate a response using the DatalkAgent and stream events to Redis.
  */
-const generateResponse = Effect.fn('generateResponse')(function* (
+export const generateResponse = Effect.fn('generateResponse')(function* (
   userId: string,
   chatId: string,
   dataset: string,

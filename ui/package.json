@@ -13,7 +13,8 @@
     "format": "prettier --write .",
     "lint": "prettier --check . && eslint .",
     "drizzle-kit": "drizzle-kit",
-    "repl": "node"
+    "repl": "node",
+    "test": "vitest run"
   },
   "devDependencies": {
     "@effect/ai": "^0.33.2",
@@ -44,6 +45,7 @@
     "drizzle-kit": "^0.31.7",
     "drizzle-orm": "^0.44.7",
     "effect": "^3.19.14",
+    "vitest": "^3.2.2",
     "eslint": "^9.39.1",
     "eslint-plugin-svelte": "^3.13.0",
     "formsnap": "^2.0.1",
