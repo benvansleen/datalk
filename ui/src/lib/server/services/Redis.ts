@@ -94,6 +94,80 @@ export class Redis extends Effect.Service<Redis>()('app/Redis', {
           }),
       }).pipe(Effect.withSpan('Redis.get', { attributes: { key } }));
 
+    // ============================================================================
+    // Redis Streams
+    // ============================================================================
+
+    /**
+     * Add an entry to a stream. Returns the generated entry ID.
+     * Uses approximate MAXLEN trimming to bound memory usage.
+     */
+    const xAdd = (key: string, fields: Record<string, string>, options?: { maxLen?: number }) =>
+      Effect.tryPromise({
+        try: () =>
+          client.xAdd(
+            key,
+            '*',
+            fields,
+            options?.maxLen
+              ? { TRIM: { strategy: 'MAXLEN', strategyModifier: '~', threshold: options.maxLen } }
+              : undefined,
+          ),
+        catch: (error) =>
+          new RedisError({
+            message: `Failed to xAdd to ${key}: ${error instanceof Error ? error.message : String(error)}`,
+          }),
+      }).pipe(Effect.withSpan('Redis.xAdd', { attributes: { key } }));
+
+    /**
+     * Read a range of entries from a stream.
+     * Use '-' for start to read from beginning, '+' for end to read to the end.
+     */
+    const xRange = (key: string, start: string, end: string, count?: number) =>
+      Effect.tryPromise({
+        try: () => client.xRange(key, start, end, count ? { COUNT: count } : undefined),
+        catch: (error) =>
+          new RedisError({
+            message: `Failed to xRange from ${key}: ${error instanceof Error ? error.message : String(error)}`,
+          }),
+      }).pipe(Effect.withSpan('Redis.xRange', { attributes: { key, start, end } }));
+
+    /**
+     * Blocking read from one or more streams.
+     * Returns null if the block timeout expires with no new entries.
+     */
+    const xRead = (
+      streams: Array<{ key: string; id: string }>,
+      options?: { block?: number; count?: number },
+    ) =>
+      Effect.tryPromise({
+        try: () =>
+          client.xRead(
+            streams.map((s) => ({ key: s.key, id: s.id })),
+            { BLOCK: options?.block, COUNT: options?.count },
+          ),
+        catch: (error) =>
+          new RedisError({
+            message: `Failed to xRead: ${error instanceof Error ? error.message : String(error)}`,
+          }),
+      }).pipe(
+        Effect.withSpan('Redis.xRead', {
+          attributes: { streams: streams.map((s) => s.key).join(',') },
+        }),
+      );
+
+    /**
+     * Set a TTL on a key (in seconds).
+     */
+    const expire = (key: string, seconds: number) =>
+      Effect.tryPromise({
+        try: () => client.expire(key, seconds),
+        catch: (error) =>
+          new RedisError({
+            message: `Failed to expire ${key}: ${error instanceof Error ? error.message : String(error)}`,
+          }),
+      }).pipe(Effect.asVoid, Effect.withSpan('Redis.expire', { attributes: { key, seconds } }));
+
     return {
       publish,
       subscribe,
@@ -102,6 +176,11 @@ export class Redis extends Effect.Service<Redis>()('app/Redis', {
       lRange,
       set,
       get,
+      // Streams
+      xAdd,
+      xRange,
+      xRead,
+      expire,
       client,
     } as const;
   }),

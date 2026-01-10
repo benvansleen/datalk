@@ -43,7 +43,6 @@ export {
   publishChatStatus,
   publishGenerationEvent,
   markGenerationComplete,
-  getGenerationHistory,
   subscribeChatStatus,
   subscribeGenerationEvents,
   type ChatStatusEvent,

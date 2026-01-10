@@ -1,6 +1,9 @@
-import { Effect, Stream } from 'effect';
+import { Effect, Fiber, Redacted, Scope, Stream } from 'effect';
+import { createClient, type RedisClientType } from 'redis';
 import { Redis } from '../services/Redis';
 import { RedisSubscriber } from '../services/RedisSubscriber';
+import { Config } from '../services/Config';
+import { RedisError } from '../errors';
 
 /**
  * Chat status event types
@@ -42,35 +45,43 @@ export const publishChatStatus = (event: ChatStatusEvent) =>
     yield* redis.publish('chat-status', JSON.stringify(event));
   }).pipe(Effect.withSpan('chat.publishStatus', { attributes: { type: event.type } }));
 
+// ============================================================================
+// Generation Events (using Redis Streams for reliable delivery)
+// ============================================================================
+
+const GENERATION_STREAM_MAX_LEN = 10000;
+const GENERATION_STREAM_TTL_SECONDS = 3600; // 1 hour
+
 /**
- * Publish a response generation event to Redis
+ * Get the Redis Stream key for a generation.
+ */
+const generationStreamKey = (messageRequestId: string) => `gen:${messageRequestId}:stream`;
+
+/**
+ * Publish a response generation event to Redis Stream.
+ * Uses XADD with approximate MAXLEN trimming to bound memory.
  */
 export const publishGenerationEvent = (messageRequestId: string, event: object) =>
   Effect.gen(function* () {
     const redis = yield* Redis;
-    const chunk = JSON.stringify(event);
-    yield* redis.lPush(`gen:${messageRequestId}:history`, chunk);
-    yield* redis.publish(`gen:${messageRequestId}`, chunk);
+    yield* redis.xAdd(
+      generationStreamKey(messageRequestId),
+      { event: JSON.stringify(event) },
+      { maxLen: GENERATION_STREAM_MAX_LEN },
+    );
   }).pipe(Effect.withSpan('chat.publishGenerationEvent'));
 
 /**
- * Mark a generation as complete
+ * Mark a generation as complete.
+ * Adds the response_done event and sets a TTL on the stream for cleanup.
  */
 export const markGenerationComplete = (messageRequestId: string) =>
   Effect.gen(function* () {
     const redis = yield* Redis;
-    yield* redis.publish(`gen:${messageRequestId}`, JSON.stringify({ type: 'response_done' }));
-    yield* redis.set(`gen:${messageRequestId}:done`, '1');
+    const streamKey = generationStreamKey(messageRequestId);
+    yield* redis.xAdd(streamKey, { event: JSON.stringify({ type: 'response_done' }) });
+    yield* redis.expire(streamKey, GENERATION_STREAM_TTL_SECONDS);
   }).pipe(Effect.withSpan('chat.markGenerationComplete'));
-
-/**
- * Get generation history (for replay when client reconnects)
- */
-export const getGenerationHistory = (messageRequestId: string) =>
-  Effect.gen(function* () {
-    const redis = yield* Redis;
-    return yield* redis.lRange(`gen:${messageRequestId}:history`, 0, -1);
-  }).pipe(Effect.withSpan('chat.getGenerationHistory'));
 
 // ============================================================================
 // Stream-based subscriptions for SSE endpoints
@@ -91,40 +102,139 @@ export const subscribeChatStatus = (userId: string) =>
   ).pipe(Stream.withSpan('chat.subscribeChatStatus', { attributes: { userId } }));
 
 /**
+ * Parse a generation event from a JSON string.
+ * Returns null if parsing fails.
+ */
+const parseGenerationEvent = (json: string): GenerationEvent | null => {
+  try {
+    return JSON.parse(json) as GenerationEvent;
+  } catch {
+    return null;
+  }
+};
+
+/**
  * Subscribe to generation events for a specific message request.
- * Includes history replay for reconnecting clients.
+ * Uses Redis Streams for reliable delivery with no race conditions.
  *
  * The stream:
- * 1. First emits all historical events (replayed from Redis list)
- * 2. Then emits live events as they arrive via pub/sub
+ * 1. First emits all historical events (via XRANGE)
+ * 2. Then emits live events as they arrive (via blocking XREAD)
  * 3. Automatically ends when a 'response_done' event is received
+ *
+ * This approach eliminates the race condition between history replay and live
+ * subscription because Redis Stream IDs are monotonically increasing - XREAD
+ * continues exactly where XRANGE left off with no gap.
  */
 export const subscribeGenerationEvents = (messageRequestId: string) =>
   Stream.unwrap(
     Effect.gen(function* () {
-      const redis = yield* Redis;
-      const subscriber = yield* RedisSubscriber;
+      const config = yield* Config;
+      const streamKey = generationStreamKey(messageRequestId);
 
-      // Get historical events (stored in reverse order, so we reverse them back)
-      const history = yield* redis.lRange(`gen:${messageRequestId}:history`, 0, -1);
+      // Read all existing entries from the stream
+      const redis = yield* Redis;
+      const history = yield* redis.xRange(streamKey, '-', '+');
+
+      // Track the last ID we've seen (for continuing with XREAD)
+      // If no history, start from '0' to get all future entries
+      let lastId = history.length > 0 ? history[history.length - 1].id : '0';
+
+      // Parse historical events
       const historicalEvents = history
-        .reverse()
-        .map((chunk) => {
-          try {
-            return JSON.parse(chunk) as GenerationEvent;
-          } catch {
-            return null;
-          }
-        })
+        .map((entry) => parseGenerationEvent(entry.message.event))
         .filter((event): event is GenerationEvent => event !== null);
+
+      // Check if generation is already complete (response_done in history)
+      const isComplete = historicalEvents.some((e) => e.type === 'response_done');
+      if (isComplete) {
+        return Stream.fromIterable(historicalEvents);
+      }
 
       // Create stream of historical events
       const historyStream = Stream.fromIterable(historicalEvents);
 
-      // Create stream of live events
-      const liveStream = subscriber.subscribeToChannelJson<GenerationEvent>(
-        `gen:${messageRequestId}`,
-      );
+      // Create live stream using XREAD with a dedicated connection.
+      // Uses asyncScoped for proper resource management and clean shutdown.
+      const liveStream = Stream.asyncScoped<GenerationEvent, RedisError, Scope.Scope>(
+        (emit) =>
+          Effect.gen(function* () {
+            yield* Effect.logDebug(`Creating Redis Stream reader for: ${streamKey}`);
+
+            // Mutable flag for synchronous shutdown detection in catch handlers
+            let isShuttingDown = false;
+
+            // Create a dedicated client for blocking reads
+            const client = createClient({
+              url: Redacted.value(config.redisUrl),
+            }) as RedisClientType;
+
+            yield* Effect.tryPromise({
+              try: () => client.connect(),
+              catch: (error) =>
+                new RedisError({
+                  message: `Failed to connect Redis stream reader: ${error instanceof Error ? error.message : String(error)}`,
+                }),
+            });
+
+            // Register finalizer to signal shutdown and clean up
+            yield* Effect.addFinalizer(() =>
+              Effect.gen(function* () {
+                yield* Effect.logDebug(`Shutting down Redis Stream reader for: ${streamKey}`);
+                // Set flag so the read loop knows to exit gracefully
+                isShuttingDown = true;
+                // Close the client - this will cause any blocking xRead to error
+                yield* Effect.tryPromise(() => client.quit()).pipe(
+                  Effect.catchAll((error) =>
+                    Effect.logWarning(`Failed to close Redis stream reader: ${error}`),
+                  ),
+                );
+              }),
+            );
+
+            // Blocking read loop - runs in background fiber
+            const readLoop = Effect.gen(function* () {
+              while (!isShuttingDown) {
+                const result = yield* Effect.tryPromise({
+                  try: () =>
+                    client.xRead({ key: streamKey, id: lastId }, { BLOCK: 1000, COUNT: 100 }),
+                  catch: (error) => {
+                    // If we're shutting down, don't treat connection errors as failures
+                    if (isShuttingDown) {
+                      return null;
+                    }
+                    return new RedisError({
+                      message: `Failed to xRead: ${error instanceof Error ? error.message : String(error)}`,
+                    });
+                  },
+                });
+
+                // Check shutdown again after blocking call returns
+                if (isShuttingDown) {
+                  break;
+                }
+
+                if (result && result.length > 0) {
+                  const messages = result[0].messages;
+                  for (const entry of messages) {
+                    const event = parseGenerationEvent(entry.message.event);
+                    if (event) {
+                      emit.single(event);
+                    }
+                    lastId = entry.id;
+                  }
+                }
+              }
+              // Signal end of stream when loop exits
+              yield* Effect.promise(() => emit.end());
+            });
+
+            // Fork the read loop and ensure it's interrupted on scope close
+            const fiber = yield* Effect.fork(readLoop);
+            yield* Effect.addFinalizer(() => Fiber.interrupt(fiber));
+          }),
+        { bufferSize: 256, strategy: 'sliding' },
+      ).pipe(Stream.withSpan('chat.subscribeGenerationEvents.live', { attributes: { streamKey } }));
 
       // Concatenate history with live events, and end on 'response_done'
       return Stream.concat(historyStream, liveStream).pipe(
