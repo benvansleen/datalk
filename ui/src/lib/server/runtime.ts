@@ -46,6 +46,12 @@ const withRequestSpanAndLogs = <A, E, R>(
   span?: RequestSpan,
 ): Effect.Effect<A, E, R> => withRequestSpan(withTraceLogAnnotations(effect), span);
 
+const withEffectConfig = <A, E, R>(
+  effect: Effect.Effect<A, E, R>,
+  span?: RequestSpan,
+): Effect.Effect<A, E, R> =>
+  withRequestSpanAndLogs(effect, span).pipe(Effect.withConcurrency('unbounded'));
+
 export const getRuntime = (): ManagedRuntime.ManagedRuntime<AppServices, RuntimeError> => {
   if (!_runtime) {
     _runtime = ManagedRuntime.make(LiveLayer);
@@ -60,20 +66,20 @@ export const getRuntime = (): ManagedRuntime.ManagedRuntime<AppServices, Runtime
 export const runEffect = <A, E>(
   effect: Effect.Effect<A, E, AppServices>,
   span?: RequestSpan,
-): Promise<A> => getRuntime().runPromise(withRequestSpanAndLogs(effect, span));
+): Promise<A> => getRuntime().runPromise(withEffectConfig(effect, span));
 
 // Helper to run Effects and get the Exit value (success or failure)
 export const runEffectExit = <A, E>(
   effect: Effect.Effect<A, E, AppServices>,
   span?: RequestSpan,
 ): Promise<Exit.Exit<A, E | RuntimeError>> =>
-  getRuntime().runPromiseExit(withRequestSpanAndLogs(effect, span));
+  getRuntime().runPromiseExit(withEffectConfig(effect, span));
 
 // Helper to fork Effects with automatic error logging
 // Forked effects run in the background - errors are logged but don't propagate
 export const runEffectFork = <A, E>(effect: Effect.Effect<A, E, AppServices>, span?: RequestSpan) =>
   getRuntime().runFork(
-    withRequestSpanAndLogs(
+    withEffectConfig(
       effect.pipe(
         Effect.tapErrorCause((cause) =>
           Effect.logError('Forked effect failed', Cause.pretty(cause)),

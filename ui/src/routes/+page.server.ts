@@ -21,7 +21,7 @@ export const load: PageServerLoad = async ({ locals, request, url }) => {
         return yield* pythonServer.listDatasets;
       }),
       getChatsForUser(user.id),
-    ]),
+    ], { concurrency: 'inherit' }),
     requestSpanFromRequest(request, url, '/'),
   );
 
@@ -44,13 +44,10 @@ export const actions: Actions = {
     const chatId = await runEffect(
       Effect.gen(function* () {
         const chatId = yield* dbCreateChat(user.id, dataset);
-        yield* Effect.all(
-          [
-            publishChatStatus({ type: 'chat-created', userId: user.id, chatId }),
-            Console.log(`created: ${chatId}`),
-          ],
-          { concurrency: 'unbounded' },
-        );
+        yield* Effect.all([
+          publishChatStatus({ type: 'chat-created', userId: user.id, chatId }),
+          Console.log(`created: ${chatId}`),
+        ], { concurrency: 'inherit' });
         return chatId;
       }).pipe(Effect.withSpan('Chat.creation-request')),
       requestSpanFromRequest(request, url, '/'),
@@ -69,13 +66,10 @@ export const actions: Actions = {
     }
 
     await runEffect(
-      Effect.all(
-        [
-          dbDeleteChat(user.id, chatId),
-          publishChatStatus({ type: 'chat-deleted', userId: user.id, chatId }),
-        ],
-        { concurrency: 'unbounded' },
-      ).pipe(Effect.withSpan('Chat.deletion-request')),
+      Effect.all([
+        dbDeleteChat(user.id, chatId),
+        publishChatStatus({ type: 'chat-deleted', userId: user.id, chatId }),
+      ], { concurrency: 'inherit' }).pipe(Effect.withSpan('Chat.deletion-request')),
       requestSpanFromRequest(request, url, '/'),
     );
 

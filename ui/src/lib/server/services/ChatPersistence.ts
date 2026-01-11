@@ -103,24 +103,26 @@ const makeStore = (
       Effect.gen(function* () {
         yield* Effect.logDebug(`[ChatPersistence.get] Getting history for ${key}`);
 
-        const messages = yield* db.query.chatMessage.findMany({
-          where: eq(T.chatMessage.chatId, key),
-          orderBy: [asc(T.chatMessage.sequence)],
-          with: {
-            parts: {
-              orderBy: [asc(T.chatMessagePart.sequence)],
+        const messages = yield* db.query.chatMessage
+          .findMany({
+            where: eq(T.chatMessage.chatId, key),
+            orderBy: [asc(T.chatMessage.sequence)],
+            with: {
+              parts: {
+                orderBy: [asc(T.chatMessagePart.sequence)],
+              },
             },
-          },
-        }).pipe(
-          Effect.mapError(
-            (error) =>
-              new Persistence.PersistenceBackingError({
-                reason: 'BackingError',
-                method: 'get',
-                cause: error,
-              }),
-          ),
-        );
+          })
+          .pipe(
+            Effect.mapError(
+              (error) =>
+                new Persistence.PersistenceBackingError({
+                  reason: 'BackingError',
+                  method: 'get',
+                  cause: error,
+                }),
+            ),
+          );
 
         if (messages.length === 0) {
           yield* Effect.logDebug(`[ChatPersistence.get] No messages found`);
@@ -200,7 +202,7 @@ const makeStore = (
     const getMany = (
       keys: Array<string>,
     ): Effect.Effect<Array<Option.Option<unknown>>, Persistence.PersistenceError> =>
-      Effect.all(keys.map(get), { concurrency: 'unbounded' });
+      Effect.all(keys.map(get), { concurrency: 'inherit' });
 
     /**
      * Save chat history by parsing the Prompt and storing in normalized tables
@@ -338,9 +340,7 @@ const makeStore = (
             );
 
           // Build a map of sequence -> message id for inserting parts
-          const messageIdMap = new Map(
-            insertedMessages.map(({ id, sequence }) => [sequence, id]),
-          );
+          const messageIdMap = new Map(insertedMessages.map(({ id, sequence }) => [sequence, id]));
 
           // Batch insert all parts at once
           if (partsToInsert.length > 0) {
@@ -381,7 +381,7 @@ const makeStore = (
     ): Effect.Effect<void, Persistence.PersistenceError> =>
       Effect.all(
         entries.map(([key, value, ttl]) => set(key, value, ttl)),
-        { concurrency: 'unbounded', discard: true },
+        { concurrency: 'inherit', discard: true },
       );
 
     const remove = (key: string): Effect.Effect<void, Persistence.PersistenceError> =>

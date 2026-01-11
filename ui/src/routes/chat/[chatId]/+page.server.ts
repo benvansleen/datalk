@@ -13,24 +13,21 @@ export const load: PageServerLoad = async ({ locals, params, request, url }) => 
   const { chatId } = params;
 
   const [chats, chatData] = await runEffect(
-    Effect.all(
-      [
-        getChatsForUser(user.id),
-        Effect.gen(function* () {
-          const result = yield* getChatWithHistory(user.id, chatId);
-          if (Option.isNone(result)) {
-            return null;
-          }
+    Effect.all([
+      getChatsForUser(user.id),
+      Effect.gen(function* () {
+        const result = yield* getChatWithHistory(user.id, chatId);
+        if (Option.isNone(result)) {
+          return null;
+        }
 
-          return {
-            currentMessageRequestId: result.value.currentMessageRequest,
-            currentMessageRequestContent: result.value.currentMessageRequestContent,
-            messages: result.value.messages,
-          } as const;
-        }).pipe(Effect.withSpan('Chat.get-chat-history')),
-      ],
-      { concurrency: 'unbounded' },
-    ),
+        return {
+          currentMessageRequestId: result.value.currentMessageRequest,
+          currentMessageRequestContent: result.value.currentMessageRequestContent,
+          messages: result.value.messages,
+        } as const;
+      }).pipe(Effect.withSpan('Chat.get-chat-history')),
+    ], { concurrency: 'inherit' }),
     requestSpanFromRequest(request, url, '/chat/[chatId]'),
   );
 
