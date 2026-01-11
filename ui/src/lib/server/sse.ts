@@ -50,4 +50,4 @@ export const streamToSSE = <T, E, R>(
     return new Response(encodedStream, {
       headers: SSE_HEADERS,
     });
-  }).pipe(Effect.withSpan('sse.streamToSSE'));
+  }).pipe(Effect.withSpan('sse.stream'));

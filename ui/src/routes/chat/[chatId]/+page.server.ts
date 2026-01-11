@@ -1,9 +1,14 @@
 import type { PageServerLoad } from './$types';
 import { redirect } from '@sveltejs/kit';
 import { Effect, Option } from 'effect';
-import { runEffect, getChatsForUser, getChatWithHistory } from '$lib/server';
+import {
+  requestSpanFromRequest,
+  runEffect,
+  getChatsForUser,
+  getChatWithHistory,
+} from '$lib/server';
 
-export const load: PageServerLoad = async ({ locals, params }) => {
+export const load: PageServerLoad = async ({ locals, params, request, url }) => {
   const user = locals.user;
   const { chatId } = params;
 
@@ -26,6 +31,7 @@ export const load: PageServerLoad = async ({ locals, params }) => {
       ],
       { concurrency: 'unbounded' },
     ),
+    requestSpanFromRequest(request, url, '/chat/[chatId]'),
   );
 
   if (!chatData) {

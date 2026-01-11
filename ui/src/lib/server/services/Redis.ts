@@ -38,7 +38,15 @@ export class Redis extends Effect.Service<Redis>()('app/Redis', {
           new RedisError({
             message: `Failed to publish to ${channel}: ${error instanceof Error ? error.message : String(error)}`,
           }),
-      }).pipe(Effect.withSpan('Redis.publish', { attributes: { channel } }));
+      }).pipe(
+        Effect.withSpan('redis PUBLISH', {
+          attributes: {
+            'messaging.system': 'redis',
+            'messaging.operation': 'publish',
+            'messaging.destination': channel,
+          },
+        }),
+      );
 
     const subscribe = (channel: string, callback: (message: string) => void) =>
       Effect.tryPromise({
@@ -47,7 +55,15 @@ export class Redis extends Effect.Service<Redis>()('app/Redis', {
           new RedisError({
             message: `Failed to subscribe to ${channel}: ${error instanceof Error ? error.message : String(error)}`,
           }),
-      }).pipe(Effect.withSpan('Redis.subscribe', { attributes: { channel } }));
+      }).pipe(
+        Effect.withSpan('redis SUBSCRIBE', {
+          attributes: {
+            'messaging.system': 'redis',
+            'messaging.operation': 'subscribe',
+            'messaging.destination': channel,
+          },
+        }),
+      );
 
     const unsubscribe = (channel: string) =>
       Effect.tryPromise({
@@ -56,7 +72,16 @@ export class Redis extends Effect.Service<Redis>()('app/Redis', {
           new RedisError({
             message: `Failed to unsubscribe from ${channel}: ${error instanceof Error ? error.message : String(error)}`,
           }),
-      }).pipe(Effect.asVoid, Effect.withSpan('Redis.unsubscribe', { attributes: { channel } }));
+      }).pipe(
+        Effect.asVoid,
+        Effect.withSpan('redis UNSUBSCRIBE', {
+          attributes: {
+            'messaging.system': 'redis',
+            'messaging.operation': 'unsubscribe',
+            'messaging.destination': channel,
+          },
+        }),
+      );
 
     const lPush = (key: string, value: string) =>
       Effect.tryPromise({
@@ -65,7 +90,15 @@ export class Redis extends Effect.Service<Redis>()('app/Redis', {
           new RedisError({
             message: `Failed to lPush to ${key}: ${error instanceof Error ? error.message : String(error)}`,
           }),
-      }).pipe(Effect.withSpan('Redis.lPush', { attributes: { key } }));
+      }).pipe(
+        Effect.withSpan('redis LPUSH', {
+          attributes: {
+            'db.system': 'redis',
+            'db.operation': 'lpush',
+            'db.redis.key': key,
+          },
+        }),
+      );
 
     const lRange = (key: string, start: number, stop: number) =>
       Effect.tryPromise({
@@ -74,7 +107,17 @@ export class Redis extends Effect.Service<Redis>()('app/Redis', {
           new RedisError({
             message: `Failed to lRange from ${key}: ${error instanceof Error ? error.message : String(error)}`,
           }),
-      }).pipe(Effect.withSpan('Redis.lRange', { attributes: { key, start, stop } }));
+      }).pipe(
+        Effect.withSpan('redis LRANGE', {
+          attributes: {
+            'db.system': 'redis',
+            'db.operation': 'lrange',
+            'db.redis.key': key,
+            'db.redis.start': start,
+            'db.redis.stop': stop,
+          },
+        }),
+      );
 
     const set = (key: string, value: string) =>
       Effect.tryPromise({
@@ -83,16 +126,34 @@ export class Redis extends Effect.Service<Redis>()('app/Redis', {
           new RedisError({
             message: `Failed to set ${key}: ${error instanceof Error ? error.message : String(error)}`,
           }),
-      }).pipe(Effect.asVoid, Effect.withSpan('Redis.set', { attributes: { key } }));
+      }).pipe(
+        Effect.asVoid,
+        Effect.withSpan('redis SET', {
+          attributes: {
+            'db.system': 'redis',
+            'db.operation': 'set',
+            'db.redis.key': key,
+          },
+        }),
+      );
 
     const get = (key: string) =>
       Effect.tryPromise({
+        // try: () => client.get(key),
         try: () => client.get(key),
         catch: (error) =>
           new RedisError({
             message: `Failed to get ${key}: ${error instanceof Error ? error.message : String(error)}`,
           }),
-      }).pipe(Effect.withSpan('Redis.get', { attributes: { key } }));
+      }).pipe(
+        Effect.withSpan('redis GET', {
+          attributes: {
+            'db.system': 'redis',
+            'db.operation': 'get',
+            'db.redis.key': key,
+          },
+        }),
+      );
 
     // ============================================================================
     // Redis Streams
@@ -117,7 +178,15 @@ export class Redis extends Effect.Service<Redis>()('app/Redis', {
           new RedisError({
             message: `Failed to xAdd to ${key}: ${error instanceof Error ? error.message : String(error)}`,
           }),
-      }).pipe(Effect.withSpan('Redis.xAdd', { attributes: { key } }));
+      }).pipe(
+        Effect.withSpan('redis XADD', {
+          attributes: {
+            'db.system': 'redis',
+            'db.operation': 'xadd',
+            'db.redis.key': key,
+          },
+        }),
+      );
 
     /**
      * Read a range of entries from a stream.
@@ -130,7 +199,17 @@ export class Redis extends Effect.Service<Redis>()('app/Redis', {
           new RedisError({
             message: `Failed to xRange from ${key}: ${error instanceof Error ? error.message : String(error)}`,
           }),
-      }).pipe(Effect.withSpan('Redis.xRange', { attributes: { key, start, end } }));
+      }).pipe(
+        Effect.withSpan('redis XRANGE', {
+          attributes: {
+            'db.system': 'redis',
+            'db.operation': 'xrange',
+            'db.redis.key': key,
+            'db.redis.start': start,
+            'db.redis.end': end,
+          },
+        }),
+      );
 
     /**
      * Blocking read from one or more streams.
@@ -151,8 +230,12 @@ export class Redis extends Effect.Service<Redis>()('app/Redis', {
             message: `Failed to xRead: ${error instanceof Error ? error.message : String(error)}`,
           }),
       }).pipe(
-        Effect.withSpan('Redis.xRead', {
-          attributes: { streams: streams.map((s) => s.key).join(',') },
+        Effect.withSpan('redis XREAD', {
+          attributes: {
+            'db.system': 'redis',
+            'db.operation': 'xread',
+            'db.redis.keys': streams.map((s) => s.key),
+          },
         }),
       );
 
@@ -166,7 +249,17 @@ export class Redis extends Effect.Service<Redis>()('app/Redis', {
           new RedisError({
             message: `Failed to expire ${key}: ${error instanceof Error ? error.message : String(error)}`,
           }),
-      }).pipe(Effect.asVoid, Effect.withSpan('Redis.expire', { attributes: { key, seconds } }));
+      }).pipe(
+        Effect.asVoid,
+        Effect.withSpan('redis EXPIRE', {
+          attributes: {
+            'db.system': 'redis',
+            'db.operation': 'expire',
+            'db.redis.key': key,
+            'db.redis.ttl_seconds': seconds,
+          },
+        }),
+      );
 
     return {
       publish,

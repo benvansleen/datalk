@@ -8,9 +8,10 @@ import {
   deleteChat as dbDeleteChat,
   getChatsForUser,
   PythonServer,
+  requestSpanFromRequest,
 } from '$lib/server';
 
-export const load: PageServerLoad = async ({ locals }) => {
+export const load: PageServerLoad = async ({ locals, request, url }) => {
   const user = locals.user;
 
   const [datasets, chats] = await runEffect(
@@ -21,6 +22,7 @@ export const load: PageServerLoad = async ({ locals }) => {
       }),
       getChatsForUser(user.id),
     ]),
+    requestSpanFromRequest(request, url, '/'),
   );
 
   return {
@@ -30,7 +32,7 @@ export const load: PageServerLoad = async ({ locals }) => {
 };
 
 export const actions: Actions = {
-  createChat: async ({ request, locals }) => {
+  createChat: async ({ request, locals, url }) => {
     const user = locals.user;
     const formData = await request.formData();
     const dataset = formData.get('dataset') as string;
@@ -51,12 +53,13 @@ export const actions: Actions = {
         );
         return chatId;
       }).pipe(Effect.withSpan('Chat.creation-request')),
+      requestSpanFromRequest(request, url, '/'),
     );
 
     redirect(303, `/chat/${chatId}`);
   },
 
-  deleteChat: async ({ request, locals }) => {
+  deleteChat: async ({ request, locals, url }) => {
     const user = locals.user;
     const formData = await request.formData();
     const chatId = formData.get('chatId') as string;
@@ -73,6 +76,7 @@ export const actions: Actions = {
         ],
         { concurrency: 'unbounded' },
       ).pipe(Effect.withSpan('Chat.deletion-request')),
+      requestSpanFromRequest(request, url, '/'),
     );
 
     return { success: true };

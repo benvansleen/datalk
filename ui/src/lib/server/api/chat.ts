@@ -44,7 +44,16 @@ export const publishChatStatus = (event: ChatStatusEvent) =>
   Effect.gen(function* () {
     const redis = yield* Redis;
     yield* redis.publish('chat-status', JSON.stringify(event));
-  }).pipe(Effect.withSpan('chat.publishStatus', { attributes: { type: event.type } }));
+  }).pipe(
+    Effect.withSpan('chat.status.publish', {
+      attributes: {
+        'messaging.system': 'redis',
+        'messaging.operation': 'publish',
+        'messaging.destination': 'chat-status',
+        'chat.status.type': event.type,
+      },
+    }),
+  );
 
 // ============================================================================
 // Generation Events (using Redis Streams for reliable delivery)
@@ -62,27 +71,49 @@ const generationStreamKey = (messageRequestId: string) => `gen:${messageRequestI
  * Publish a response generation event to Redis Stream.
  * Uses XADD with approximate MAXLEN trimming to bound memory.
  */
-export const publishGenerationEvent = (messageRequestId: string, event: object) =>
-  Effect.gen(function* () {
+export const publishGenerationEvent = (messageRequestId: string, event: object) => {
+  const streamKey = generationStreamKey(messageRequestId);
+  return Effect.gen(function* () {
     const redis = yield* Redis;
     yield* redis.xAdd(
-      generationStreamKey(messageRequestId),
+      streamKey,
       { event: JSON.stringify(event) },
       { maxLen: GENERATION_STREAM_MAX_LEN },
     );
-  }).pipe(Effect.withSpan('chat.publishGenerationEvent'));
+  }).pipe(
+    Effect.withSpan('chat.generation.publish', {
+      attributes: {
+        'messaging.system': 'redis',
+        'messaging.operation': 'publish',
+        'messaging.destination': streamKey,
+        'chat.message_request.id': messageRequestId,
+      },
+    }),
+  );
+};
 
 /**
  * Mark a generation as complete.
  * Adds the response_done event and sets a TTL on the stream for cleanup.
  */
-export const markGenerationComplete = (messageRequestId: string) =>
-  Effect.gen(function* () {
+export const markGenerationComplete = (messageRequestId: string) => {
+  const streamKey = generationStreamKey(messageRequestId);
+  return Effect.gen(function* () {
     const redis = yield* Redis;
-    const streamKey = generationStreamKey(messageRequestId);
     yield* redis.xAdd(streamKey, { event: JSON.stringify({ type: 'response_done' }) });
     yield* redis.expire(streamKey, GENERATION_STREAM_TTL_SECONDS);
-  }).pipe(Effect.withSpan('chat.markGenerationComplete'));
+  }).pipe(
+    Effect.withSpan('chat.generation.complete', {
+      attributes: {
+        'messaging.system': 'redis',
+        'messaging.operation': 'publish',
+        'messaging.destination': streamKey,
+        'chat.message_request.id': messageRequestId,
+        'chat.generation.completed': true,
+      },
+    }),
+  );
+};
 
 // ============================================================================
 // Stream-based subscriptions for SSE endpoints
@@ -100,7 +131,16 @@ export const subscribeChatStatus = (userId: string) =>
         .subscribeToChannelJson<ChatStatusEvent>('chat-status')
         .pipe(Stream.filter((event) => event.userId === userId));
     }),
-  ).pipe(Stream.withSpan('chat.subscribeChatStatus', { attributes: { userId } }));
+  ).pipe(
+    Stream.withSpan('chat.status.subscribe', {
+      attributes: {
+        'messaging.system': 'redis',
+        'messaging.operation': 'subscribe',
+        'messaging.destination': 'chat-status',
+        'chat.user_id': userId,
+      },
+    }),
+  );
 
 /**
  * Parse a generation event from a JSON string.
@@ -235,11 +275,29 @@ export const subscribeGenerationEvents = (messageRequestId: string) =>
             yield* Effect.addFinalizer(() => Fiber.interrupt(fiber));
           }),
         { bufferSize: 256, strategy: 'sliding' },
-      ).pipe(Stream.withSpan('chat.subscribeGenerationEvents.live', { attributes: { streamKey } }));
+      ).pipe(
+        Stream.withSpan('chat.generation.subscribe.live', {
+          attributes: {
+            'messaging.system': 'redis',
+            'messaging.operation': 'receive',
+            'messaging.destination': streamKey,
+            'chat.message_request.id': messageRequestId,
+          },
+        }),
+      );
 
       // Concatenate history with live events, and end on 'response_done'
       return Stream.concat(historyStream, liveStream).pipe(
         Stream.takeUntil((event) => event.type === 'response_done'),
       );
     }),
-  ).pipe(Stream.withSpan('chat.subscribeGenerationEvents', { attributes: { messageRequestId } }));
+  ).pipe(
+    Stream.withSpan('chat.generation.subscribe', {
+      attributes: {
+        'messaging.system': 'redis',
+        'messaging.operation': 'subscribe',
+        'messaging.destination': generationStreamKey(messageRequestId),
+        'chat.message_request.id': messageRequestId,
+      },
+    }),
+  );

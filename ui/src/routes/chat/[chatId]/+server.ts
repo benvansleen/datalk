@@ -15,9 +15,9 @@ import {
   publishGenerationEvent,
   markGenerationComplete,
   requireChatOwnership,
+  requestSpanFromRequest,
 } from '$lib/server';
 import { Effect, Stream, Option, Exit, Cause } from 'effect';
-import { getRequestEvent } from '$app/server';
 
 /**
  * Generate a title for the chat based on recent messages.
@@ -155,10 +155,8 @@ export const generateResponse = Effect.fn('generateResponse')(function* (
   yield* finalizeGeneration(userId, chatId, messageId);
 });
 
-export const POST: RequestHandler = async ({ request, params }) => {
-  const {
-    locals: { user },
-  } = getRequestEvent();
+export const POST: RequestHandler = async ({ request, params, locals, url }) => {
+  const { user } = locals;
   const { chatId } = params;
   const content = await request.text();
 
@@ -220,6 +218,7 @@ export const POST: RequestHandler = async ({ request, params }) => {
           },
         });
       }).pipe(Effect.withSpan('POST /chat/[chatId]')),
+      requestSpanFromRequest(request, url, '/chat/[chatId]'),
     ),
     {
       onSuccess: (response) => response,

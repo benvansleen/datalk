@@ -72,7 +72,15 @@ export class RedisSubscriber extends Effect.Service<RedisSubscriber>()('app/Redi
             );
           }),
         { bufferSize: 256, strategy: 'sliding' },
-      ).pipe(Stream.withSpan('RedisSubscriber.subscribeToChannel', { attributes: { channel } }));
+      ).pipe(
+        Stream.withSpan('redis SUBSCRIBE', {
+          attributes: {
+            'messaging.system': 'redis',
+            'messaging.operation': 'subscribe',
+            'messaging.destination': channel,
+          },
+        }),
+      );
 
     /**
      * Subscribes to a channel and maps messages through a parser.

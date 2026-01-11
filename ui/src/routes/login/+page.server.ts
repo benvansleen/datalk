@@ -1,7 +1,7 @@
 import type { Actions, PageServerLoad } from './$types';
 import { redirect, fail } from '@sveltejs/kit';
 import { Effect, Exit, Cause } from 'effect';
-import { Auth, AuthError, runEffectExit } from '$lib/server';
+import { Auth, AuthError, requestSpanFromRequest, runEffectExit } from '$lib/server';
 
 export const load: PageServerLoad = async ({ locals }) => {
   // Redirect to home if already logged in
@@ -12,7 +12,7 @@ export const load: PageServerLoad = async ({ locals }) => {
 };
 
 export const actions: Actions = {
-  default: async ({ request }) => {
+  default: async ({ request, url }) => {
     const formData = await request.formData();
     const email = formData.get('email') as string;
     const password = formData.get('password') as string;
@@ -27,6 +27,7 @@ export const actions: Actions = {
           const auth = yield* Auth;
           yield* auth.login({ email, password }, request.headers);
         }),
+        requestSpanFromRequest(request, url, '/login'),
       ),
       {
         onSuccess: () => redirect(303, '/'),

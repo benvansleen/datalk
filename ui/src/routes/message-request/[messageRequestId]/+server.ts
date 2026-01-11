@@ -6,8 +6,8 @@ import {
   subscribeGenerationEvents,
   streamToSSE,
   AuthError,
+  requestSpanFromRequest,
 } from '$lib/server';
-import { getRequestEvent } from '$app/server';
 
 /**
  * SSE endpoint for message generation events.
@@ -15,11 +15,9 @@ import { getRequestEvent } from '$app/server';
  * Streams AI response generation events for a specific message request.
  * Includes history replay for reconnecting clients.
  */
-export const GET: RequestHandler = async (event) => {
-  const {
-    locals: { user },
-  } = getRequestEvent();
-  const { messageRequestId } = event.params;
+export const GET: RequestHandler = async ({ locals, params, request, url }) => {
+  const { user } = locals;
+  const { messageRequestId } = params;
 
   return runEffect(
     Effect.gen(function* () {
@@ -43,5 +41,6 @@ export const GET: RequestHandler = async (event) => {
       // Convert to SSE Response
       return yield* streamToSSE(generationStream);
     }).pipe(Effect.withSpan('GET /message-request/:id')),
+    requestSpanFromRequest(request, url, '/message-request/:id'),
   );
 };

@@ -1,4 +1,4 @@
-import { Effect, Layer } from 'effect';
+import { Effect, Layer, Logger } from 'effect';
 import { Auth } from '../services/Auth';
 import { ChatTitleGenerator } from '../services/ChatTitleGenerator';
 import { Config } from '../services/Config';
@@ -34,6 +34,7 @@ export const LiveLayer = Layer.mergeAll(
 ).pipe(
   Layer.provide(OpenAiClientLive.pipe(Layer.provide(NodeHttpClient.layerUndici))),
   Layer.provideMerge(Config.Default),
+  Layer.provide(Logger.logFmt),
 );
 
 // Type helper for the services provided by the live layer

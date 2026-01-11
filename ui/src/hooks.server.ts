@@ -1,7 +1,7 @@
 import { svelteKitHandler } from 'better-auth/svelte-kit';
 import { building } from '$app/environment';
 import { redirect, type Handle, type HandleServerError } from '@sveltejs/kit';
-import { Auth, AuthError, runEffectExit } from '$lib/server';
+import { Auth, AuthError, runEffectExit, requestSpanFromRequest } from '$lib/server';
 import { Effect, Exit, Option } from 'effect';
 
 const UNPROTECTED_ROUTES = ['/login', '/signup'];
@@ -21,6 +21,7 @@ export const handle: Handle = async ({ event, resolve }) => {
 
         return svelteKitHandler({ event, resolve, auth: auth.__raw, building });
       }).pipe(Effect.withSpan('Handle')),
+      requestSpanFromRequest(event.request, event.url, event.route?.id ?? event.url.pathname),
     ),
     {
       onSuccess: (response) => response,

@@ -33,7 +33,15 @@ export { LiveLayer, type AppServices } from './layers/Live';
 // TestLayer is a placeholder - will be expanded when we add @effect/vitest
 
 // Runtime
-export { getRuntime, runEffect, runEffectExit, runEffectFork, getFailure } from './runtime';
+export {
+  getRuntime,
+  runEffect,
+  runEffectExit,
+  runEffectFork,
+  getFailure,
+  requestSpanFromRequest,
+  type RequestSpan,
+} from './runtime';
 
 // Observability
 export { ObservabilityLive } from './observability';

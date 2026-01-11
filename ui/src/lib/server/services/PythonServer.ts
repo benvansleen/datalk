@@ -100,7 +100,15 @@ export class PythonServer extends Effect.Service<PythonServer>()('app/PythonServ
         new PythonServerError({
           message: `Failed to list datasets: ${error instanceof Error ? error.message : String(error)}`,
         }),
-    }).pipe(Effect.withSpan('PythonServer.listDatasets'));
+    }).pipe(
+      Effect.withSpan('HTTP GET /dataset/list', {
+        attributes: {
+          'http.method': 'GET',
+          'http.url': `${baseUrl}/dataset/list`,
+          'http.route': '/dataset/list',
+        },
+      }),
+    );
 
     /**
      * Create or get an execution environment for a chat
@@ -114,7 +122,15 @@ export class PythonServer extends Effect.Service<PythonServer>()('app/PythonServ
         },
         EnvironmentCreateResponse,
       ).pipe(
-        Effect.withSpan('PythonServer.createEnvironment', { attributes: { chatId, dataset } }),
+        Effect.withSpan('HTTP POST /environment/create', {
+          attributes: {
+            'http.method': 'POST',
+            'http.url': `${baseUrl}/environment/create`,
+            'http.route': '/environment/create',
+            'chat.id': chatId,
+            'dataset.name': dataset,
+          },
+        }),
       );
 
     /**
@@ -129,8 +145,15 @@ export class PythonServer extends Effect.Service<PythonServer>()('app/PythonServ
         },
         ExecuteResult,
       ).pipe(
-        Effect.withSpan('PythonServer.execute', {
-          attributes: { chatId, language, codeLines: code.length },
+        Effect.withSpan('HTTP POST /execute', {
+          attributes: {
+            'http.method': 'POST',
+            'http.url': `${baseUrl}/execute`,
+            'http.route': '/execute',
+            'chat.id': chatId,
+            'code.language': language,
+            'code.lines': code.length,
+          },
         }),
       );
 
@@ -151,7 +174,14 @@ export class PythonServer extends Effect.Service<PythonServer>()('app/PythonServ
           }),
       }).pipe(
         Effect.asVoid,
-        Effect.withSpan('PythonServer.destroyEnvironment', { attributes: { chatId } }),
+        Effect.withSpan('HTTP POST /environment/destroy', {
+          attributes: {
+            'http.method': 'POST',
+            'http.url': `${baseUrl}/environment/destroy`,
+            'http.route': '/environment/destroy',
+            'chat.id': chatId,
+          },
+        }),
       );
 
     /**
@@ -167,7 +197,16 @@ export class PythonServer extends Effect.Service<PythonServer>()('app/PythonServ
           new PythonServerError({
             message: `Failed to check environment: ${error instanceof Error ? error.message : String(error)}`,
           }),
-      }).pipe(Effect.withSpan('PythonServer.environmentExists', { attributes: { chatId } }));
+      }).pipe(
+        Effect.withSpan('HTTP GET /environment/exists', {
+          attributes: {
+            'http.method': 'GET',
+            'http.url': `${baseUrl}/environment/exists?chat_id=${encodeURIComponent(chatId)}`,
+            'http.route': '/environment/exists',
+            'chat.id': chatId,
+          },
+        }),
+      );
 
     return {
       listDatasets,

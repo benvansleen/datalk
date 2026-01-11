@@ -1,7 +1,6 @@
 import type { RequestHandler } from './$types';
 import { Effect } from 'effect';
-import { runEffect, subscribeChatStatus, streamToSSE } from '$lib/server';
-import { getRequestEvent } from '$app/server';
+import { requestSpanFromRequest, runEffect, subscribeChatStatus, streamToSSE } from '$lib/server';
 
 /**
  * SSE endpoint for chat status events.
@@ -9,10 +8,8 @@ import { getRequestEvent } from '$app/server';
  * Streams chat lifecycle events (created, deleted, title changed, status changed)
  * filtered to the authenticated user.
  */
-export const GET: RequestHandler = async () => {
-  const {
-    locals: { user },
-  } = getRequestEvent();
+export const GET: RequestHandler = async ({ locals, request, url }) => {
+  const { user } = locals;
   return runEffect(
     Effect.gen(function* () {
       // Create the SSE stream for this user's chat events
@@ -21,5 +18,6 @@ export const GET: RequestHandler = async () => {
       // Convert to SSE Response
       return yield* streamToSSE(chatStream);
     }).pipe(Effect.withSpan('GET /chat-status-events')),
+    requestSpanFromRequest(request, url, '/chat-status-events'),
   );
 };

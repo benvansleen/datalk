@@ -22,7 +22,7 @@ export class Auth extends Effect.Service<Auth>()('app/Auth', {
     });
 
     const signup = Effect.fn('Auth.signup')(function* (request: SignupRequest) {
-      yield* Effect.annotateCurrentSpan({ email: request.email });
+      yield* Effect.annotateCurrentSpan({ 'enduser.email': request.email });
       yield* Effect.logInfo('Attempting signup', JSON.stringify(request));
 
       if (config.isProduction && !WHITELIST_SIGNUPS.has(request.email)) {
@@ -63,7 +63,7 @@ export class Auth extends Effect.Service<Auth>()('app/Auth', {
     });
 
     const login = Effect.fn('Auth.login')(function* (request: LoginRequest, headers: Headers) {
-      yield* Effect.annotateCurrentSpan({ email: request.email });
+      yield* Effect.annotateCurrentSpan({ 'enduser.email': request.email });
       yield* Effect.logInfo('Attempting login', { email: request.email });
 
       const result = yield* Effect.tryPromise({

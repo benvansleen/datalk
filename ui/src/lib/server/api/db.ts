@@ -22,7 +22,13 @@ export const getChatsForUser = (userId: string) =>
           message: `Failed to get chats: ${error instanceof Error ? error.message : String(error)}`,
         }),
     ),
-    Effect.withSpan('db.getChatsForUser'),
+    Effect.withSpan('postgresql SELECT chat', {
+      attributes: {
+        'db.system': 'postgresql',
+        'db.operation': 'select',
+        'db.sql.table': 'chat',
+      },
+    }),
   );
 
 /**
@@ -51,7 +57,13 @@ export const requireChatOwnership = (userId: string, chatId: string) =>
         message: `Failed to verify chat ownership: ${error instanceof Error ? error.message : String(error)}`,
       });
     }),
-    Effect.withSpan('db.requireChatOwnership'),
+    Effect.withSpan('postgresql SELECT chat', {
+      attributes: {
+        'db.system': 'postgresql',
+        'db.operation': 'select',
+        'db.sql.table': 'chat',
+      },
+    }),
   );
 
 /**
@@ -77,7 +89,13 @@ export const createChat = (userId: string, dataset: string) =>
           message: `Failed to create chat: ${error instanceof Error ? error.message : String(error)}`,
         }),
     ),
-    Effect.withSpan('db.createChat'),
+    Effect.withSpan('postgresql INSERT chat', {
+      attributes: {
+        'db.system': 'postgresql',
+        'db.operation': 'insert',
+        'db.sql.table': 'chat',
+      },
+    }),
   );
 
 /**
@@ -94,7 +112,13 @@ export const deleteChat = (userId: string, chatId: string) =>
           message: `Failed to delete chat: ${error instanceof Error ? error.message : String(error)}`,
         }),
     ),
-    Effect.withSpan('db.deleteChat'),
+    Effect.withSpan('postgresql DELETE chat', {
+      attributes: {
+        'db.system': 'postgresql',
+        'db.operation': 'delete',
+        'db.sql.table': 'chat',
+      },
+    }),
   );
 
 /**
@@ -115,7 +139,13 @@ export const createMessageRequest = (userId: string, chatId: string, content: st
           message: `Failed to create message request: ${error instanceof Error ? error.message : String(error)}`,
         }),
     ),
-    Effect.withSpan('db.createMessageRequest'),
+    Effect.withSpan('postgresql INSERT message_requests', {
+      attributes: {
+        'db.system': 'postgresql',
+        'db.operation': 'insert',
+        'db.sql.table': 'message_requests',
+      },
+    }),
   );
 
 /**
@@ -132,7 +162,13 @@ export const updateChatTitle = (chatId: string, title: string) =>
           message: `Failed to update chat title: ${error instanceof Error ? error.message : String(error)}`,
         }),
     ),
-    Effect.withSpan('db.updateChatTitle'),
+    Effect.withSpan('postgresql UPDATE chat', {
+      attributes: {
+        'db.system': 'postgresql',
+        'db.operation': 'update',
+        'db.sql.table': 'chat',
+      },
+    }),
   );
 
 /**
@@ -149,7 +185,13 @@ export const clearCurrentMessageRequest = (chatId: string) =>
           message: `Failed to clear message request: ${error instanceof Error ? error.message : String(error)}`,
         }),
     ),
-    Effect.withSpan('db.clearCurrentMessageRequest'),
+    Effect.withSpan('postgresql UPDATE chat', {
+      attributes: {
+        'db.system': 'postgresql',
+        'db.operation': 'update',
+        'db.sql.table': 'chat',
+      },
+    }),
   );
 
 /**
@@ -171,7 +213,13 @@ export const getMessageRequest = (messageRequestId: string) =>
           message: `Failed to get message request: ${error instanceof Error ? error.message : String(error)}`,
         }),
     ),
-    Effect.withSpan('db.getMessageRequest'),
+    Effect.withSpan('postgresql SELECT message_requests', {
+      attributes: {
+        'db.system': 'postgresql',
+        'db.operation': 'select',
+        'db.sql.table': 'message_requests',
+      },
+    }),
   );
 
 // ============================================================================
@@ -319,5 +367,11 @@ export const getChatWithHistory = (userId: string, chatId: string) =>
           message: `Failed to get chat with history: ${error instanceof Error ? error.message : String(error)}`,
         }),
     ),
-    Effect.withSpan('db.getChatWithHistory'),
+    Effect.withSpan('postgresql SELECT chat', {
+      attributes: {
+        'db.system': 'postgresql',
+        'db.operation': 'select',
+        'db.sql.table': 'chat',
+      },
+    }),
   );
