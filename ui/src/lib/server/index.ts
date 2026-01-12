@@ -32,7 +32,6 @@ export {
 
 // Layers
 export { LiveLayer, type AppServices } from './layers/Live';
-// TestLayer is a placeholder - will be expanded when we add @effect/vitest
 
 // Runtime
 export {
