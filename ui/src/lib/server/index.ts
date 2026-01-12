@@ -10,6 +10,7 @@ export { DatalkAgent, DatalkAgentLive, type DatalkStreamPart } from './services/
 export { ChatContext, type ChatContextData } from './services/ChatContext';
 export { ChatBackingPersistenceLive } from './services/ChatPersistence';
 export { ChatTitleGenerator } from './services/ChatTitleGenerator';
+export { finalizeGeneration, generateResponse } from './api/chat-generation';
 export {
   DatalkToolkit,
   DatalkToolHandlersLive,

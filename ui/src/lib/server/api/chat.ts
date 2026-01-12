@@ -1,4 +1,5 @@
-import { Effect, Fiber, Scope, Stream } from 'effect';
+import { Effect, Fiber, Stream } from 'effect';
+import type { Scope } from 'effect';
 import { Redis } from '../services/Redis';
 import { RedisStreamReader } from '../services/RedisStreamReader';
 import { RedisSubscriber } from '../services/RedisSubscriber';

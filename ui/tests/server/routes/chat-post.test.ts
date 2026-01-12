@@ -1,8 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Cause, Effect, Exit, Layer, Option, Stream } from 'effect';
-import type { DatalkStreamPart } from '$lib/server';
-import { Database, DatalkAgent, Redis } from '$lib/server';
-import { finalizeGeneration, generateResponse } from '../../../src/routes/chat/[chatId]/+server';
+import type { DatalkStreamPart } from '$lib/server/services/DatalkAgent';
+import { DatalkAgent } from '$lib/server/services/DatalkAgent';
+import { Database } from '$lib/server/services/Database';
+import { Redis } from '$lib/server/services/Redis';
+import { finalizeGeneration, generateResponse } from '$lib/server';
 
 const publishChatStatusMock = vi.hoisted(() => vi.fn((event) => Effect.succeed(event)));
 const publishGenerationEventMock = vi.hoisted(() =>
@@ -12,17 +14,12 @@ const markGenerationCompleteMock = vi.hoisted(() =>
   vi.fn((messageId) => Effect.succeed(messageId)),
 );
 
-vi.mock('$lib/server', async () => {
-  const actual = await vi.importActual<typeof import('$lib/server')>('$lib/server');
-  const { Context } = await import('effect');
-
-  const Database = Context.Tag('Test/Database')<unknown, unknown>();
-  const DatalkAgent = Context.Tag('Test/DatalkAgent')<unknown, unknown>();
+vi.mock('$lib/server/api/chat', async () => {
+  const actual =
+    await vi.importActual<typeof import('$lib/server/api/chat')>('$lib/server/api/chat');
 
   return {
     ...actual,
-    Database,
-    DatalkAgent,
     publishChatStatus: publishChatStatusMock,
     publishGenerationEvent: publishGenerationEventMock,
     markGenerationComplete: markGenerationCompleteMock,

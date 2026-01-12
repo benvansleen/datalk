@@ -1,4 +1,5 @@
-import { ManagedRuntime, Effect, Exit, Cause, ConfigError as EffectConfigError } from 'effect';
+import { ManagedRuntime, Effect, Exit, Cause } from 'effect';
+import type { ConfigError as EffectConfigError } from 'effect';
 import { type SqlError } from '@effect/sql/SqlError';
 import { LiveLayer, type AppServices } from './layers/Live';
 import { RedisError } from './errors';

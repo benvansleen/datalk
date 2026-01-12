@@ -1,4 +1,5 @@
-import { Effect, Layer, Option, Duration, Scope, Context, Schema } from 'effect';
+import { Effect, Layer, Option, Context, Schema } from 'effect';
+import type { Duration, Scope } from 'effect';
 import { Persistence } from '@effect/experimental';
 import { eq, asc, count } from 'drizzle-orm';
 import { Database } from './Database';
