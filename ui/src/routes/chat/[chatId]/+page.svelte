@@ -253,7 +253,7 @@
   );
 </script>
 
-  <Sidebar chats={chats} currentChatId={data.chatId}>
+<Sidebar {chats} currentChatId={data.chatId}>
   <div class="m-20 grid gap-6">
     <div class="grid gap-2">
       {#each data.messages as message}
