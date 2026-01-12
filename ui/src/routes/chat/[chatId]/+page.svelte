@@ -11,6 +11,7 @@
   import Sidebar from '$lib/components/sidebar.svelte';
 
   let { data }: PageProps = $props();
+  let chats = $derived(data.chats);
 
   const pendingMessageContent = $derived(
     'currentMessageRequestContent' in data ? data.currentMessageRequestContent : null,
@@ -26,7 +27,32 @@
     const chatStatusEvents = new EventSource('/chat-status-events');
     chatStatusEvents.addEventListener('message', (e) => {
       const event = JSON.parse(e.data);
-      if (event.type === 'chat-created' || event.type === 'chat-deleted') {
+
+      if (event.type === 'chat-deleted') {
+        chats = chats.filter((chat) => chat.id !== event.chatId);
+        if (event.chatId === data.chatId) {
+          invalidateAll();
+        }
+        return;
+      }
+
+      if (event.type === 'title-changed') {
+        chats = chats.map((chat) =>
+          chat.id === event.chatId ? { ...chat, title: event.title } : chat,
+        );
+        return;
+      }
+
+      if (event.type === 'status-changed') {
+        chats = chats.map((chat) =>
+          chat.id === event.chatId
+            ? { ...chat, currentMessageRequest: event.currentMessageId }
+            : chat,
+        );
+        return;
+      }
+
+      if (event.type === 'chat-created') {
         invalidateAll();
       }
     });
@@ -227,7 +253,7 @@
   );
 </script>
 
-<Sidebar chats={data.chats} currentChatId={data.chatId}>
+  <Sidebar chats={chats} currentChatId={data.chatId}>
   <div class="m-20 grid gap-6">
     <div class="grid gap-2">
       {#each data.messages as message}
