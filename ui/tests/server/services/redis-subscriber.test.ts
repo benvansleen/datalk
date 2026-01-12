@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Effect, Layer, Stream } from 'effect';
 import { RedisClientFactory } from '$lib/server/services/RedisClientFactory';
 import { RedisSubscriber } from '$lib/server/services/RedisSubscriber';
