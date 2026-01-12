@@ -252,48 +252,38 @@ export const getChatWithHistory = (userId: string, chatId: string) =>
   Effect.gen(function* () {
     const db = yield* Database;
 
-    // First, get the chat to verify ownership
-    const chatResult = yield* db.query.chat.findFirst({
+    const chat = yield* db.query.chat.findFirst({
       where: and(eq(T.chat.userId, userId), eq(T.chat.id, chatId)),
-    });
-
-    if (!chatResult) {
-      return Option.none<ChatHistory>();
-    }
-
-    let currentMessageRequestContent: string | null = null;
-    if (chatResult.currentMessageRequest) {
-      const [messageRequest] = yield* db
-        .select({ content: T.messageRequests.content })
-        .from(T.messageRequests)
-        .where(eq(T.messageRequests.id, chatResult.currentMessageRequest))
-        .limit(1);
-      currentMessageRequestContent = messageRequest?.content ?? null;
-    }
-
-    // Get messages with parts from normalized tables
-    const messagesWithParts = yield* db.query.chatMessage.findMany({
-      where: eq(T.chatMessage.chatId, chatId),
-      orderBy: [asc(T.chatMessage.sequence)],
       with: {
-        parts: {
-          orderBy: [asc(T.chatMessagePart.sequence)],
+        currentMessageRequestRecord: true,
+        messages: {
+          orderBy: [asc(T.chatMessage.sequence)],
+          with: {
+            parts: {
+              orderBy: [asc(T.chatMessagePart.sequence)],
+            },
+          },
         },
       },
     });
 
-    if (messagesWithParts.length === 0) {
-      // No history yet, return empty messages
+    if (!chat) {
+      return Option.none<ChatHistory>();
+    }
+
+    const currentMessageRequest = chat.currentMessageRequest ?? null;
+    const currentMessageRequestContent = chat.currentMessageRequestRecord?.content ?? null;
+
+    if (chat.messages.length === 0) {
       return Option.some({
-        currentMessageRequest: chatResult.currentMessageRequest,
+        currentMessageRequest,
         currentMessageRequestContent,
         messages: [] as DisplayMessage[],
       });
     }
 
-    // Build a map of tool call ID -> tool result for quick lookup
     const toolResultMap = new Map<string, T.ToolResultPartContent>();
-    for (const msg of messagesWithParts) {
+    for (const msg of chat.messages) {
       for (const part of msg.parts) {
         if (part.type === 'tool-result') {
           const content = part.content as T.ToolResultPartContent;
@@ -302,7 +292,7 @@ export const getChatWithHistory = (userId: string, chatId: string) =>
       }
     }
 
-    type MessagePart = (typeof messagesWithParts)[number]['parts'][number];
+    type MessagePart = (typeof chat.messages)[number]['parts'][number];
 
     const partToDisplayMessage = (
       msgRole: 'system' | 'user' | 'assistant' | 'tool',
@@ -337,16 +327,13 @@ export const getChatWithHistory = (userId: string, chatId: string) =>
         Match.orElse(() => Option.none()),
       );
 
-    // Transform to display format
     const messages: DisplayMessage[] = [];
 
-    for (const msg of messagesWithParts) {
-      // Skip system messages - they're not shown to the user
+    for (const msg of chat.messages) {
       if (msg.role === 'system') {
         continue;
       }
 
-      // Handle parts
       for (const part of msg.parts) {
         const displayMessage = partToDisplayMessage(msg.role, part);
         if (Option.isSome(displayMessage)) {
@@ -356,7 +343,7 @@ export const getChatWithHistory = (userId: string, chatId: string) =>
     }
 
     return Option.some({
-      currentMessageRequest: chatResult.currentMessageRequest,
+      currentMessageRequest,
       currentMessageRequestContent,
       messages,
     });

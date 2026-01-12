@@ -38,6 +38,10 @@ export const chat = pgTable('chat', {
 
 export const chatRelations = relations(chat, ({ one, many }) => ({
   messages: many(chatMessage),
+  currentMessageRequestRecord: one(messageRequests, {
+    fields: [chat.currentMessageRequest],
+    references: [messageRequests.id],
+  }),
   user: one(user, {
     fields: [chat.userId],
     references: [user.id],
