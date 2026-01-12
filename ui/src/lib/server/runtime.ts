@@ -89,14 +89,3 @@ export const runEffectFork = <A, E>(effect: Effect.Effect<A, E, AppServices>, sp
       span,
     ),
   );
-
-// Helper to extract error from Exit for error handling in routes
-export const getFailure = <E>(exit: Exit.Exit<unknown, E>): E | null => {
-  if (Exit.isFailure(exit)) {
-    const cause = exit.cause;
-    if (Cause.isFailType(cause)) {
-      return cause.error;
-    }
-  }
-  return null;
-};

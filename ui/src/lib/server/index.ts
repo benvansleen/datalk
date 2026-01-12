@@ -39,7 +39,6 @@ export {
   runEffect,
   runEffectExit,
   runEffectFork,
-  getFailure,
   requestSpanFromRequest,
   type RequestSpan,
 } from './runtime';

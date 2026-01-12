@@ -36,6 +36,7 @@ export class Config extends Effect.Service<Config>()('Config', {
       environment,
       isProduction: environment === 'production',
       openaiApiKey,
+      whitelistedEmails: new Set(['test@gmail.com']),
     } as const;
   }),
 }) {}
