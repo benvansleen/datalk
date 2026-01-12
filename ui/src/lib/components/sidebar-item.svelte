@@ -8,7 +8,7 @@
 <div class="relative group inline-block overflow-visible">
   <Button
     variant="ghost"
-    class={`flex items-center relative justify-start ${focused ? "bg-white" : ""}`}
+    class={`flex items-center relative justify-start ${focused ? 'bg-white' : ''}`}
     onclick={() => goto(link)}
   >
     <Icon />

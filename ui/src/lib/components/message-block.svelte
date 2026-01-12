@@ -8,68 +8,87 @@
     hljs.highlightAll();
   });
 
+  interface Props {
+    role?: string;
+    content?: string;
+    name?: string;
+    arguments?: string;
+    output?: unknown;
+  }
+
   const {
     role = undefined,
     content = undefined,
     name: fnName = undefined,
     arguments: args = undefined,
     output = undefined,
-  } = $props();
+  }: Props = $props();
 
-  const cleanFnName = (fnName: any) => {
+  const cleanFnName = (fnName: string | undefined): string => {
     switch (fnName) {
-      case 'check_environment': {
+      case 'check_environment':
         return 'check environment';
-      }
-      case 'run_python': {
+      case 'run_python':
         return 'python';
-      }
-
-      case 'run_sql': {
+      case 'run_sql':
         return 'sql';
-      }
-
-      default: {
-        return fnName;
-      }
+      default:
+        return fnName ?? 'tool';
     }
   };
 
-  const parseFn = ({ args, output }) => {
+  const parseFn = (args: string | undefined, output: unknown): string => {
     let result = '';
 
-    try {
-      const { python_code, sql_statement } = JSON.parse(args);
-      if (python_code) {
-        result += `
+    if (args) {
+      try {
+        const parsed = JSON.parse(args);
+        const { python_code, sql_statement } = parsed;
+        if (python_code) {
+          result += `
 \`\`\`python
 ${python_code.join('\n')}
 \`\`\`
 `;
-      }
-      if (sql_statement) {
-        result += `
-  \`\`\`sql
-  ${JSON.parse(args).sql_statement.join('\n')}
-  \`\`\`
-  `;
-      }
-    } catch (err) {
-      result += args;
-    }
-
-    if (typeof output === 'string') {
-      try {
-        const outputs = JSON.parse(output).outputs;
-        if (outputs) {
+        }
+        if (sql_statement) {
           result += `
-  \`\`\`
-  > ${outputs}
-  \`\`\`
-  `;
+\`\`\`sql
+${sql_statement.join('\n')}
+\`\`\`
+`;
         }
       } catch {
-        result += output;
+        // If not valid JSON, just show the raw args
+        result += args;
+      }
+    }
+
+    // Handle output - can be a string or an object with text property
+    let outputText: string | undefined;
+    if (typeof output === 'string') {
+      outputText = output;
+    } else if (output && typeof output === 'object' && 'text' in output) {
+      outputText = String(output.text);
+    }
+    if (outputText) {
+      try {
+        const parsed = JSON.parse(outputText);
+        const outputs = parsed.outputs;
+        if (outputs) {
+          result += `
+\`\`\`
+> ${outputs}
+\`\`\`
+`;
+        }
+      } catch {
+        // If not valid JSON, just show the raw output
+        result += `
+\`\`\`
+> ${outputText}
+\`\`\`
+`;
       }
     }
 
@@ -77,7 +96,7 @@ ${python_code.join('\n')}
   };
 
   const finalRole = $derived(role ? role : cleanFnName(fnName));
-  const finalContent = $derived(content ? content : parseFn({ args, output: output?.text }));
+  const finalContent = $derived(content ? content : parseFn(args, output));
 
   const roleStyle = (role: string): string => {
     switch (role) {

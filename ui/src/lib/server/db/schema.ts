@@ -8,97 +8,8 @@ import {
   timestamp,
   boolean,
   index,
-  json,
+  jsonb,
 } from 'drizzle-orm/pg-core';
-
-export const ResponsesApiMessageContent = pgTable('responses_api_message_content', {
-  id: serial('id').notNull().primaryKey(),
-  messageId: serial('message_id')
-    .notNull()
-    .references(() => ResponsesApiMessage.id, { onDelete: 'cascade' }),
-  content: text('content').notNull(),
-});
-
-export const ResponsesApiMessage = pgTable('responses_api_message', {
-  id: serial('id').notNull().primaryKey(),
-  chatId: uuid('chat_id')
-    .notNull()
-    .references(() => chat.id, { onDelete: 'cascade' }),
-  eventIdx: integer('event_idx').notNull(),
-  role: text('role').notNull(),
-});
-
-export const ResponsesApiFunctionCall = pgTable('responses_api_function_call', {
-  id: serial('id').notNull().primaryKey(),
-  chatId: uuid('chat_id')
-    .notNull()
-    .references(() => chat.id, { onDelete: 'cascade' }),
-  eventIdx: integer('event_idx').notNull(),
-  callId: text('call_id').notNull(),
-  name: text('name').notNull(),
-  status: text('status').notNull(),
-  arguments: text('arguments').notNull(),
-  providerData: json('providerData').notNull(),
-});
-
-export const ResponsesApiFunctionResult = pgTable('responses_api_function_result', {
-  id: serial('id').notNull().primaryKey(),
-  chatId: uuid('chat_id')
-    .notNull()
-    .references(() => chat.id, { onDelete: 'cascade' }),
-  eventIdx: integer('event_idx').notNull(),
-  name: text('name').notNull(),
-  callId: text('call_id').notNull(),
-  status: text('status').notNull(),
-  output: json().notNull(),
-});
-
-export const ResponsesApiProviderData = pgTable('responses_api_provider_data', {
-  id: serial('id').notNull().primaryKey(),
-  chatId: uuid('chat_id')
-    .notNull()
-    .references(() => chat.id, { onDelete: 'cascade' }),
-  eventIdx: integer('event_idx').notNull(),
-  misc: json().notNull(),
-});
-
-export const ResponsesApiMessageContentRelations = relations(
-  ResponsesApiMessageContent,
-  ({ one }) => ({
-    message: one(ResponsesApiMessage, {
-      fields: [ResponsesApiMessageContent.messageId],
-      references: [ResponsesApiMessage.id],
-    }),
-  }),
-);
-export const ResponsesApiMessageRelations = relations(ResponsesApiMessage, ({ one, many }) => ({
-  chat: one(chat, {
-    fields: [ResponsesApiMessage.chatId],
-    references: [chat.id],
-  }),
-  messageContents: many(ResponsesApiMessageContent),
-}));
-export const ResponsesApiFunctionCallRelations = relations(ResponsesApiFunctionCall, ({ one }) => ({
-  chat: one(chat, {
-    fields: [ResponsesApiFunctionCall.chatId],
-    references: [chat.id],
-  }),
-}));
-export const ResponsesApiFunctionResultRelations = relations(
-  ResponsesApiFunctionResult,
-  ({ one }) => ({
-    chat: one(chat, {
-      fields: [ResponsesApiFunctionResult.chatId],
-      references: [chat.id],
-    }),
-  }),
-);
-export const ResponsesApiProviderDataRelations = relations(ResponsesApiProviderData, ({ one }) => ({
-  chat: one(chat, {
-    fields: [ResponsesApiProviderData.chatId],
-    references: [chat.id],
-  }),
-}));
 
 export const messageRequests = pgTable('message_requests', {
   id: uuid('id').defaultRandom().primaryKey(),
@@ -125,14 +36,109 @@ export const chat = pgTable('chat', {
   title: text('title'),
 });
 
-export const chatRelations = relations(chat, ({ many, one }) => ({
-  messages: many(ResponsesApiMessage),
-  functionCalls: many(ResponsesApiFunctionCall),
-  functionResults: many(ResponsesApiFunctionResult),
-  providerData: many(ResponsesApiProviderData),
+export const chatRelations = relations(chat, ({ one, many }) => ({
+  messages: many(chatMessage),
+  currentMessageRequestRecord: one(messageRequests, {
+    fields: [chat.currentMessageRequest],
+    references: [messageRequests.id],
+  }),
   user: one(user, {
     fields: [chat.userId],
     references: [user.id],
+  }),
+}));
+
+// ============================================================================
+// Normalized Chat History Schema
+// ============================================================================
+
+/**
+ * Chat messages table - stores individual messages in a conversation.
+ * Each message has a role (system, user, assistant, tool) and a sequence number.
+ */
+export const chatMessage = pgTable(
+  'chat_message',
+  {
+    id: serial('id').notNull().primaryKey(),
+    chatId: uuid('chat_id')
+      .notNull()
+      .references(() => chat.id, { onDelete: 'cascade' }),
+    role: text('role').notNull().$type<'system' | 'user' | 'assistant' | 'tool'>(),
+    sequence: integer('sequence').notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => [
+    index('chat_message_chat_id_idx').on(table.chatId),
+    index('chat_message_chat_id_sequence_idx').on(table.chatId, table.sequence),
+  ],
+);
+
+export const chatMessageRelations = relations(chatMessage, ({ one, many }) => ({
+  chat: one(chat, {
+    fields: [chatMessage.chatId],
+    references: [chat.id],
+  }),
+  parts: many(chatMessagePart),
+}));
+
+/**
+ * Message part types for the content JSONB
+ */
+export type TextPartContent = { text: string };
+export type ToolCallPartContent = {
+  id: string;
+  name: string;
+  params: unknown;
+  providerExecuted?: boolean;
+};
+export type ToolResultPartContent = {
+  id: string;
+  name: string;
+  result: unknown;
+  isFailure: boolean;
+  providerExecuted?: boolean;
+};
+export type ReasoningPartContent = { text: string };
+export type FilePartContent = {
+  mediaType: string;
+  url?: string;
+  data?: string;
+};
+
+export type MessagePartContent =
+  | TextPartContent
+  | ToolCallPartContent
+  | ToolResultPartContent
+  | ReasoningPartContent
+  | FilePartContent;
+
+/**
+ * Chat message parts table - stores the content parts of each message.
+ * Parts can be text, tool calls, tool results, files, or reasoning.
+ */
+export const chatMessagePart = pgTable(
+  'chat_message_part',
+  {
+    id: serial('id').notNull().primaryKey(),
+    messageId: integer('message_id')
+      .notNull()
+      .references(() => chatMessage.id, { onDelete: 'cascade' }),
+    type: text('type')
+      .notNull()
+      .$type<'text' | 'tool-call' | 'tool-result' | 'file' | 'reasoning'>(),
+    sequence: integer('sequence').notNull(),
+    content: jsonb('content').notNull().$type<MessagePartContent>(),
+  },
+  (table) => [
+    index('chat_message_part_message_id_idx').on(table.messageId),
+    index('chat_message_part_message_id_sequence_idx').on(table.messageId, table.sequence),
+  ],
+);
+
+export const chatMessagePartRelations = relations(chatMessagePart, ({ one }) => ({
+  message: one(chatMessage, {
+    fields: [chatMessagePart.messageId],
+    references: [chatMessage.id],
   }),
 }));
 

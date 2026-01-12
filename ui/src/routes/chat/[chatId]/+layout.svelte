@@ -5,6 +5,7 @@
   import sql from 'highlight.js/lib/languages/sql';
   import 'highlight.js/styles/base16/gruvbox-dark-medium.css';
   import '@fontsource/victor-mono/400.css';
+  import type { LayoutProps } from './$types';
 
   hljs.registerLanguage('markdown', markdown);
   hljs.registerLanguage('python', python);

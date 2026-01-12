@@ -108,18 +108,17 @@
                           enable = true;
                           bind = "0.0.0.0";
                           port = 6379;
-                          # user = "redis";
-                          # group = "users";
                           requirePass = "letmein";
                           openFirewall = true;
                         };
                       }
-                      (
-                        import ./nix/services/ui { self-sign-certs = true; } {
-                          inherit self pkgs;
-                          inherit (pkgs) lib;
-                        }
-                      );
+                      # (
+                      #   import ./nix/services/ui { self-sign-certs = true; } {
+                      #     inherit self pkgs;
+                      #     inherit (pkgs) lib;
+                      #   }
+                      # );
+                      { };
                 };
               };
             };
@@ -185,6 +184,7 @@
               inherit (self.checks.${system}.pre-commit-check) shellHook;
               packages = with pkgs; [
                 svelte-language-server
+                oxlint
 
                 self.packages.${pkgs.stdenv.hostPlatform.system}.python-server
                 (python313.withPackages (

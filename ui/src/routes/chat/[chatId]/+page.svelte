@@ -1,35 +1,73 @@
 <script lang="ts">
-  import { getChats } from '$lib/api/chat.remote';
+  import type { PageProps } from './$types';
+  import { invalidateAll } from '$app/navigation';
+  import { onMount } from 'svelte';
   import { Spinner } from '$lib/components/shadcn/spinner';
   import * as Item from '$lib/components/shadcn/item';
-  import { ArrowUp } from 'lucide-svelte';
-  import { getChatMessages } from '$lib/api/chat.remote';
+  import { ArrowUp } from '@lucide/svelte';
   import { fly, slide } from 'svelte/transition';
 
   import MessageBlock from '$lib/components/message-block.svelte';
   import Sidebar from '$lib/components/sidebar.svelte';
-  import { onMount } from 'svelte';
 
-  let { params } = $props();
-  const { currentMessageRequestId, messages } = $derived(await getChatMessages(params.chatId));
+  let { data }: PageProps = $props();
+  let chats = $derived(data.chats);
 
-  const chats = $derived(await getChats());
+  const pendingMessageContent = $derived(
+    'currentMessageRequestContent' in data ? data.currentMessageRequestContent : null,
+  );
+  const hasPendingUserMessage = $derived(
+    !!pendingMessageContent &&
+      data.messages.some(
+        (message) => message.role === 'user' && message.content === pendingMessageContent,
+      ),
+  );
 
   onMount(() => {
     const chatStatusEvents = new EventSource('/chat-status-events');
     chatStatusEvents.addEventListener('message', (e) => {
-      // See other `getChats().refresh()` call for short-term
-      // explanation for why this is so expensive
       const event = JSON.parse(e.data);
-      if (event.type === 'chat-created' || event.type === 'chat-deleted') {
-        getChats().refresh();
+
+      if (event.type === 'chat-deleted') {
+        chats = chats.filter((chat) => chat.id !== event.chatId);
+        if (event.chatId === data.chatId) {
+          invalidateAll();
+        }
+        return;
+      }
+
+      if (event.type === 'title-changed') {
+        chats = chats.map((chat) =>
+          chat.id === event.chatId ? { ...chat, title: event.title } : chat,
+        );
+        return;
+      }
+
+      if (event.type === 'status-changed') {
+        chats = chats.map((chat) =>
+          chat.id === event.chatId
+            ? { ...chat, currentMessageRequest: event.currentMessageId }
+            : chat,
+        );
+        return;
+      }
+
+      if (event.type === 'chat-created') {
+        invalidateAll();
       }
     });
 
-    if (currentMessageRequestId) {
-      console.log(`Resuming message request: ${currentMessageRequestId}`);
-      subscribe(currentMessageRequestId);
+    if (data.currentMessageRequestId) {
+      console.log(`Resuming message request: ${data.currentMessageRequestId}`);
+      if (pendingMessageContent && !hasPendingUserMessage && !submittedUserInput) {
+        submittedUserInput = pendingMessageContent;
+      }
+      subscribe(data.currentMessageRequestId);
     }
+
+    return () => {
+      chatStatusEvents.close();
+    };
   });
 
   // svelte-ignore non_reactive_update
@@ -42,50 +80,125 @@
     });
   };
 
+  // Tool state: keyed by tool call ID
+  interface ToolCall {
+    id: string;
+    name: string;
+    params: string;
+    result?: string;
+  }
+
   let answer = $state('');
-  let toolState: string[] = $state(['']);
+  let toolCalls = $state<Record<string, ToolCall>>({});
+  let toolOrder = $state<string[]>([]); // Track order of tool calls
   let userInput = $state('');
   let submittedUserInput = $state('');
   let generating = $state(false);
 
+  const resetGenerationState = () => {
+    generating = false;
+    toolCalls = {};
+    toolOrder = [];
+    answer = '';
+    submittedUserInput = '';
+  };
+
   const subscribe = (messageRequestId: string) => {
     const eventSource = new EventSource(`/message-request/${messageRequestId}`);
     generating = true;
+
+    const cleanup = () => {
+      eventSource.close();
+      resetGenerationState();
+    };
 
     eventSource.addEventListener('message', (e) => {
       scrollToBottom();
 
       const chunk = JSON.parse(e.data);
       switch (chunk.type) {
-        case 'response.output_text.delta': {
+        // Text streaming
+        case 'text-delta': {
           answer += chunk.delta;
           break;
         }
 
-        case 'response.function_call_arguments.delta': {
-          let currentTool = toolState[toolState.length - 1];
-          toolState[toolState.length - 1] = currentTool + chunk.delta;
+        // Tool parameter streaming (new format)
+        case 'tool-params-start': {
+          const id = chunk.id;
+          if (!toolCalls[id]) {
+            toolCalls[id] = { id, name: chunk.name, params: '' };
+            toolOrder = [...toolOrder, id];
+          }
           break;
         }
 
-        case 'response.function_call_arguments.done': {
-          toolState.push('');
+        case 'tool-params-delta': {
+          const id = chunk.id;
+          if (toolCalls[id]) {
+            toolCalls[id] = { ...toolCalls[id], params: toolCalls[id].params + chunk.delta };
+          }
           break;
         }
 
+        case 'tool-params-end': {
+          // Tool params complete, waiting for execution
+          break;
+        }
+
+        // Complete tool call with parsed params
+        case 'tool-call': {
+          const id = chunk.id;
+          if (!toolCalls[id]) {
+            toolOrder = [...toolOrder, id];
+          }
+          toolCalls[id] = {
+            id,
+            name: chunk.name,
+            params: typeof chunk.params === 'string' ? chunk.params : JSON.stringify(chunk.params),
+          };
+          break;
+        }
+
+        // Tool result
+        case 'tool-result': {
+          const id = chunk.id;
+          if (toolCalls[id]) {
+            toolCalls[id] = {
+              ...toolCalls[id],
+              result:
+                typeof chunk.result === 'string' ? chunk.result : JSON.stringify(chunk.result),
+            };
+          }
+          break;
+        }
+
+        // Finish events
+        case 'finish': {
+          // Intermediate finish event from model iterations - ignore
+          // (only used during agentic loops between tool calls)
+          break;
+        }
+        case 'response_error': {
+          console.error('Generation error:', chunk.message);
+          answer += `\n\n**Error:** ${chunk.message}`;
+          break;
+        }
         case 'response_done': {
           console.log('Stream ended!');
-          generating = false;
-          toolState = [];
-          answer = '';
-          submittedUserInput = '';
-          getChatMessages(params.chatId).refresh();
+          cleanup();
+          invalidateAll();
           setTimeout(() => {
             scrollToBottom();
           }, 500);
           break;
         }
       }
+    });
+
+    eventSource.addEventListener('error', () => {
+      console.log('EventSource error, closing connection');
+      cleanup();
     });
   };
 
@@ -97,7 +210,7 @@
       return;
     }
 
-    const res = await fetch(`/chat/${params.chatId}`, {
+    const res = await fetch(`/chat/${data.chatId}`, {
       method: 'POST',
       body: userInput,
       headers: {
@@ -105,6 +218,14 @@
       },
     });
     const messageRequestId = await res.text();
+
+    if (!res.ok) {
+      console.error('Message request failed:', messageRequestId);
+      resetGenerationState();
+      answer += `\n\n**Error:** ${messageRequestId}`;
+      return;
+    }
+
     subscribe(messageRequestId);
 
     submittedUserInput = userInput;
@@ -112,34 +233,54 @@
 
     scrollToBottom();
   };
+
+  const historyToolCallIds = $derived(
+    new Set(
+      data.messages
+        .filter((message) => message.role === 'tool')
+        .map((message) => (message as { toolCallId?: string }).toolCallId)
+        .filter((id): id is string => !!id),
+    ),
+  );
+
+  // Derive tool state for rendering
+  const activeToolCalls = $derived(
+    toolOrder
+      .map((id) => (toolCalls[id] ? { ...toolCalls[id], id } : null))
+      .filter(
+        (tool): tool is ToolCall => !!tool && !!tool.params && !historyToolCallIds.has(tool.id),
+      ),
+  );
 </script>
 
-<Sidebar {chats} currentChatId={params.chatId}>
+<Sidebar {chats} currentChatId={data.chatId}>
   <div class="m-20 grid gap-6">
     <div class="grid gap-2">
-      {#each messages as message}
+      {#each data.messages as message}
         <MessageBlock {...message} />
       {/each}
 
       {#if generating}
-        {#if submittedUserInput}
+        {#if submittedUserInput && !hasPendingUserMessage}
           <div in:fly={{ y: 20, duration: 500 }}>
             <MessageBlock role="user" content={submittedUserInput} />
           </div>
         {/if}
-        {#each toolState as tool}
-          {#if tool}
-            <div in:slide={{ duration: 200 }} out:slide={{ duration: 200 }}>
-              <MessageBlock role="tool" arguments={tool} />
-            </div>
-          {/if}
+        {#each activeToolCalls as tool}
+          <div in:slide={{ duration: 200 }} out:slide={{ duration: 200 }}>
+            <MessageBlock
+              role="tool"
+              name={tool.name}
+              arguments={tool.params}
+              output={tool.result}
+            />
+          </div>
         {/each}
-      {/if}
-
-      {#if answer}
-        <div in:slide={{ duration: 100 }}>
-          <MessageBlock role="assistant" content={answer} />
-        </div>
+        {#if answer}
+          <div in:slide={{ duration: 100 }}>
+            <MessageBlock role="assistant" content={answer} />
+          </div>
+        {/if}
       {/if}
     </div>
 
@@ -154,13 +295,15 @@
           class="resize-none flex-1 px-4 py-2 focus:outline-none"
           rows="1"
           oninput={(e) => {
-            e.target.style.height = 'auto';
-            e.target.style.height = `${e.target.scrollHeight}px`;
+            const target = e.target as HTMLTextAreaElement;
+            target.style.height = 'auto';
+            target.style.height = `${target.scrollHeight}px`;
           }}
           onkeydown={(e) => {
             if (!generating && e.key == 'Enter' && e.shiftKey) {
               e.preventDefault();
-              e.target.style.height = 'auto';
+              const target = e.target as HTMLTextAreaElement;
+              target.style.height = 'auto';
               const form = e.currentTarget.closest('form');
               form?.requestSubmit();
             }
