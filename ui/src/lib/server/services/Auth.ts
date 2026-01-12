@@ -8,8 +8,6 @@ import { betterAuth } from 'better-auth';
 import { sveltekitCookies } from 'better-auth/svelte-kit';
 import { getRequestEvent } from '$app/server';
 
-const WHITELIST_SIGNUPS = new Set(['benvansleen@gmail.com', 'jbm@textql.com', 'mark@textql.com']);
-
 export class Auth extends Effect.Service<Auth>()('app/Auth', {
   effect: Effect.gen(function* () {
     const config = yield* Config;
@@ -25,7 +23,7 @@ export class Auth extends Effect.Service<Auth>()('app/Auth', {
       yield* Effect.annotateCurrentSpan({ 'enduser.email': request.email });
       yield* Effect.logInfo('Attempting signup', JSON.stringify(request));
 
-      if (config.isProduction && !WHITELIST_SIGNUPS.has(request.email)) {
+      if (config.isProduction && !config.whitelistedEmails.has(request.email)) {
         return yield* Effect.fail(
           new WhitelistError({ message: '**Extremely** private beta only!' }),
         );
