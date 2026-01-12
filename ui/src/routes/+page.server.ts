@@ -1,6 +1,6 @@
 import type { Actions, PageServerLoad } from './$types';
 import { redirect, fail } from '@sveltejs/kit';
-import { Effect, Console } from 'effect';
+import { Console, Effect, Either, ParseResult, Schema } from 'effect';
 import {
   runEffect,
   publishChatStatus,
@@ -10,6 +10,7 @@ import {
   PythonServer,
   requestSpanFromRequest,
 } from '$lib/server';
+import { NewChatRequest } from '$lib/server/schemas';
 
 export const load: PageServerLoad = async ({ locals, request, url }) => {
   const user = locals.user;
@@ -38,15 +39,17 @@ export const actions: Actions = {
   createChat: async ({ request, locals, url }) => {
     const user = locals.user;
     const formData = await request.formData();
-    const dataset = formData.get('dataset') as string;
+    const parsed = Schema.decodeUnknownEither(NewChatRequest)(
+      Object.fromEntries(formData.entries()),
+    );
 
-    if (!dataset) {
-      return fail(400, { error: 'Dataset is required' });
+    if (Either.isLeft(parsed)) {
+      return fail(400, { error: ParseResult.TreeFormatter.formatErrorSync(parsed.left) });
     }
 
     const chatId = await runEffect(
       Effect.gen(function* () {
-        const chatId = yield* dbCreateChat(user.id, dataset);
+        const chatId = yield* dbCreateChat(user.id, parsed.right.dataset);
         yield* Effect.all(
           [
             publishChatStatus({ type: 'chat-created', userId: user.id, chatId }),
