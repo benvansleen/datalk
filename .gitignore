@@ -12,6 +12,7 @@ node_modules/
 .svelte-kit/
 certs/
 .envrc.*
+.data/
 
 *.pyc
 .ipynb_checkpoints/

@@ -6,14 +6,29 @@ from asyncio import TimeoutError, wait_for
 from pathlib import Path
 from typing import Literal
 
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, HTTPException
 from jupyter_client.asynchronous.client import AsyncKernelClient
 from jupyter_client.manager import AsyncKernelManager
 from pydantic import BaseModel
 
-app = FastAPI()
-
 KERNELS: dict[str, tuple[AsyncKernelManager, AsyncKernelClient]] = {}
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    yield
+    shutdown_tasks = []
+    for chat_id, (km, kc) in list(KERNELS.items()):
+        kc.stop_channels()
+        shutdown_tasks.append(km.shutdown_kernel())
+        del KERNELS[chat_id]
+    if shutdown_tasks:
+        await asyncio.gather(*shutdown_tasks, return_exceptions=True)
+
+
+app = FastAPI(lifespan=lifespan)
 DATASETS: dict[str, dict] = {
     "College Football 2025": {
         "path": "./datasets/cfbd/",
