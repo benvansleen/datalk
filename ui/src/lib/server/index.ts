@@ -2,6 +2,8 @@
 export { Config, ConfigLive } from './services/Config';
 export { Auth, AuthLive } from './services/Auth';
 export { Redis, RedisLive } from './services/Redis';
+export { RedisClientFactory, RedisClientFactoryLive } from './services/RedisClientFactory';
+export { RedisStreamReader, RedisStreamReaderLive } from './services/RedisStreamReader';
 export { Database, DatabaseLive } from './services/Database';
 export { PythonServer, PythonServerLive } from './services/PythonServer';
 export { DatalkAgent, DatalkAgentLive, type DatalkStreamPart } from './services/DatalkAgent';

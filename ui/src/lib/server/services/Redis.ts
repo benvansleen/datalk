@@ -1,34 +1,11 @@
-import { Effect, Redacted } from 'effect';
-import { createClient, type RedisClientType } from 'redis';
-import { Config } from './Config';
+import { Effect } from 'effect';
+import { RedisClientFactory } from './RedisClientFactory';
 import { RedisError } from '../errors';
 
 export class Redis extends Effect.Service<Redis>()('app/Redis', {
   scoped: Effect.gen(function* () {
-    const config = yield* Config;
-
-    yield* Effect.logInfo('Connecting to Redis');
-
-    const client = createClient({ url: Redacted.value(config.redisUrl) }) as RedisClientType;
-    yield* Effect.tryPromise({
-      try: () => client.connect(),
-      catch: (error) =>
-        new RedisError({
-          message: `Failed to connect to Redis: ${error instanceof Error ? error.message : String(error)}`,
-        }),
-    });
-
-    yield* Effect.logInfo('Redis connected successfully');
-    yield* Effect.addFinalizer(() =>
-      Effect.gen(function* () {
-        yield* Effect.logInfo('Closing Redis connection');
-        yield* Effect.tryPromise(() => client.quit()).pipe(
-          Effect.catchAll((error) => {
-            return Effect.logWarning(`Redis cleanup error: ${error}`);
-          }),
-        );
-      }),
-    );
+    const factory = yield* RedisClientFactory;
+    const client = factory.commandClient;
 
     // Service implementation
     const publish = (channel: string, message: string) =>
@@ -212,34 +189,6 @@ export class Redis extends Effect.Service<Redis>()('app/Redis', {
       );
 
     /**
-     * Blocking read from one or more streams.
-     * Returns null if the block timeout expires with no new entries.
-     */
-    const xRead = (
-      streams: Array<{ key: string; id: string }>,
-      options?: { block?: number; count?: number },
-    ) =>
-      Effect.tryPromise({
-        try: () =>
-          client.xRead(
-            streams.map((s) => ({ key: s.key, id: s.id })),
-            { BLOCK: options?.block, COUNT: options?.count },
-          ),
-        catch: (error) =>
-          new RedisError({
-            message: `Failed to xRead: ${error instanceof Error ? error.message : String(error)}`,
-          }),
-      }).pipe(
-        Effect.withSpan('redis XREAD', {
-          attributes: {
-            'db.system': 'redis',
-            'db.operation': 'xread',
-            'db.redis.keys': streams.map((s) => s.key),
-          },
-        }),
-      );
-
-    /**
      * Set a TTL on a key (in seconds).
      */
     const expire = (key: string, seconds: number) =>
@@ -272,12 +221,10 @@ export class Redis extends Effect.Service<Redis>()('app/Redis', {
       // Streams
       xAdd,
       xRange,
-      xRead,
       expire,
       client,
     } as const;
   }),
-  dependencies: [Config.Default],
 }) {}
 
 export const RedisLive = Redis.Default;

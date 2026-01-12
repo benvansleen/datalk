@@ -1,6 +1,5 @@
-import { Effect, Redacted, Stream } from 'effect';
-import { createClient, type RedisClientType } from 'redis';
-import { Config } from './Config';
+import { Effect, Stream } from 'effect';
+import { RedisClientFactory } from './RedisClientFactory';
 import { RedisError } from '../errors';
 
 /**
@@ -10,9 +9,8 @@ import { RedisError } from '../errors';
  * Connections are automatically cleaned up when streams end.
  */
 export class RedisSubscriber extends Effect.Service<RedisSubscriber>()('app/RedisSubscriber', {
-  dependencies: [Config.Default],
   effect: Effect.gen(function* () {
-    const config = yield* Config;
+    const factory = yield* RedisClientFactory;
 
     /**
      * Creates an Effect Stream that subscribes to a Redis channel.
@@ -26,19 +24,7 @@ export class RedisSubscriber extends Effect.Service<RedisSubscriber>()('app/Redi
           Effect.gen(function* () {
             yield* Effect.logDebug(`Creating Redis subscriber for channel: ${channel}`);
 
-            // Create a dedicated client for this subscription
-            const client = createClient({
-              url: Redacted.value(config.redisUrl),
-            }) as RedisClientType;
-
-            // Connect to Redis
-            yield* Effect.tryPromise({
-              try: () => client.connect(),
-              catch: (error) =>
-                new RedisError({
-                  message: `Failed to connect Redis subscriber: ${error instanceof Error ? error.message : String(error)}`,
-                }),
-            });
+            const client = yield* factory.makeSubscriberClient();
 
             // Subscribe to the channel
             yield* Effect.tryPromise({
@@ -61,11 +47,6 @@ export class RedisSubscriber extends Effect.Service<RedisSubscriber>()('app/Redi
                 yield* Effect.tryPromise(() => client.unsubscribe(channel)).pipe(
                   Effect.catchAll((error) =>
                     Effect.logWarning(`Failed to unsubscribe from ${channel}: ${error}`),
-                  ),
-                );
-                yield* Effect.tryPromise(() => client.quit()).pipe(
-                  Effect.catchAll((error) =>
-                    Effect.logWarning(`Failed to close Redis subscriber: ${error}`),
                   ),
                 );
               }),

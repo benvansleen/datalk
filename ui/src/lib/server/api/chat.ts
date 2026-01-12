@@ -1,8 +1,7 @@
-import { Effect, Fiber, Redacted, Scope, Stream } from 'effect';
-import { createClient, type RedisClientType } from 'redis';
+import { Effect, Fiber, Scope, Stream } from 'effect';
 import { Redis } from '../services/Redis';
+import { RedisStreamReader } from '../services/RedisStreamReader';
 import { RedisSubscriber } from '../services/RedisSubscriber';
-import { Config } from '../services/Config';
 import { RedisError } from '../errors';
 
 /**
@@ -170,7 +169,6 @@ const parseGenerationEvent = (json: string): GenerationEvent | null => {
 export const subscribeGenerationEvents = (messageRequestId: string) =>
   Stream.unwrap(
     Effect.gen(function* () {
-      const config = yield* Config;
       const streamKey = generationStreamKey(messageRequestId);
 
       // Read all existing entries from the stream
@@ -197,7 +195,7 @@ export const subscribeGenerationEvents = (messageRequestId: string) =>
 
       // Create live stream using XREAD with a dedicated connection.
       // Uses asyncScoped for proper resource management and clean shutdown.
-      const liveStream = Stream.asyncScoped<GenerationEvent, RedisError, Scope.Scope>(
+      const liveStream = Stream.asyncScoped<GenerationEvent, RedisError, Scope.Scope | RedisStreamReader>(
         (emit) =>
           Effect.gen(function* () {
             yield* Effect.logDebug(`Creating Redis Stream reader for: ${streamKey}`);
@@ -205,18 +203,7 @@ export const subscribeGenerationEvents = (messageRequestId: string) =>
             // Mutable flag for synchronous shutdown detection in catch handlers
             let isShuttingDown = false;
 
-            // Create a dedicated client for blocking reads
-            const client = createClient({
-              url: Redacted.value(config.redisUrl),
-            }) as RedisClientType;
-
-            yield* Effect.tryPromise({
-              try: () => client.connect(),
-              catch: (error) =>
-                new RedisError({
-                  message: `Failed to connect Redis stream reader: ${error instanceof Error ? error.message : String(error)}`,
-                }),
-            });
+            const streamReader = yield* RedisStreamReader;
 
             // Register finalizer to signal shutdown and clean up
             yield* Effect.addFinalizer(() =>
@@ -224,30 +211,18 @@ export const subscribeGenerationEvents = (messageRequestId: string) =>
                 yield* Effect.logDebug(`Shutting down Redis Stream reader for: ${streamKey}`);
                 // Set flag so the read loop knows to exit gracefully
                 isShuttingDown = true;
-                // Close the client - this will cause any blocking xRead to error
-                yield* Effect.tryPromise(() => client.quit()).pipe(
-                  Effect.catchAll((error) =>
-                    Effect.logWarning(`Failed to close Redis stream reader: ${error}`),
-                  ),
-                );
               }),
             );
 
             // Blocking read loop - runs in background fiber
             const readLoop = Effect.gen(function* () {
               while (!isShuttingDown) {
-                const result = yield* Effect.tryPromise({
-                  try: () =>
-                    client.xRead({ key: streamKey, id: lastId }, { BLOCK: 1000, COUNT: 100 }),
-                  catch: (error) => {
-                    // If we're shutting down, don't treat connection errors as failures
-                    if (isShuttingDown) {
-                      return null;
-                    }
-                    return new RedisError({
-                      message: `Failed to xRead: ${error instanceof Error ? error.message : String(error)}`,
-                    });
-                  },
+                const result = yield* streamReader.readBlocking({
+                  key: streamKey,
+                  id: lastId,
+                  block: 1000,
+                  count: 100,
+                  suppressErrors: () => isShuttingDown,
                 });
 
                 // Check shutdown again after blocking call returns

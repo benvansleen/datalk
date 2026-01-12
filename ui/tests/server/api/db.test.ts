@@ -83,19 +83,15 @@ describe('db api helpers', () => {
       query: {
         chat: {
           findFirst: () =>
-            Effect.succeed({ id: 'chat-1', userId: 'user-1', currentMessageRequest: 'req-1' }),
-        },
-        chatMessage: {
-          findMany: () => Effect.succeed([]),
+            Effect.succeed({
+              id: 'chat-1',
+              userId: 'user-1',
+              currentMessageRequest: 'req-1',
+              currentMessageRequestRecord: { content: 'pending' },
+              messages: [],
+            }),
         },
       },
-      select: () => ({
-        from: () => ({
-          where: () => ({
-            limit: () => Effect.succeed([{ content: 'pending' }]),
-          }),
-        }),
-      }),
     };
 
     const result = await Effect.runPromise(
@@ -116,50 +112,45 @@ describe('db api helpers', () => {
       query: {
         chat: {
           findFirst: () =>
-            Effect.succeed({ id: 'chat-1', userId: 'user-1', currentMessageRequest: null }),
-        },
-        chatMessage: {
-          findMany: () =>
-            Effect.succeed([
-              {
-                role: 'user',
-                sequence: 0,
-                parts: [
-                  { type: 'text', sequence: 0, content: { text: 'Hello' } },
-                  {
-                    type: 'tool-call',
-                    sequence: 1,
-                    content: { id: 'tool-1', name: 'run_sql', params: { q: 1 } },
-                  },
-                ],
-              },
-              {
-                role: 'assistant',
-                sequence: 1,
-                parts: [
-                  {
-                    type: 'tool-result',
-                    sequence: 0,
-                    content: {
-                      id: 'tool-1',
-                      name: 'run_sql',
-                      result: { ok: true },
-                      isFailure: false,
+            Effect.succeed({
+              id: 'chat-1',
+              userId: 'user-1',
+              currentMessageRequest: null,
+              currentMessageRequestRecord: null,
+              messages: [
+                {
+                  role: 'user',
+                  sequence: 0,
+                  parts: [
+                    { type: 'text', sequence: 0, content: { text: 'Hello' } },
+                    {
+                      type: 'tool-call',
+                      sequence: 1,
+                      content: { id: 'tool-1', name: 'run_sql', params: { q: 1 } },
                     },
-                  },
-                  { type: 'text', sequence: 1, content: { text: 'Done' } },
-                ],
-              },
-            ]),
+                  ],
+                },
+                {
+                  role: 'assistant',
+                  sequence: 1,
+                  parts: [
+                    {
+                      type: 'tool-result',
+                      sequence: 0,
+                      content: {
+                        id: 'tool-1',
+                        name: 'run_sql',
+                        result: { ok: true },
+                        isFailure: false,
+                      },
+                    },
+                    { type: 'text', sequence: 1, content: { text: 'Done' } },
+                  ],
+                },
+              ],
+            }),
         },
       },
-      select: () => ({
-        from: () => ({
-          where: () => ({
-            limit: () => Effect.succeed([{ content: 'ignored' }]),
-          }),
-        }),
-      }),
     };
 
     const result = await Effect.runPromise(

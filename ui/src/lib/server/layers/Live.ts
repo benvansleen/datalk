@@ -6,12 +6,13 @@ import { DatabaseLive } from '../services/Database';
 import { ObservabilityLive } from '../observability';
 import { PythonServer } from '../services/PythonServer';
 import { Redis } from '../services/Redis';
+import { RedisClientFactory } from '../services/RedisClientFactory';
+import { RedisStreamReader } from '../services/RedisStreamReader';
 import { RedisSubscriber } from '../services/RedisSubscriber';
 import { DatalkAgent } from '../services/DatalkAgent';
 import { OpenAiClient } from '@effect/ai-openai';
 import { NodeHttpClient } from '@effect/platform-node';
 
-// OpenAI client layer - requires Config for API key and HttpClient
 const OpenAiClientLive = Layer.unwrapEffect(
   Effect.gen(function* () {
     const config = yield* Config;
@@ -19,21 +20,20 @@ const OpenAiClientLive = Layer.unwrapEffect(
   }),
 );
 
-// DatalkAgent needs Database, so we provide it here
-const DatalkAgentWithDeps = DatalkAgent.Default.pipe(Layer.provide(DatabaseLive));
-
 export const LiveLayer = Layer.mergeAll(
   Auth.Default,
-  DatabaseLive,
+  ChatTitleGenerator.Default,
+  DatalkAgent.Default,
   ObservabilityLive,
   PythonServer.Default,
   Redis.Default,
+  RedisStreamReader.Default,
   RedisSubscriber.Default,
-  ChatTitleGenerator.Default,
-  DatalkAgentWithDeps,
 ).pipe(
-  Layer.provide(OpenAiClientLive.pipe(Layer.provide(NodeHttpClient.layerUndici))),
+  Layer.provideMerge(OpenAiClientLive.pipe(Layer.provide(NodeHttpClient.layerUndici))),
+  Layer.provideMerge(DatabaseLive),
   Layer.provideMerge(Config.Default),
+  Layer.provide(RedisClientFactory.Default),
   Layer.provide(Logger.logFmt),
 );
 

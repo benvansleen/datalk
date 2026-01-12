@@ -1,26 +1,29 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { Effect, Stream } from 'effect';
-import { createClient } from 'redis';
+import { Effect, Layer, Stream } from 'effect';
+import { RedisClientFactory } from '$lib/server/services/RedisClientFactory';
 import { RedisSubscriber } from '$lib/server/services/RedisSubscriber';
-import { resetConfigEnv, stubConfigEnv } from '../../helpers/config-env';
-
-vi.mock('redis', () => ({
-  createClient: vi.fn(),
-}));
 
 describe('RedisSubscriber service', () => {
-  beforeEach(() => {
-    stubConfigEnv();
-  });
-
   afterEach(() => {
-    resetConfigEnv();
     vi.clearAllMocks();
   });
 
+  const makeRedisClientFactoryLayer = (subscriberClient: { quit: () => Promise<void> }) =>
+    Layer.succeed(
+      RedisClientFactory,
+      {
+        commandClient: {} as never,
+        makeSubscriberClient: () =>
+          Effect.acquireRelease(
+            Effect.succeed(subscriberClient as never),
+            () => Effect.promise(() => subscriberClient.quit()),
+          ),
+        makeStreamReaderClient: () => Effect.succeed({} as never),
+      } as never,
+    );
+
   it('parses JSON messages and filters invalid payloads', async () => {
     const mockClient = {
-      connect: vi.fn().mockResolvedValue(undefined),
       subscribe: vi.fn().mockImplementation(async (_channel, callback) => {
         callback('{"type":"ready"}');
         callback('not-json');
@@ -30,9 +33,6 @@ describe('RedisSubscriber service', () => {
       quit: vi.fn().mockResolvedValue(undefined),
     };
 
-    const mockedCreateClient = vi.mocked(createClient);
-    mockedCreateClient.mockReturnValue(mockClient as never);
-
     const stream = Stream.unwrap(
       Effect.gen(function* () {
         const subscriber = yield* RedisSubscriber;
@@ -40,8 +40,12 @@ describe('RedisSubscriber service', () => {
       }),
     ).pipe(Stream.take(2));
 
+    const subscriberLayer = RedisSubscriber.Default.pipe(
+      Layer.provide(makeRedisClientFactoryLayer(mockClient)),
+    );
+
     const result = await Effect.runPromise(
-      Stream.runCollect(stream).pipe(Effect.provide(RedisSubscriber.Default)),
+      Stream.runCollect(stream).pipe(Effect.provide(subscriberLayer)),
     );
 
     expect(Array.from(result)).toEqual([{ type: 'ready' }, { type: 'done' }]);
@@ -51,7 +55,6 @@ describe('RedisSubscriber service', () => {
 
   it('supports custom parsers and skips thrown errors', async () => {
     const mockClient = {
-      connect: vi.fn().mockResolvedValue(undefined),
       subscribe: vi.fn().mockImplementation(async (_channel, callback) => {
         callback('1');
         callback('bad');
@@ -60,9 +63,6 @@ describe('RedisSubscriber service', () => {
       unsubscribe: vi.fn().mockResolvedValue(undefined),
       quit: vi.fn().mockResolvedValue(undefined),
     };
-
-    const mockedCreateClient = vi.mocked(createClient);
-    mockedCreateClient.mockReturnValue(mockClient as never);
 
     const stream = Stream.unwrap(
       Effect.gen(function* () {
@@ -76,8 +76,12 @@ describe('RedisSubscriber service', () => {
       }),
     ).pipe(Stream.take(2));
 
+    const subscriberLayer = RedisSubscriber.Default.pipe(
+      Layer.provide(makeRedisClientFactoryLayer(mockClient)),
+    );
+
     const result = await Effect.runPromise(
-      Stream.runCollect(stream).pipe(Effect.provide(RedisSubscriber.Default)),
+      Stream.runCollect(stream).pipe(Effect.provide(subscriberLayer)),
     );
 
     expect(Array.from(result)).toEqual([1, 3]);

@@ -1,6 +1,5 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import { Cause, Effect, Exit, Layer, Option, Stream } from 'effect';
-import { createClient } from 'redis';
 import { makeXReadScript } from '../../helpers/redis-stream';
 import {
   markGenerationComplete,
@@ -10,14 +9,11 @@ import {
   subscribeGenerationEvents,
 } from '$lib/server/api/chat';
 import { Redis } from '$lib/server/services/Redis';
+import { normalizeRedisStreamReadResult } from '$lib/server/services/RedisClientFactory';
+import { RedisStreamReader } from '$lib/server/services/RedisStreamReader';
 import { RedisSubscriber } from '$lib/server/services/RedisSubscriber';
-import { Config } from '$lib/server/services/Config';
 import { RedisError } from '$lib/server/errors';
 import { resetConfigEnv, stubConfigEnv } from '../../helpers/config-env';
-
-vi.mock('redis', () => ({
-  createClient: vi.fn(),
-}));
 
 describe('chat api helpers', () => {
   beforeEach(() => {
@@ -29,6 +25,32 @@ describe('chat api helpers', () => {
     vi.clearAllMocks();
   });
 
+  const makeRedisStreamReaderLayer = (options?: {
+    xRead?: (key: { key: string; id: string }, options: { BLOCK?: number; COUNT?: number }) =>
+      | Promise<unknown>
+      | unknown;
+    quit?: () => Promise<void>;
+  }) =>
+    Layer.scoped(
+      RedisStreamReader,
+      Effect.acquireRelease(
+        Effect.succeed({
+          readBlocking: ({ key, id, block, count }) =>
+            Effect.tryPromise({
+              try: () =>
+                Promise.resolve(
+                  options?.xRead?.({ key, id }, { BLOCK: block, COUNT: count }) ?? null,
+                ),
+              catch: (error) =>
+                new RedisError({
+                  message: `Failed to xRead: ${error instanceof Error ? error.message : String(error)}`,
+                }),
+            }).pipe(Effect.map(normalizeRedisStreamReadResult)),
+        } as RedisStreamReader),
+        () => Effect.promise(() => options?.quit?.() ?? Promise.resolve()),
+      ),
+    );
+
   it('publishes status and generation events', async () => {
     const publish = vi.fn(() => Effect.succeed(1));
     const xAdd = vi.fn(() => Effect.succeed('1-0'));
@@ -39,9 +61,7 @@ describe('chat api helpers', () => {
     const layer = Layer.succeed(Redis, redis as never);
 
     await Effect.runPromise(
-      publishChatStatus({ type: 'chat-created', userId: 'u1', chatId: 'c1' }).pipe(
-        Effect.provide(layer),
-      ),
+      publishChatStatus({ type: 'chat-created', userId: 'u1', chatId: 'c1' }).pipe(Effect.provide(layer)),
     );
     await Effect.runPromise(
       publishGenerationEvent('req-1', { type: 'text-start', id: '1' }).pipe(Effect.provide(layer)),
@@ -94,10 +114,10 @@ describe('chat api helpers', () => {
 
     const redis = { xRange };
 
-    const mockedCreateClient = vi.mocked(createClient);
-    mockedCreateClient.mockReturnValue({} as never);
-
-    const layer = Layer.merge(Layer.succeed(Redis, redis as never), Config.Default);
+    const layer = Layer.merge(
+      Layer.succeed(Redis, redis as never),
+      makeRedisStreamReaderLayer(),
+    );
 
     const result = await Effect.runPromise(
       Stream.runCollect(subscribeGenerationEvents('req-1')).pipe(Effect.provide(layer)),
@@ -107,7 +127,6 @@ describe('chat api helpers', () => {
       { type: 'text-delta', id: '1', delta: 'a' },
       { type: 'response_done' },
     ]);
-    expect(mockedCreateClient).not.toHaveBeenCalled();
   });
 
   it('streams live events after replaying history', async () => {
@@ -128,15 +147,14 @@ describe('chat api helpers', () => {
     );
 
     const mockClient = {
-      connect: vi.fn().mockResolvedValue(undefined),
       quit: vi.fn().mockResolvedValue(undefined),
       xRead,
     };
 
-    const mockedCreateClient = vi.mocked(createClient);
-    mockedCreateClient.mockReturnValue(mockClient as never);
-
-    const layer = Layer.merge(Layer.succeed(Redis, { xRange } as never), Config.Default);
+    const layer = Layer.merge(
+      Layer.succeed(Redis, { xRange } as never),
+      makeRedisStreamReaderLayer({ xRead, quit: mockClient.quit }),
+    );
 
     const result = await Effect.runPromise(
       Stream.runCollect(subscribeGenerationEvents('req-1')).pipe(Effect.provide(layer)),
@@ -147,7 +165,6 @@ describe('chat api helpers', () => {
       { type: 'text-delta', id: '1', delta: 'hi' },
       { type: 'response_done' },
     ]);
-    expect(mockClient.connect).toHaveBeenCalledOnce();
     expect(mockClient.quit).toHaveBeenCalledOnce();
   });
 
@@ -164,10 +181,10 @@ describe('chat api helpers', () => {
 
     const redis = { xRange };
 
-    const mockedCreateClient = vi.mocked(createClient);
-    mockedCreateClient.mockReturnValue({} as never);
-
-    const layer = Layer.merge(Layer.succeed(Redis, redis as never), Config.Default);
+    const layer = Layer.merge(
+      Layer.succeed(Redis, redis as never),
+      makeRedisStreamReaderLayer(),
+    );
 
     const result = await Effect.runPromise(
       Stream.runCollect(subscribeGenerationEvents('req-1')).pipe(Effect.provide(layer)),
@@ -179,7 +196,10 @@ describe('chat api helpers', () => {
   it('surfaces history failures as RedisError', async () => {
     const xRange = vi.fn(() => Effect.fail(new RedisError({ message: 'boom' })));
 
-    const layer = Layer.merge(Layer.succeed(Redis, { xRange } as never), Config.Default);
+    const layer = Layer.merge(
+      Layer.succeed(Redis, { xRange } as never),
+      makeRedisStreamReaderLayer(),
+    );
 
     const exit = await Effect.runPromiseExit(
       Stream.runCollect(subscribeGenerationEvents('req-1')).pipe(Effect.provide(layer)),
@@ -202,15 +222,14 @@ describe('chat api helpers', () => {
     const xRead = vi.fn(makeXReadScript([[{ id: '1-0', event: { type: 'response_done' } }]]));
 
     const mockClient = {
-      connect: vi.fn().mockResolvedValue(undefined),
       quit: vi.fn().mockResolvedValue(undefined),
       xRead,
     };
 
-    const mockedCreateClient = vi.mocked(createClient);
-    mockedCreateClient.mockReturnValue(mockClient as never);
-
-    const layer = Layer.merge(Layer.succeed(Redis, { xRange } as never), Config.Default);
+    const layer = Layer.merge(
+      Layer.succeed(Redis, { xRange } as never),
+      makeRedisStreamReaderLayer({ xRead, quit: mockClient.quit }),
+    );
 
     await Effect.runPromise(
       Stream.runCollect(subscribeGenerationEvents('req-1')).pipe(Effect.provide(layer)),
@@ -233,15 +252,14 @@ describe('chat api helpers', () => {
       });
 
     const mockClient = {
-      connect: vi.fn().mockResolvedValue(undefined),
       quit: vi.fn().mockResolvedValue(undefined),
       xRead,
     };
 
-    const mockedCreateClient = vi.mocked(createClient);
-    mockedCreateClient.mockReturnValue(mockClient as never);
-
-    const layer = Layer.merge(Layer.succeed(Redis, { xRange } as never), Config.Default);
+    const layer = Layer.merge(
+      Layer.succeed(Redis, { xRange } as never),
+      makeRedisStreamReaderLayer({ xRead, quit: mockClient.quit }),
+    );
 
     await Effect.runPromise(
       Stream.runCollect(subscribeGenerationEvents('req-1')).pipe(Effect.provide(layer)),
