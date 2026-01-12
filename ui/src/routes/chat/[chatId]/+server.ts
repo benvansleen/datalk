@@ -108,11 +108,14 @@ export const finalizeGeneration = Effect.fn('finalizeGeneration')(function* (
     yield* publishGenerationEvent(messageId, { type: 'response_error', message: errorMessage });
   }
 
-  yield* Effect.all([
-    markGenerationComplete(messageId),
-    publishChatStatus({ type: 'status-changed', userId, chatId, currentMessageId: null }),
-    db.update(T.chat).set({ currentMessageRequest: null }).where(eq(T.chat.id, chatId)),
-  ], { concurrency: 'inherit' });
+  yield* Effect.all(
+    [
+      markGenerationComplete(messageId),
+      publishChatStatus({ type: 'status-changed', userId, chatId, currentMessageId: null }),
+      db.update(T.chat).set({ currentMessageRequest: null }).where(eq(T.chat.id, chatId)),
+    ],
+    { concurrency: 'inherit' },
+  );
 });
 
 /**

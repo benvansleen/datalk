@@ -195,7 +195,11 @@ export const subscribeGenerationEvents = (messageRequestId: string) =>
 
       // Create live stream using XREAD with a dedicated connection.
       // Uses asyncScoped for proper resource management and clean shutdown.
-      const liveStream = Stream.asyncScoped<GenerationEvent, RedisError, Scope.Scope | RedisStreamReader>(
+      const liveStream = Stream.asyncScoped<
+        GenerationEvent,
+        RedisError,
+        Scope.Scope | RedisStreamReader
+      >(
         (emit) =>
           Effect.gen(function* () {
             yield* Effect.logDebug(`Creating Redis Stream reader for: ${streamKey}`);

@@ -26,9 +26,10 @@ describe('chat api helpers', () => {
   });
 
   const makeRedisStreamReaderLayer = (options?: {
-    xRead?: (key: { key: string; id: string }, options: { BLOCK?: number; COUNT?: number }) =>
-      | Promise<unknown>
-      | unknown;
+    xRead?: (
+      key: { key: string; id: string },
+      options: { BLOCK?: number; COUNT?: number },
+    ) => Promise<unknown> | unknown;
     quit?: () => Promise<void>;
   }) =>
     Layer.scoped(
@@ -61,7 +62,9 @@ describe('chat api helpers', () => {
     const layer = Layer.succeed(Redis, redis as never);
 
     await Effect.runPromise(
-      publishChatStatus({ type: 'chat-created', userId: 'u1', chatId: 'c1' }).pipe(Effect.provide(layer)),
+      publishChatStatus({ type: 'chat-created', userId: 'u1', chatId: 'c1' }).pipe(
+        Effect.provide(layer),
+      ),
     );
     await Effect.runPromise(
       publishGenerationEvent('req-1', { type: 'text-start', id: '1' }).pipe(Effect.provide(layer)),
@@ -114,10 +117,7 @@ describe('chat api helpers', () => {
 
     const redis = { xRange };
 
-    const layer = Layer.merge(
-      Layer.succeed(Redis, redis as never),
-      makeRedisStreamReaderLayer(),
-    );
+    const layer = Layer.merge(Layer.succeed(Redis, redis as never), makeRedisStreamReaderLayer());
 
     const result = await Effect.runPromise(
       Stream.runCollect(subscribeGenerationEvents('req-1')).pipe(Effect.provide(layer)),
@@ -181,10 +181,7 @@ describe('chat api helpers', () => {
 
     const redis = { xRange };
 
-    const layer = Layer.merge(
-      Layer.succeed(Redis, redis as never),
-      makeRedisStreamReaderLayer(),
-    );
+    const layer = Layer.merge(Layer.succeed(Redis, redis as never), makeRedisStreamReaderLayer());
 
     const result = await Effect.runPromise(
       Stream.runCollect(subscribeGenerationEvents('req-1')).pipe(Effect.provide(layer)),

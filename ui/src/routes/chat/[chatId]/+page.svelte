@@ -13,9 +13,7 @@
   let { data }: PageProps = $props();
 
   const pendingMessageContent = $derived(
-    'currentMessageRequestContent' in data
-      ? (data.currentMessageRequestContent)
-      : null,
+    'currentMessageRequestContent' in data ? data.currentMessageRequestContent : null,
   );
   const hasPendingUserMessage = $derived(
     !!pendingMessageContent &&

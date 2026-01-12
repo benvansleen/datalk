@@ -10,14 +10,11 @@ describe('Redis service', () => {
   });
 
   const makeRedisClientFactoryLayer = (commandClient: unknown) =>
-    Layer.succeed(
-      RedisClientFactory,
-      {
-        commandClient,
-        makeSubscriberClient: () => Effect.succeed({} as never),
-        makeStreamReaderClient: () => Effect.succeed({} as never),
-      } as never,
-    );
+    Layer.succeed(RedisClientFactory, {
+      commandClient,
+      makeSubscriberClient: () => Effect.succeed({} as never),
+      makeStreamReaderClient: () => Effect.succeed({} as never),
+    } as never);
 
   it('publishes messages and closes the connection', async () => {
     const mockClient = {

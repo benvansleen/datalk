@@ -29,54 +29,57 @@ export const normalizeRedisStreamReadResult = (value: unknown): RedisStreamReadR
     onRight: (result) => result,
   });
 
-export class RedisClientFactory extends Effect.Service<RedisClientFactory>()('app/RedisClientFactory', {
-  scoped: Effect.gen(function* () {
-    const config = yield* Config;
+export class RedisClientFactory extends Effect.Service<RedisClientFactory>()(
+  'app/RedisClientFactory',
+  {
+    scoped: Effect.gen(function* () {
+      const config = yield* Config;
 
-    const createConnectedClient = ({ label, logLevel }: ClientOptions) =>
-      Effect.gen(function* () {
-        const log = logLevel === 'info' ? Effect.logInfo : Effect.logDebug;
-        yield* log(`Connecting to Redis (${label})`);
+      const createConnectedClient = ({ label, logLevel }: ClientOptions) =>
+        Effect.gen(function* () {
+          const log = logLevel === 'info' ? Effect.logInfo : Effect.logDebug;
+          yield* log(`Connecting to Redis (${label})`);
 
-        const client = createClient({ url: Redacted.value(config.redisUrl) });
-        yield* Effect.tryPromise({
-          try: () => client.connect(),
-          catch: (error) =>
-            new RedisError({
-              message: `Failed to connect Redis ${label}: ${
-                error instanceof Error ? error.message : String(error)
-              }`,
+          const client = createClient({ url: Redacted.value(config.redisUrl) });
+          yield* Effect.tryPromise({
+            try: () => client.connect(),
+            catch: (error) =>
+              new RedisError({
+                message: `Failed to connect Redis ${label}: ${
+                  error instanceof Error ? error.message : String(error)
+                }`,
+              }),
+          });
+
+          yield* log(`Redis connected (${label})`);
+          yield* Effect.addFinalizer(() =>
+            Effect.gen(function* () {
+              yield* log(`Closing Redis connection (${label})`);
+              yield* Effect.tryPromise(() => client.quit()).pipe(
+                Effect.catchAll((error) => Effect.logWarning(`Redis cleanup error: ${error}`)),
+              );
             }),
+          );
+
+          return client;
         });
 
-        yield* log(`Redis connected (${label})`);
-        yield* Effect.addFinalizer(() =>
-          Effect.gen(function* () {
-            yield* log(`Closing Redis connection (${label})`);
-            yield* Effect.tryPromise(() => client.quit()).pipe(
-              Effect.catchAll((error) => Effect.logWarning(`Redis cleanup error: ${error}`)),
-            );
-          }),
-        );
+      const commandClient = yield* createConnectedClient({ label: 'command', logLevel: 'info' });
 
-        return client;
-      });
+      const makeSubscriberClient = () =>
+        createConnectedClient({ label: 'subscriber', logLevel: 'debug' });
 
-    const commandClient = yield* createConnectedClient({ label: 'command', logLevel: 'info' });
+      const makeStreamReaderClient = () =>
+        createConnectedClient({ label: 'stream-reader', logLevel: 'debug' });
 
-    const makeSubscriberClient = () =>
-      createConnectedClient({ label: 'subscriber', logLevel: 'debug' });
-
-    const makeStreamReaderClient = () =>
-      createConnectedClient({ label: 'stream-reader', logLevel: 'debug' });
-
-    return {
-      commandClient,
-      makeSubscriberClient,
-      makeStreamReaderClient,
-    } as const;
-  }),
-  dependencies: [Config.Default],
-}) {}
+      return {
+        commandClient,
+        makeSubscriberClient,
+        makeStreamReaderClient,
+      } as const;
+    }),
+    dependencies: [Config.Default],
+  },
+) {}
 
 export const RedisClientFactoryLive = RedisClientFactory.Default;

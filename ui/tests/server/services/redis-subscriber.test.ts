@@ -9,18 +9,14 @@ describe('RedisSubscriber service', () => {
   });
 
   const makeRedisClientFactoryLayer = (subscriberClient: { quit: () => Promise<void> }) =>
-    Layer.succeed(
-      RedisClientFactory,
-      {
-        commandClient: {} as never,
-        makeSubscriberClient: () =>
-          Effect.acquireRelease(
-            Effect.succeed(subscriberClient as never),
-            () => Effect.promise(() => subscriberClient.quit()),
-          ),
-        makeStreamReaderClient: () => Effect.succeed({} as never),
-      } as never,
-    );
+    Layer.succeed(RedisClientFactory, {
+      commandClient: {} as never,
+      makeSubscriberClient: () =>
+        Effect.acquireRelease(Effect.succeed(subscriberClient as never), () =>
+          Effect.promise(() => subscriberClient.quit()),
+        ),
+      makeStreamReaderClient: () => Effect.succeed({} as never),
+    } as never);
 
   it('parses JSON messages and filters invalid payloads', async () => {
     const mockClient = {
