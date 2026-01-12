@@ -2,11 +2,7 @@
   import * as Item from '$lib/components/shadcn/item';
   import { marked } from 'marked';
   import hljs from 'highlight.js/lib/core';
-  import { onMount } from 'svelte';
-
-  onMount(() => {
-    hljs.highlightAll();
-  });
+  import { tick } from 'svelte';
 
   interface Props {
     role?: string;
@@ -97,6 +93,16 @@ ${sql_statement.join('\n')}
 
   const finalRole = $derived(role ? role : cleanFnName(fnName));
   const finalContent = $derived(content ? content : parseFn(args, output));
+
+  $effect(() => {
+    if (!finalContent) {
+      return;
+    }
+
+    void tick().then(() => {
+      hljs.highlightAll();
+    });
+  });
 
   const roleStyle = (role: string): string => {
     switch (role) {

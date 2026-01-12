@@ -57,14 +57,6 @@
       }
     });
 
-    if (data.currentMessageRequestId) {
-      console.log(`Resuming message request: ${data.currentMessageRequestId}`);
-      if (pendingMessageContent && !hasPendingUserMessage && !submittedUserInput) {
-        submittedUserInput = pendingMessageContent;
-      }
-      subscribe(data.currentMessageRequestId);
-    }
-
     return () => {
       chatStatusEvents.close();
     };
@@ -94,6 +86,8 @@
   let userInput = $state('');
   let submittedUserInput = $state('');
   let generating = $state(false);
+  let streamEventSource: EventSource | null = null;
+  let activeMessageRequestId: string | null = null;
 
   const resetGenerationState = () => {
     generating = false;
@@ -103,13 +97,28 @@
     submittedUserInput = '';
   };
 
+  const stopStreaming = () => {
+    if (streamEventSource) {
+      streamEventSource.close();
+      streamEventSource = null;
+    }
+    activeMessageRequestId = null;
+    resetGenerationState();
+  };
+
   const subscribe = (messageRequestId: string) => {
+    if (streamEventSource) {
+      streamEventSource.close();
+    }
     const eventSource = new EventSource(`/message-request/${messageRequestId}`);
+    streamEventSource = eventSource;
+    activeMessageRequestId = messageRequestId;
     generating = true;
 
     const cleanup = () => {
-      eventSource.close();
-      resetGenerationState();
+      if (streamEventSource === eventSource) {
+        stopStreaming();
+      }
     };
 
     eventSource.addEventListener('message', (e) => {
@@ -201,6 +210,34 @@
       cleanup();
     });
   };
+
+  $effect(() => {
+    const messageRequestId = data.currentMessageRequestId;
+
+    if (!messageRequestId) {
+      if (streamEventSource) {
+        stopStreaming();
+      }
+      return;
+    }
+
+    if (activeMessageRequestId === messageRequestId) {
+      return;
+    }
+
+    console.log(`Resuming message request: ${messageRequestId}`);
+    resetGenerationState();
+    if (pendingMessageContent && !hasPendingUserMessage) {
+      submittedUserInput = pendingMessageContent;
+    }
+    subscribe(messageRequestId);
+
+    return () => {
+      if (activeMessageRequestId === messageRequestId) {
+        stopStreaming();
+      }
+    };
+  });
 
   const handleSubmit = async (e: SubmitEvent) => {
     e.preventDefault();

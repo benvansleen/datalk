@@ -9,7 +9,7 @@ import { RedisError } from '../errors';
  * Connections are automatically cleaned up when streams end.
  */
 export class RedisSubscriber extends Effect.Service<RedisSubscriber>()('app/RedisSubscriber', {
-  effect: Effect.gen(function* () {
+  scoped: Effect.gen(function* () {
     const factory = yield* RedisClientFactory;
 
     /**
