@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { PageProps } from './$types';
   import { invalidateAll } from '$app/navigation';
+  import { onMount } from 'svelte';
   import { Button } from '$lib/components/shadcn/button';
   import * as Card from '$lib/components/shadcn/card';
   import Separator from '$lib/components/shadcn/separator/separator.svelte';
@@ -8,7 +9,7 @@
 
   let { data }: PageProps = $props();
 
-  $effect(() => {
+  onMount(() => {
     const eventSource = new EventSource('/chat-status-events');
     eventSource.addEventListener('message', (_e) => {
       // Refresh data when chat status changes

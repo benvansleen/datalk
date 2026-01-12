@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { PageProps } from './$types';
   import { invalidateAll } from '$app/navigation';
+  import { onMount } from 'svelte';
   import { Spinner } from '$lib/components/shadcn/spinner';
   import * as Item from '$lib/components/shadcn/item';
   import { ArrowUp } from '@lucide/svelte';
@@ -23,7 +24,7 @@
       ),
   );
 
-  $effect(() => {
+  onMount(() => {
     const chatStatusEvents = new EventSource('/chat-status-events');
     chatStatusEvents.addEventListener('message', (e) => {
       const event = JSON.parse(e.data);
