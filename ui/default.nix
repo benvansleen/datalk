@@ -30,8 +30,9 @@ in
 writeShellApplication {
   inherit (packageJSON) name;
   text = ''
-    export ORIGIN=http://localhost:3000
+    export ORIGIN="''${ORIGIN:-http://localhost:3000}"
+    export PORT="''${PORT:-3000}"
     ${lib.getExe nodejs} ${site}
   '';
-  passthru = site;
+  passthru.site = site;
 }

@@ -72,6 +72,24 @@
       };
 
       apps = {
+        push-images =
+          ## gcloud auth configure-docker us-east4-docker.pkg.dev
+          let
+            inherit (self.gcloud) project region name;
+            img = self'.packages.datalk-image;
+          in
+          {
+            type = "app";
+            program =
+              (pkgs.writeShellScript "push-images" /* bash */ ''
+                set -euo pipefail
+
+                tag="git-${self.shortRev or "dirty"}"
+                image="docker://${region}-docker.pkg.dev/${project}/${name}/${img.imageName}:$tag"
+                echo "pushing $image"
+                ${img.copyTo}/bin/copy-to "$image"
+              '').outPath;
+          };
         generate = {
           type = "app";
           program =

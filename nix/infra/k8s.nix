@@ -31,6 +31,11 @@
           "google_project_service.artifactregistry"
         ];
       };
+      google_project_iam_member.gke_nodes_artifact_reader = {
+        inherit (self.gcloud) project;
+        role = "roles/artifactregistry.reader";
+        member = /* terraform */ "serviceAccount:\${google_service_account.gke_nodes.email}";
+      };
 
       google_container_cluster.datalk = {
         name = "datalk";
