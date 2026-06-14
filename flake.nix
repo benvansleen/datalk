@@ -238,6 +238,13 @@
               ];
               inherit (self'.checks.pre-commit-check) shellHook;
               packages = with pkgs; [
+                (google-cloud-sdk.withExtraComponents (
+                  with google-cloud-sdk.components;
+                  [
+                    gke-gcloud-auth-plugin
+                  ]
+                ))
+
                 svelte-language-server
                 oxlint
                 podman

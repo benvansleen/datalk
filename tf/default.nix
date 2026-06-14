@@ -1,126 +1,89 @@
-{ domain }:
+let
+  project = "datalk-499418";
+  region = "us-east4";
+  zone = "us-east4-a";
+in
 {
-  config,
-  lib,
-  ...
-}:
 
-{
-  provider.aws = {
-    shared_credentials_files = [ "./.aws/credentials" ];
-    region = "us-east-1";
-  };
-
-  provider.cloudflare = { };
-
-  data.aws_ami.nixos_arm64 = {
-    owners = [ "427812963091" ];
-    most_recent = true;
-    filter = [
-      {
-        name = "name";
-        values = [ "nixos/25.05*" ];
-      }
-      {
-        name = "architecture";
-        values = [ "x86_64" ];
-      }
-    ];
-  };
-
-  data.cloudflare_zone.personal = {
-    filter = {
-      name = "vansleen.dev";
-    };
+  # gcloud container clusters get-credentials datalk --zone us-east4-a
+  provider.google = {
+    inherit project region zone;
   };
 
   resource = {
-    aws_key_pair.ssh_key = {
-      key_name = "datalk";
-      public_key = lib.fileContents ./aws.pub;
-    };
-
-    aws_instance.ui = {
-      inherit (config.resource.aws_key_pair.ssh_key) key_name;
-      ami = "\${data.aws_ami.nixos_arm64.id}";
-      instance_type = "t2.micro";
-      vpc_security_group_ids = [ "\${aws_security_group.ui.id}" ];
-      associate_public_ip_address = true;
-
-      root_block_device = {
-        volume_size = 32;
-        volume_type = "gp3";
-        encrypted = true;
+    google_project_service = {
+      artifactregistry = {
+        inherit project;
+        service = "artifactregistry.googleapis.com";
       };
-
-      tags = {
-        Name = "datalk ui";
-        Terraform = "true";
-        terranix = "true";
+      compute = {
+        inherit project;
+        service = "compute.googleapis.com";
+      };
+      container = {
+        inherit project;
+        service = "container.googleapis.com";
       };
     };
 
-    aws_security_group.ui = {
-      description = "Allow ssh, http, and https traffic";
+    google_service_account.gke_nodes = {
+      account_id = "datalk-gke-nodes";
     };
 
-    aws_security_group_rule = {
-      allow_ssh = {
-        security_group_id = "\${aws_security_group.ui.id}";
-        type = "ingress";
-        from_port = 22;
-        to_port = 22;
-        protocol = "tcp";
-        cidr_blocks = [ "0.0.0.0/0" ];
-      };
-      allow_http = {
-        security_group_id = "\${aws_security_group.ui.id}";
-        type = "ingress";
-        from_port = 80;
-        to_port = 80;
-        protocol = "tcp";
-        cidr_blocks = [ "0.0.0.0/0" ];
-      };
-      allow_https = {
-        security_group_id = "\${aws_security_group.ui.id}";
-        type = "ingress";
-        from_port = 443;
-        to_port = 443;
-        protocol = "tcp";
-        cidr_blocks = [ "0.0.0.0/0" ];
-      };
-      allow_pg = {
-        security_group_id = "\${aws_security_group.ui.id}";
-        type = "ingress";
-        from_port = 5432;
-        to_port = 5432;
-        protocol = "tcp";
-        cidr_blocks = [ "0.0.0.0/0" ];
-      };
-      allow_egress = {
-        security_group_id = "\${aws_security_group.ui.id}";
-        type = "egress";
-        from_port = 0;
-        to_port = 0;
-        protocol = "-1";
-        cidr_blocks = [ "0.0.0.0/0" ];
-      };
+    google_artifact_registry_repository.datalk = {
+      location = region;
+      repository_id = "datalk";
+      format = "DOCKER";
+
+      depends_on = [
+        "google_project_service.artifactregistry"
+      ];
     };
 
-    cloudflare_dns_record.ui = {
-      zone_id = "\${data.cloudflare_zone.personal.id}";
-      name = domain;
-      type = "A";
-      content = "\${aws_instance.ui.public_ip}";
-      ttl = 1;
-      proxied = false; # TODO: probably should proxy this application
-    };
-  };
+    google_container_cluster.datalk = {
+      name = "datalk";
+      location = zone;
 
-  output = {
-    instance_ip = {
-      description = "public ip of deployed instance";
-      value = "\${aws_instance.ui.public_ip}";
+      # manage node pools separately
+      remove_default_node_pool = true;
+      initial_node_count = 1;
+
+      deletion_protection = false;
+
+      networking_mode = "VPC_NATIVE";
+
+      release_channel.channel = "REGULAR";
+
+      depends_on = [
+        "google_project_service.compute"
+        "google_project_service.container"
+      ];
+    };
+
+    google_container_node_pool.datalk_spot = {
+      name = "datalk-spot";
+      location = zone;
+      cluster = "\${google_container_cluster.datalk.name}";
+
+      node_count = 1;
+
+      node_config = {
+        machine_type = "e2-medium";
+        spot = true;
+        disk_size_gb = 20;
+        disk_type = "pd-standard";
+
+        service_account = "\${google_service_account.gke_nodes.email}";
+        oauth_scopes = [
+          "https://www.googleapis.com/auth/cloud-platform"
+        ];
+
+        labels = {
+          workload = "datalk";
+        };
+
+        tags = [ "datalk-gke" ];
+      };
     };
   };
 }
