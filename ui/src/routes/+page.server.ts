@@ -36,8 +36,7 @@ export const load: PageServerLoad = async ({ locals, request, url }) => {
 };
 
 export const actions: Actions = {
-  createChat: async ({ request, locals, url }) => {
-    const user = locals.user;
+  createChat: async ({ request, locals: { user }, url }) => {
     const formData = await request.formData();
     const parsed = Schema.decodeUnknownEither(NewChatRequest)(
       Object.fromEntries(formData.entries()),
@@ -65,8 +64,7 @@ export const actions: Actions = {
     redirect(303, `/chat/${chatId}`);
   },
 
-  deleteChat: async ({ request, locals, url }) => {
-    const user = locals.user;
+  deleteChat: async ({ request, locals: { user }, url }) => {
     const formData = await request.formData();
     const chatId = formData.get('chatId') as string;
 
@@ -84,7 +82,5 @@ export const actions: Actions = {
       ).pipe(Effect.withSpan('Chat.deletion-request')),
       requestSpanFromRequest(request, url, '/'),
     );
-
-    return { success: true };
   },
 };
