@@ -23,7 +23,11 @@
       terraform = pkgs.opentofu;
       terraformConfiguration = inputs.terranix.lib.terranixConfiguration {
         inherit system;
-        modules = [ self.modules.infra.k8s ];
+        modules = with self.modules.infra; [
+          k8s
+          providers
+          secrets
+        ];
       };
     in
     {

@@ -21,6 +21,14 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
     import-tree.url = "github:vic/import-tree";
+    nixhelm = {
+      url = "github:farcaller/nixhelm";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+    nixidy = {
+      url = "github:arnarg/nixidy";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
     nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
     nixpkgs-stable.url = "github:nixos/nixpkgs/nixos-25.11";
     pre-commit-hooks = {
