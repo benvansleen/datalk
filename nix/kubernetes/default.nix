@@ -16,6 +16,7 @@
     { lib, ... }:
     {
       imports = with self.modules.kubernetes; [
+        datalk
         external-secrets
         tailscale-operator
       ];
@@ -35,6 +36,10 @@
       };
 
       modules = {
+        datalk = {
+          enable = true;
+          image = self.image-uri self.packages.x86_64-linux.datalk-image;
+        };
         external-secrets.enable = true;
         tailscale-operator.enable = true;
       };
@@ -75,7 +80,6 @@
         push-images =
           ## gcloud auth configure-docker us-east4-docker.pkg.dev
           let
-            inherit (self.gcloud) project region name;
             img = self'.packages.datalk-image;
           in
           {
@@ -84,8 +88,7 @@
               (pkgs.writeShellScript "push-images" /* bash */ ''
                 set -euo pipefail
 
-                tag="git-${self.shortRev or "dirty"}"
-                image="docker://${region}-docker.pkg.dev/${project}/${name}/${img.imageName}:$tag"
+                image="docker://${self.image-uri img}"
                 echo "pushing $image"
                 ${img.copyTo}/bin/copy-to "$image"
               '').outPath;
@@ -102,4 +105,10 @@
         };
       };
     };
+
+  flake.image-uri =
+    let
+      inherit (self.gcloud) project region name;
+    in
+    img: "${region}-docker.pkg.dev/${project}/${name}/${img.imageName}:git-${self.shortRev or "dirty"}";
 }
