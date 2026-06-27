@@ -46,7 +46,10 @@
             image = self.image-uri self.packages.x86_64-linux.datalk-image;
             publicUrl = "https://datalk.clouded-mimosa.ts.net";
             environment = "production";
-            tailscaleIngressHost = "datalk.clouded-mimosa.ts.net";
+            ingress = {
+              type = "tailscale";
+              host = "datalk.clouded-mimosa.ts.net";
+            };
             runtimeExternalSecret.enable = true;
           };
           external-secrets.enable = true;
@@ -79,7 +82,10 @@
           enable = true;
           image = self.local-image-uri self.packages.x86_64-linux.datalk-image;
           publicUrl = "http://datalk.localhost:8080";
-          localIngress = "datalk.localhost";
+          ingress = {
+            type = "local";
+            host = "datalk.localhost";
+          };
         };
         python-server = {
           enable = true;

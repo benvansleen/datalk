@@ -16,12 +16,20 @@
           type = types.nullOr types.str;
           default = null;
         };
-        localIngress = mkOption {
-          type = types.nullOr types.str;
-          default = null;
-        };
-        tailscaleIngressHost = mkOption {
-          type = types.nullOr types.str;
+        ingress = mkOption {
+          type = types.nullOr (
+            types.submodule {
+              options = {
+                type = mkOption {
+                  type = types.enum [
+                    "local"
+                    "tailscale"
+                  ];
+                };
+                host = mkOption { type = types.str; };
+              };
+            }
+          );
           default = null;
         };
         runtimeExternalSecret = {
@@ -45,6 +53,14 @@
             resources =
               let
                 app-label = "datalk";
+                ingressPath = {
+                  path = "/";
+                  pathType = "Prefix";
+                  backend.service = {
+                    name = "datalk";
+                    port.name = "http";
+                  };
+                };
               in
               {
                 services.datalk = {
@@ -201,50 +217,24 @@
                       };
                   };
                 };
-                ingresses = lib.mkMerge [
-                  (lib.mkIf (cfg.localIngress != null) {
-                    datalk.spec.rules = [
+                ingresses = lib.mkIf (cfg.ingress != null) {
+                  datalk.spec = {
+                    rules = [
                       {
-                        host = cfg.localIngress;
-                        http.paths = [
-                          {
-                            path = "/";
-                            pathType = "Prefix";
-                            backend.service = {
-                              name = "datalk";
-                              port.name = "http";
-                            };
-                          }
-                        ];
+                        inherit (cfg.ingress) host;
+                        http.paths = [ ingressPath ];
                       }
                     ];
-                  })
-                  (lib.mkIf (cfg.tailscaleIngressHost != null) {
-                    datalk.spec = {
-                      ingressClassName = "tailscale";
-                      tls = [
-                        {
-                          hosts = [ cfg.tailscaleIngressHost ];
-                        }
-                      ];
-                      rules = [
-                        {
-                          host = cfg.tailscaleIngressHost;
-                          http.paths = [
-                            {
-                              path = "/";
-                              pathType = "Prefix";
-                              backend.service = {
-                                name = "datalk";
-                                port.name = "http";
-                              };
-                            }
-                          ];
-                        }
-                      ];
-                    };
-                  })
-                ];
+                  }
+                  // lib.optionalAttrs (cfg.ingress.type == "tailscale") {
+                    ingressClassName = "tailscale";
+                    tls = [
+                      {
+                        hosts = [ cfg.ingress.host ];
+                      }
+                    ];
+                  };
+                };
               }
               // lib.optionalAttrs cfg.runtimeExternalSecret.enable {
                 externalSecrets = {
