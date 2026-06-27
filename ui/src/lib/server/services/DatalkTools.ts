@@ -15,7 +15,7 @@ export const CheckEnvironment = Tool.make('check_environment', {
   description: 'Fetch the available dataframes within the given compute environment',
   success: Schema.String,
   failure: Schema.Never,
-  parameters: {},
+  parameters: Tool.EmptyParams,
 });
 
 /**

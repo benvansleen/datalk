@@ -36,7 +36,13 @@
             ];
             pathsToLink = [ "/" ];
           };
-          config.Cmd = [ "/bin/ui" ];
+          config = {
+            Cmd = [ "/bin/ui" ];
+            Env = [
+              "SSL_CERT_FILE=${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt"
+              "NODE_EXTRA_CA_CERTS=${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt"
+            ];
+          };
         };
 
         python-server-image = inputs'.nix2container.packages.nix2container.buildImage {
@@ -44,7 +50,10 @@
           tag = "local";
           copyToRoot = pkgs.buildEnv {
             name = "python-server-image-root";
-            paths = with self'.packages; [ python-server ];
+            paths = with self'.packages; [
+              python-server
+              pkgs.gnutar
+            ];
           };
           config.Cmd = [ "/bin/server" ];
         };

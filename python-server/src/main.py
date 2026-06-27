@@ -29,9 +29,9 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 DATASETS: dict[str, dict] = {
-    # "College Football 2025": {
-    #     "path": "./datasets/cfbd/",
-    # },
+    "College Football 2025": {
+        "path": "./datasets/cfbd/",
+    },
 }
 
 
