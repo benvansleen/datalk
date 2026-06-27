@@ -12,9 +12,24 @@
           type = types.str;
           example = "http://datalk.localhost:8080";
         };
+        environment = mkOption {
+          type = types.nullOr types.str;
+          default = null;
+        };
         localIngress = mkOption {
           type = types.nullOr types.str;
           default = null;
+        };
+        tailscaleIngressHost = mkOption {
+          type = types.nullOr types.str;
+          default = null;
+        };
+        runtimeExternalSecret = {
+          enable = mkEnableOption "syncing datalk-runtime with External Secrets Operator";
+          storeName = mkOption {
+            type = types.str;
+            default = "google-secret-manager";
+          };
         };
       };
 
@@ -33,10 +48,6 @@
               in
               {
                 services.datalk = {
-                  metadata.annotations = {
-                    "tailscale.com/expose" = "true";
-                    "tailscale.com/hostname" = "datalk";
-                  };
                   spec = {
                     type = "ClusterIP";
                     selector.app = app-label;
@@ -131,6 +142,10 @@
                           env =
                             dbEnv
                             ++ redisEnv
+                            ++ lib.optional (cfg.environment != null) {
+                              name = "ENVIRONMENT";
+                              value = cfg.environment;
+                            }
                             ++ [
                               {
                                 name = "NODE_ENV";
@@ -170,14 +185,6 @@
                                   key = "OPENAI_API_KEY";
                                 };
                               }
-                              # {
-                              #   name = "PROTOCOL_HEADER";
-                              #   value = "x-forwarded-proto";
-                              # }
-                              # {
-                              #   name = "HOST_HEADER";
-                              #   value = "x-forwarded-host";
-                              # }
                             ];
 
                           # resources = {
@@ -194,22 +201,86 @@
                       };
                   };
                 };
-                ingresses = lib.mkIf (cfg.localIngress != null) {
-                  datalk.spec.rules = [
-                    {
-                      host = cfg.localIngress;
-                      http.paths = [
+                ingresses = lib.mkMerge [
+                  (lib.mkIf (cfg.localIngress != null) {
+                    datalk.spec.rules = [
+                      {
+                        host = cfg.localIngress;
+                        http.paths = [
+                          {
+                            path = "/";
+                            pathType = "Prefix";
+                            backend.service = {
+                              name = "datalk";
+                              port.name = "http";
+                            };
+                          }
+                        ];
+                      }
+                    ];
+                  })
+                  (lib.mkIf (cfg.tailscaleIngressHost != null) {
+                    datalk.spec = {
+                      ingressClassName = "tailscale";
+                      tls = [
                         {
-                          path = "/";
-                          pathType = "Prefix";
-                          backend.service = {
-                            name = "datalk";
-                            port.name = "http";
-                          };
+                          hosts = [ cfg.tailscaleIngressHost ];
                         }
                       ];
-                    }
-                  ];
+                      rules = [
+                        {
+                          host = cfg.tailscaleIngressHost;
+                          http.paths = [
+                            {
+                              path = "/";
+                              pathType = "Prefix";
+                              backend.service = {
+                                name = "datalk";
+                                port.name = "http";
+                              };
+                            }
+                          ];
+                        }
+                      ];
+                    };
+                  })
+                ];
+              }
+              // lib.optionalAttrs cfg.runtimeExternalSecret.enable {
+                externalSecrets = {
+                  datalk-runtime = {
+                    apiVersion = "external-secrets.io/v1";
+                    kind = "ExternalSecret";
+                    spec = {
+                      refreshInterval = "1h";
+                      secretStoreRef = {
+                        name = cfg.runtimeExternalSecret.storeName;
+                        kind = "ClusterSecretStore";
+                      };
+                      target = {
+                        name = "datalk-runtime";
+                        creationPolicy = "Owner";
+                      };
+                      data = [
+                        {
+                          secretKey = "BETTER_AUTH_SECRET";
+                          remoteRef.key = "better-auth-secret";
+                        }
+                        {
+                          secretKey = "OPENAI_API_KEY";
+                          remoteRef.key = "openai-api-key";
+                        }
+                        {
+                          secretKey = "REDIS_USER";
+                          remoteRef.key = "redis-user";
+                        }
+                        {
+                          secretKey = "REDIS_PASSWORD";
+                          remoteRef.key = "redis-password";
+                        }
+                      ];
+                    };
+                  };
                 };
               };
           };

@@ -7,6 +7,7 @@ import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { betterAuth } from 'better-auth';
 import { sveltekitCookies } from 'better-auth/svelte-kit';
 import { getRequestEvent } from '$app/server';
+import * as schema from '$lib/server/db/schema';
 
 export class Auth extends Effect.Service<Auth>()('app/Auth', {
   effect: Effect.gen(function* () {
@@ -14,7 +15,7 @@ export class Auth extends Effect.Service<Auth>()('app/Auth', {
     const db = yield* Database;
 
     const auth = betterAuth({
-      database: drizzleAdapter(db, { provider: 'pg' }),
+      database: drizzleAdapter(db, { provider: 'pg', schema }),
       plugins: [sveltekitCookies(getRequestEvent)],
       emailAndPassword: { enabled: true },
     });

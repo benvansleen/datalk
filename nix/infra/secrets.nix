@@ -32,19 +32,49 @@
         ];
       };
 
-      google_secret_manager_secret.tailscale_oauth_client_id = {
-        secret_id = "tailscale-oauth-client-id";
-        replication.auto = { };
-        depends_on = [
-          "google_service_account.external_secrets"
-        ];
-      };
-      google_secret_manager_secret.tailscale_oauth_client_secret = {
-        secret_id = "tailscale-oauth-client-secret";
-        replication.auto = { };
-        depends_on = [
-          "google_service_account.external_secrets"
-        ];
+      google_secret_manager_secret = {
+        tailscale_oauth_client_id = {
+          secret_id = "tailscale-oauth-client-id";
+          replication.auto = { };
+          depends_on = [
+            "google_service_account.external_secrets"
+          ];
+        };
+        tailscale_oauth_client_secret = {
+          secret_id = "tailscale-oauth-client-secret";
+          replication.auto = { };
+          depends_on = [
+            "google_service_account.external_secrets"
+          ];
+        };
+        better_auth_secret = {
+          secret_id = "better-auth-secret";
+          replication.auto = { };
+          depends_on = [
+            "google_service_account.external_secrets"
+          ];
+        };
+        openai_api_key = {
+          secret_id = "openai-api-key";
+          replication.auto = { };
+          depends_on = [
+            "google_service_account.external_secrets"
+          ];
+        };
+        redis_user = {
+          secret_id = "redis-user";
+          replication.auto = { };
+          depends_on = [
+            "google_service_account.external_secrets"
+          ];
+        };
+        redis_password = {
+          secret_id = "redis-password";
+          replication.auto = { };
+          depends_on = [
+            "google_service_account.external_secrets"
+          ];
+        };
       };
 
       google_secret_manager_secret_iam_member.eso_tailscale_client_id = {

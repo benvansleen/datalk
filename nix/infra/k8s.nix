@@ -64,7 +64,7 @@
         location = self.gcloud.zone;
         cluster = "\${google_container_cluster.datalk.name}";
 
-        node_count = 1;
+        node_count = 3;
 
         node_config = {
           machine_type = "e2-medium";

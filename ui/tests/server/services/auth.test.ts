@@ -170,4 +170,17 @@ describe('Auth service', () => {
       }
     }
   });
+
+  it('passes the application schema to the drizzle adapter', async () => {
+    const { drizzleAdapter } = await import('better-auth/adapters/drizzle');
+    const schema = await import('$lib/server/db/schema');
+
+    const program = Effect.gen(function* () {
+      yield* Auth;
+    });
+
+    await Effect.runPromise(program.pipe(Effect.provide(authLayer)));
+
+    expect(drizzleAdapter).toHaveBeenCalledWith(mockDb, { provider: 'pg', schema });
+  });
 });

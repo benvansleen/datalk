@@ -12,74 +12,83 @@
     };
   };
 
-  flake.modules.kubernetes =
-    let
-      target = {
-        repository = "https://github.com/benvansleen/datalk.git";
-        branch = "master";
-        rootPath = "./manifests/default";
-      };
-    in
-    {
-      default =
-        { lib, ... }:
-        {
-          imports = with self.modules.kubernetes; [
-            datalk
-            external-secrets
-            tailscale-operator
-          ];
-
-          nixidy = {
-            inherit target;
-            defaults.helm.transformer = map (
-              lib.kube.removeLabels [
-                "app.kubernetes.io/version"
-                "helm.sh/chart"
-              ]
-            );
-          };
-
-          modules = {
-            datalk = {
-              enable = true;
-              image = self.image-uri self.packages.x86_64-linux.datalk-image;
-            };
-            external-secrets.enable = true;
-            tailscale-operator.enable = true;
-          };
-        };
-
-      local = {
+  flake.modules.kubernetes = {
+    default =
+      { lib, ... }:
+      {
         imports = with self.modules.kubernetes; [
           cloudnative-pg
           datalk
+          external-secrets
           python-server
+          tailscale-operator
           valkey
         ];
+
         nixidy = {
           target = {
-            rootPath = "./manifests/k3s";
-            repository = "";
-            branch = "";
+            repository = "https://github.com/benvansleen/datalk.git";
+            branch = "master";
+            rootPath = "./manifests/default";
           };
+          defaults.helm.transformer = map (
+            lib.kube.removeLabels [
+              "app.kubernetes.io/version"
+              "helm.sh/chart"
+            ]
+          );
         };
+
         modules = {
           cloudnative-pg.enable = true;
           datalk = {
             enable = true;
-            image = self.local-image-uri self.packages.x86_64-linux.datalk-image;
-            publicUrl = "http://datalk.localhost:8080";
-            localIngress = "datalk.localhost";
+            image = self.image-uri self.packages.x86_64-linux.datalk-image;
+            publicUrl = "https://datalk.clouded-mimosa.ts.net";
+            environment = "production";
+            tailscaleIngressHost = "datalk.clouded-mimosa.ts.net";
+            runtimeExternalSecret.enable = true;
           };
+          external-secrets.enable = true;
           python-server = {
             enable = true;
-            image = self.local-image-uri self.packages.x86_64-linux.python-server-image;
+            image = self.image-uri self.packages.x86_64-linux.python-server-image;
           };
+          tailscale-operator.enable = true;
           valkey.enable = true;
         };
       };
+
+    local = {
+      imports = with self.modules.kubernetes; [
+        cloudnative-pg
+        datalk
+        python-server
+        valkey
+      ];
+      nixidy = {
+        target = {
+          rootPath = "./manifests/k3s";
+          repository = "";
+          branch = "";
+        };
+      };
+      modules = {
+        cloudnative-pg.enable = true;
+        datalk = {
+          enable = true;
+          image = self.local-image-uri self.packages.x86_64-linux.datalk-image;
+          publicUrl = "http://datalk.localhost:8080";
+          localIngress = "datalk.localhost";
+        };
+        python-server = {
+          enable = true;
+          image = self.local-image-uri self.packages.x86_64-linux.python-server-image;
+        };
+        valkey.enable = true;
+      };
     };
+  };
 
   perSystem =
     {
@@ -122,17 +131,21 @@
         push-images =
           ## gcloud auth configure-docker us-east4-docker.pkg.dev
           let
-            img = self'.packages.datalk-image;
+            imgs = with self'.packages; [
+              datalk-image
+              python-server-image
+            ];
           in
           {
             type = "app";
             program =
-              (pkgs.writeShellScript "push-images" /* bash */ ''
+              (pkgs.writeShellScript "push-images-local" /* bash */ ''
                 set -euo pipefail
-
-                image="docker://${self.image-uri img}"
-                echo "pushing $image"
-                ${img.copyTo}/bin/copy-to "$image"
+                ${lib.concatMapStringsSep "\n\n" (img: /* sh */ ''
+                  uri="docker://${toString (self.image-uri img)}"
+                  echo "pushing $uri"
+                  ${img.copyTo}/bin/copy-to "$uri"
+                '') imgs}
               '').outPath;
           };
         generate = {

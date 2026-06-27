@@ -23,14 +23,10 @@
           applications.external-secrets = {
             namespace = "external-secrets";
             createNamespace = true;
-            syncPolicy.syncOptions.serverSideApply = true;
 
             helm.releases.external-secrets = {
               chart = charts.external-secrets.external-secrets;
               values = {
-                # TODO: revisit after argocd setup
-                installCRDs = false;
-
                 serviceAccount = {
                   create = true;
                   name = "external-secrets";
