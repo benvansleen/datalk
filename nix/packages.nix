@@ -29,9 +29,10 @@
           tag = "local";
           copyToRoot = pkgs.buildEnv {
             name = "datalk-image-root";
-            paths = [
-              self'.packages.ui
-              self'.packages.ui.site
+            paths = with self'.packages; [
+              ui
+              ui.site
+              ui.migrate
             ];
             pathsToLink = [ "/" ];
           };

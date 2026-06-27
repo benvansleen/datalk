@@ -12,36 +12,63 @@
     };
   };
 
-  flake.modules.kubernetes.default =
-    { lib, ... }:
-    {
-      imports = with self.modules.kubernetes; [
-        datalk
-        external-secrets
-        tailscale-operator
-      ];
-
-      nixidy = {
-        target = {
-          repository = "https://github.com/benvansleen/datalk.git";
-          branch = "master";
-          rootPath = "./manifests/default";
-        };
-        defaults.helm.transformer = map (
-          lib.kube.removeLabels [
-            "app.kubernetes.io/version"
-            "helm.sh/chart"
-          ]
-        );
+  flake.modules.kubernetes =
+    let
+      target = {
+        repository = "https://github.com/benvansleen/datalk.git";
+        branch = "master";
+        rootPath = "./manifests/default";
       };
+    in
+    {
+      default =
+        { lib, ... }:
+        {
+          imports = with self.modules.kubernetes; [
+            datalk
+            external-secrets
+            tailscale-operator
+          ];
 
-      modules = {
-        datalk = {
-          enable = true;
-          image = self.image-uri self.packages.x86_64-linux.datalk-image;
+          nixidy = {
+            inherit target;
+            defaults.helm.transformer = map (
+              lib.kube.removeLabels [
+                "app.kubernetes.io/version"
+                "helm.sh/chart"
+              ]
+            );
+          };
+
+          modules = {
+            datalk = {
+              enable = true;
+              image = self.image-uri self.packages.x86_64-linux.datalk-image;
+            };
+            external-secrets.enable = true;
+            tailscale-operator.enable = true;
+          };
         };
-        external-secrets.enable = true;
-        tailscale-operator.enable = true;
+
+      local = {
+        imports = with self.modules.kubernetes; [
+          cloudnative-pg
+          datalk
+        ];
+        nixidy = {
+          target = {
+            rootPath = "./manifests/k3s";
+            repository = "";
+            branch = "";
+          };
+        };
+        modules = {
+          cloudnative-pg.enable = true;
+          datalk = {
+            enable = true;
+            image = self.local-image-uri self.packages.x86_64-linux.datalk-image;
+          };
+        };
       };
     };
 
@@ -56,6 +83,10 @@
     {
       packages = {
         nixidy = inputs'.nixidy.packages.default;
+        "generators/cloudnative-pg" = inputs'.nixidy.packages.generators.fromChartCRD {
+          name = "cloudnative-pg";
+          chart = inputs.nixhelm.chartsDerivations.${system}.cloudnative-pg.cloudnative-pg;
+        };
         "generators/external-secrets" = inputs'.nixidy.packages.generators.fromChartCRD {
           name = "external-secrets";
           chart = inputs.nixhelm.chartsDerivations.${system}.external-secrets.external-secrets;
@@ -72,6 +103,7 @@
           charts = inputs.nixhelm.chartsDerivations.${system};
           envs = {
             default.modules = [ self.modules.kubernetes.default ];
+            local.modules = [ self.modules.kubernetes.local ];
           };
         };
       };
@@ -99,10 +131,26 @@
             (pkgs.writeShellScript "generate-crds" /* bash */ ''
               set -eo pipefail
 
+              cat ${self'.packages."generators/cloudnative-pg"} > nix/_generated/cloudnative-pg.nix
               cat ${self'.packages."generators/external-secrets"} > nix/_generated/external-secrets.nix
               cat ${self'.packages."generators/tailscale"} > nix/_generated/tailscale-operator.nix
             '').outPath;
         };
+        push-images-local =
+          let
+            img = self'.packages.datalk-image;
+          in
+          {
+            type = "app";
+            program =
+              (pkgs.writeShellScript "push-images-local" /* bash */ ''
+                set -euo pipefail
+
+                image="docker://${self.local-image-push-uri img}"
+                echo "pushing $image"
+                ${img.copyTo}/bin/copy-to --dest-tls-verify=false "$image"
+              '').outPath;
+          };
       };
     };
 

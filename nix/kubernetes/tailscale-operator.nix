@@ -9,6 +9,10 @@
     {
       options.modules.tailscale-operator = with lib; {
         enable = mkEnableOption "tailscale-operator";
+        namespace = mkOption {
+          type = types.str;
+          default = "tailscale";
+        };
       };
 
       config =
@@ -19,7 +23,7 @@
           nixidy.applicationImports = [ ../_generated/tailscale-operator.nix ];
 
           applications.tailscale-operator = {
-            namespace = "tailscale";
+            inherit (cfg) namespace;
             createNamespace = true;
 
             helm.releases.tailscale-operator = {

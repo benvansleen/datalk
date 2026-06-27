@@ -1,1 +1,0 @@
-ALTER TABLE "message" ALTER COLUMN "chat_id" SET DATA TYPE serial;

@@ -44,37 +44,98 @@
 
                   template = {
                     metadata.labels.app = app-label;
-                    spec.containers.datalk = {
-                      inherit (cfg) image;
-                      imagePullPolicy = "Always";
-                      ports.http.containerPort = 3000;
+                    spec =
+                      let
+                        dbEnv = [
+                          {
+                            name = "DB_USER";
+                            valueFrom.secretKeyRef = {
+                              name = "datalk-db-app";
+                              key = "username";
+                            };
+                          }
+                          {
+                            name = "DB_PASSWORD";
+                            valueFrom.secretKeyRef = {
+                              name = "datalk-db-app";
+                              key = "password";
+                            };
+                          }
+                          {
+                            name = "DB_HOST";
+                            valueFrom.secretKeyRef = {
+                              name = "datalk-db-app";
+                              key = "host";
+                            };
+                          }
+                          {
+                            name = "DB_PORT";
+                            valueFrom.secretKeyRef = {
+                              name = "datalk-db-app";
+                              key = "port";
+                            };
+                          }
+                          {
+                            name = "DB_NAME";
+                            valueFrom.secretKeyRef = {
+                              name = "datalk-db-app";
+                              key = "dbname";
+                            };
+                          }
+                        ];
+                      in
+                      {
+                        initContainers.migrate = {
+                          inherit (cfg) image;
+                          imagePullPolicy = "Always";
+                          command = [ "/bin/migrate" ];
+                          env = dbEnv;
+                        };
+                        containers.datalk = {
+                          inherit (cfg) image;
+                          imagePullPolicy = "Always";
+                          ports.http.containerPort = 3000;
 
-                      env = [
-                        {
-                          name = "NODE_ENV";
-                          value = "production";
-                        }
-                        {
-                          name = "PORT";
-                          value = "3000";
-                        }
-                        {
-                          name = "ORIGIN";
-                          value = "http://datalk";
-                        }
-                      ];
+                          env = dbEnv ++ [
+                            {
+                              name = "NODE_ENV";
+                              value = "production";
+                            }
+                            {
+                              name = "PORT";
+                              value = "3000";
+                            }
+                            {
+                              name = "ORIGIN";
+                              value = "http://datalk";
+                            }
 
-                      # resources = {
-                      # requests = {
-                      #   cpu = "100m";
-                      #   memory = "2Gi";
-                      # };
-                      # limits = {
-                      #   cpu = "500m";
-                      #   memory = "3Gi";
-                      # };
-                      # };
-                    };
+                            # {
+                            #   name = "BETTER_AUTH_URL";
+                            #   value = "http://datalk";
+                            # }
+                            # {
+                            #   name = "PROTOCOL_HEADER";
+                            #   value = "x-forwarded-proto";
+                            # }
+                            # {
+                            #   name = "HOST_HEADER";
+                            #   value = "x-forwarded-host";
+                            # }
+                          ];
+
+                          # resources = {
+                          # requests = {
+                          #   cpu = "100m";
+                          #   memory = "2Gi";
+                          # };
+                          # limits = {
+                          #   cpu = "500m";
+                          #   memory = "3Gi";
+                          # };
+                          # };
+                        };
+                      };
                   };
                 };
               };

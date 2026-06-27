@@ -13,6 +13,7 @@
           ];
           inherit (self'.checks.pre-commit-check) shellHook;
           packages = with pkgs; [
+            self'.packages.nixidy
             (google-cloud-sdk.withExtraComponents (
               with google-cloud-sdk.components;
               [
