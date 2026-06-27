@@ -36,9 +36,17 @@
             ];
             pathsToLink = [ "/" ];
           };
-          config = {
-            Cmd = [ "/bin/ui" ];
+          config.Cmd = [ "/bin/ui" ];
+        };
+
+        python-server-image = inputs'.nix2container.packages.nix2container.buildImage {
+          name = "python-server";
+          tag = "local";
+          copyToRoot = pkgs.buildEnv {
+            name = "python-server-image-root";
+            paths = with self'.packages; [ python-server ];
           };
+          config.Cmd = [ "/bin/server" ];
         };
       };
     };

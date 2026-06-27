@@ -101,6 +101,13 @@
                             value = toString port;
                           }
                           {
+                            name = "REDIS_USER";
+                            valueFrom.secretKeyRef = {
+                              name = secretName;
+                              key = userKey;
+                            };
+                          }
+                          {
                             name = "REDIS_PASSWORD";
                             valueFrom.secretKeyRef = {
                               name = secretName;
@@ -140,6 +147,28 @@
                               {
                                 name = "BETTER_AUTH_URL";
                                 value = cfg.publicUrl;
+                              }
+                              {
+                                name = "BETTER_AUTH_SECRET";
+                                valueFrom.secretKeyRef = {
+                                  name = "datalk-runtime";
+                                  key = "BETTER_AUTH_SECRET";
+                                };
+                              }
+                              {
+                                name = "PYTHON_SERVER_HOST";
+                                value = "python-server";
+                              }
+                              {
+                                name = "PYTHON_SERVER_PORT";
+                                value = toString config.modules.python-server.port;
+                              }
+                              {
+                                name = "OPENAI_API_KEY";
+                                valueFrom.secretKeyRef = {
+                                  name = "datalk-runtime";
+                                  key = "OPENAI_API_KEY";
+                                };
                               }
                               # {
                               #   name = "PROTOCOL_HEADER";

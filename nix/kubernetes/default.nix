@@ -54,6 +54,7 @@
         imports = with self.modules.kubernetes; [
           cloudnative-pg
           datalk
+          python-server
           valkey
         ];
         nixidy = {
@@ -65,13 +66,17 @@
         };
         modules = {
           cloudnative-pg.enable = true;
-          valkey.enable = true;
           datalk = {
             enable = true;
             image = self.local-image-uri self.packages.x86_64-linux.datalk-image;
             publicUrl = "http://datalk.localhost:8080";
             localIngress = "datalk.localhost";
           };
+          python-server = {
+            enable = true;
+            image = self.local-image-uri self.packages.x86_64-linux.python-server-image;
+          };
+          valkey.enable = true;
         };
       };
     };
@@ -81,6 +86,7 @@
       inputs',
       self',
       pkgs,
+      lib,
       system,
       ...
     }:
@@ -142,17 +148,21 @@
         };
         push-images-local =
           let
-            img = self'.packages.datalk-image;
+            imgs = with self'.packages; [
+              datalk-image
+              python-server-image
+            ];
           in
           {
             type = "app";
             program =
               (pkgs.writeShellScript "push-images-local" /* bash */ ''
                 set -euo pipefail
-
-                image="docker://${self.local-image-push-uri img}"
-                echo "pushing $image"
-                ${img.copyTo}/bin/copy-to --dest-tls-verify=false "$image"
+                ${lib.concatMapStringsSep "\n\n" (img: /* sh */ ''
+                  uri="docker://${toString (self.local-image-push-uri img)}"
+                  echo "pushing $uri"
+                  ${img.copyTo}/bin/copy-to --dest-tls-verify=false "$uri"
+                '') imgs}
               '').outPath;
           };
       };

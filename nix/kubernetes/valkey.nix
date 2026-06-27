@@ -16,6 +16,10 @@
           type = types.str;
           default = "datalk-runtime";
         };
+        userKey = mkOption {
+          type = types.str;
+          default = "REDIS_USER";
+        };
         passwordKey = mkOption {
           type = types.str;
           default = "REDIS_PASSWORD";
