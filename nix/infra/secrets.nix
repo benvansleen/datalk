@@ -76,23 +76,6 @@
           ];
         };
       };
-
-      google_secret_manager_secret_iam_member.eso_tailscale_client_id = {
-        secret_id = /* terraform */ "\${google_secret_manager_secret.tailscale_oauth_client_id.id}";
-        role = "roles/secretmanager.secretAccessor";
-        member = /* terraform */ "serviceAccount:\${google_service_account.external_secrets.email}";
-        depends_on = [
-          "google_service_account.external_secrets"
-        ];
-      };
-      google_secret_manager_secret_iam_member.eso_tailscale_client_secret = {
-        secret_id = /* terraform */ "\${google_secret_manager_secret.tailscale_oauth_client_secret.id}";
-        role = "roles/secretmanager.secretAccessor";
-        member = /* terraform */ "serviceAccount:\${google_service_account.external_secrets.email}";
-        depends_on = [
-          "google_service_account.external_secrets"
-        ];
-      };
     };
   };
 }
