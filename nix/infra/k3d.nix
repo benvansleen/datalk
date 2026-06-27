@@ -59,10 +59,7 @@
                 k3s = {
                   extraArgs = [
                     {
-                      arg = "--disable=traefik";
-                      nodeFilters = [ "server:*" ];
-                    }
-                    {
+                      ## necessary for running k3d on rootless podman
                       arg = "--kubelet-arg=feature-gates=KubeletInUserNamespace=true";
                       nodeFilters = [
                         "server:*"
@@ -88,6 +85,7 @@
             k3d_cluster = {
               triggers = {
                 cluster_name = cluster;
+                config_sha = "\${filesha256(\"${k3dConfig}\")}";
               };
 
               provisioner.local-exec = [

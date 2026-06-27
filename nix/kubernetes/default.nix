@@ -67,6 +67,8 @@
           datalk = {
             enable = true;
             image = self.local-image-uri self.packages.x86_64-linux.datalk-image;
+            publicUrl = "http://datalk.localhost:8080";
+            localIngress = "datalk.localhost";
           };
         };
       };

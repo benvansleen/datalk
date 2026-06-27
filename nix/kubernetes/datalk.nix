@@ -8,6 +8,14 @@
           type = types.str;
           example = "us-east4-docker.pkg.dev/datalk-499418/datalk/datalk:git-dirty";
         };
+        publicUrl = mkOption {
+          type = types.str;
+          example = "http://datalk.localhost:8080";
+        };
+        localIngress = mkOption {
+          type = types.nullOr types.str;
+          default = null;
+        };
       };
 
       config =
@@ -107,13 +115,12 @@
                             }
                             {
                               name = "ORIGIN";
-                              value = "http://datalk";
+                              value = cfg.publicUrl;
                             }
-
-                            # {
-                            #   name = "BETTER_AUTH_URL";
-                            #   value = "http://datalk";
-                            # }
+                            {
+                              name = "BETTER_AUTH_URL";
+                              value = cfg.publicUrl;
+                            }
                             # {
                             #   name = "PROTOCOL_HEADER";
                             #   value = "x-forwarded-proto";
@@ -137,6 +144,23 @@
                         };
                       };
                   };
+                };
+                ingresses = lib.mkIf (cfg.localIngress != null) {
+                  datalk.spec.rules = [
+                    {
+                      host = cfg.localIngress;
+                      http.paths = [
+                        {
+                          path = "/";
+                          pathType = "Prefix";
+                          backend.service = {
+                            name = "datalk";
+                            port.name = "http";
+                          };
+                        }
+                      ];
+                    }
+                  ];
                 };
               };
           };
