@@ -91,6 +91,23 @@
                             };
                           }
                         ];
+                        redisEnv = with config.modules.valkey; [
+                          {
+                            name = "REDIS_HOST";
+                            value = "valkey";
+                          }
+                          {
+                            name = "REDIS_PORT";
+                            value = toString port;
+                          }
+                          {
+                            name = "REDIS_PASSWORD";
+                            valueFrom.secretKeyRef = {
+                              name = secretName;
+                              key = passwordKey;
+                            };
+                          }
+                        ];
                       in
                       {
                         initContainers.migrate = {
@@ -104,32 +121,35 @@
                           imagePullPolicy = "Always";
                           ports.http.containerPort = 3000;
 
-                          env = dbEnv ++ [
-                            {
-                              name = "NODE_ENV";
-                              value = "production";
-                            }
-                            {
-                              name = "PORT";
-                              value = "3000";
-                            }
-                            {
-                              name = "ORIGIN";
-                              value = cfg.publicUrl;
-                            }
-                            {
-                              name = "BETTER_AUTH_URL";
-                              value = cfg.publicUrl;
-                            }
-                            # {
-                            #   name = "PROTOCOL_HEADER";
-                            #   value = "x-forwarded-proto";
-                            # }
-                            # {
-                            #   name = "HOST_HEADER";
-                            #   value = "x-forwarded-host";
-                            # }
-                          ];
+                          env =
+                            dbEnv
+                            ++ redisEnv
+                            ++ [
+                              {
+                                name = "NODE_ENV";
+                                value = "production";
+                              }
+                              {
+                                name = "PORT";
+                                value = "3000";
+                              }
+                              {
+                                name = "ORIGIN";
+                                value = cfg.publicUrl;
+                              }
+                              {
+                                name = "BETTER_AUTH_URL";
+                                value = cfg.publicUrl;
+                              }
+                              # {
+                              #   name = "PROTOCOL_HEADER";
+                              #   value = "x-forwarded-proto";
+                              # }
+                              # {
+                              #   name = "HOST_HEADER";
+                              #   value = "x-forwarded-host";
+                              # }
+                            ];
 
                           # resources = {
                           # requests = {

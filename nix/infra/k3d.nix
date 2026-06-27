@@ -14,6 +14,7 @@
         resource.null_resource =
           let
             k3d = lib.getExe pkgs.k3d;
+            kubectl = lib.getExe pkgs.kubectl;
             podman = lib.getExe pkgs.podman;
             # `systemctl --user enable --now podman.socket`
             podmanConfig = /* sh */ ''
@@ -82,6 +83,37 @@
             };
           in
           {
+            local_secrets =
+              let
+                ## relative to .terraform/local/
+                secretsFile = "../../.env.local.k8s";
+              in
+              {
+                triggers.env_file_sha = "\${filesha256(\"${secretsFile}\")}";
+                depends_on = [
+                  "null_resource.k3d_cluster"
+                ];
+                provisioner.local-exec.command = /* sh */ ''
+                  set -euo pipefail
+
+                  if [ ! -f ${secretsFile} ]; then
+                    echo "missing ${secretsFile}" >&2
+                    exit 1
+                  fi
+
+                  ${kubectl} create namespace datalk \
+                    --dry-run=client \
+                    -o yaml \
+                    | ${kubectl} apply -f -
+                  ${kubectl} create secret generic datalk-runtime \
+                    -n datalk \
+                    --from-env-file=${secretsFile} \
+                    --dry-run=client \
+                    -o yaml \
+                    | ${kubectl} apply -f -
+                '';
+              };
+
             k3d_cluster = {
               triggers = {
                 cluster_name = cluster;

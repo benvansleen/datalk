@@ -54,6 +54,7 @@
         imports = with self.modules.kubernetes; [
           cloudnative-pg
           datalk
+          valkey
         ];
         nixidy = {
           target = {
@@ -64,6 +65,7 @@
         };
         modules = {
           cloudnative-pg.enable = true;
+          valkey.enable = true;
           datalk = {
             enable = true;
             image = self.local-image-uri self.packages.x86_64-linux.datalk-image;
