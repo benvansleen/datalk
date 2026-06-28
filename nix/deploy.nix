@@ -29,7 +29,7 @@
           type = "app";
           program =
             with self'.apps;
-            (pkgs.writeShellScript "deploy" /* sh */ ''
+            (pkgs.writeShellScript "deploy-local" /* sh */ ''
               ${tf-apply-local.program} --auto-approve
               ${push-images-local.program}
               ${lib.getExe pkgs.kubectl} config use-config k3d-${self.gcloud.name}-local
