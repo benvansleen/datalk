@@ -12,6 +12,7 @@ node_modules/
 .svelte-kit/
 certs/
 .envrc.*
+.env.*.k8s
 .data/
 
 *.pyc
