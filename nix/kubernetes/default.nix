@@ -70,6 +70,7 @@
         imports = with self.modules.kubernetes; [
           cloudnative-pg
           datalk
+          datalk-dev
           python-server
           valkey
         ];

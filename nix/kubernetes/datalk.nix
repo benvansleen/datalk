@@ -13,8 +13,8 @@
           example = "http://datalk.localhost:8080";
         };
         environment = mkOption {
-          type = types.nullOr types.str;
-          default = null;
+          type = types.str;
+          default = "production";
         };
         ingress = mkOption {
           type = types.nullOr (
@@ -37,13 +37,6 @@
           storeName = mkOption {
             type = types.str;
             default = "google-secret-manager";
-          };
-        };
-        dev = {
-          enable = mkEnableOption "hot-reloading UI development mode";
-          hostUiPath = mkOption {
-            type = types.str;
-            default = "/workspace/datalk/ui";
           };
         };
       };
@@ -154,81 +147,26 @@
                         initContainers.migrate = {
                           inherit (cfg) image;
                           imagePullPolicy = "Always";
-                          command = if cfg.dev.enable then [ "/bin/node" ] else [ "/bin/migrate" ];
-                          args = lib.mkIf cfg.dev.enable [ "/app/migrate.mjs" ];
-                          workingDir = lib.mkIf cfg.dev.enable "/app";
+                          command = [ "/bin/migrate" ];
                           env = dbEnv;
-                          volumeMounts = lib.mkIf cfg.dev.enable [
-                            {
-                              name = "ui-drizzle";
-                              mountPath = "/app/drizzle";
-                            }
-                          ];
                         };
                         containers.datalk = {
                           inherit (cfg) image;
                           imagePullPolicy = "Always";
                           ports.http.containerPort = 3000;
-                          command = lib.mkIf cfg.dev.enable [
-                            "/bin/node"
-                            "/app/node_modules/vite/bin/vite.js"
-                            "--host"
-                            "0.0.0.0"
-                          ];
-                          args = lib.mkIf cfg.dev.enable [
-                            "--port"
-                            "3000"
-                          ];
-                          workingDir = lib.mkIf cfg.dev.enable "/app";
-                          volumeMounts = lib.mkIf cfg.dev.enable [
-                            {
-                              name = "ui-src";
-                              mountPath = "/app/src";
-                            }
-                            {
-                              name = "ui-static";
-                              mountPath = "/app/static";
-                            }
-                            {
-                              name = "ui-drizzle";
-                              mountPath = "/app/drizzle";
-                            }
-                            {
-                              name = "ui-svelte-config";
-                              mountPath = "/app/svelte.config.js";
-                            }
-                            {
-                              name = "ui-vite-config";
-                              mountPath = "/app/vite.config.ts";
-                            }
-                            {
-                              name = "ui-tsconfig";
-                              mountPath = "/app/tsconfig.json";
-                            }
-                            {
-                              name = "ui-drizzle-config";
-                              mountPath = "/app/drizzle.config.ts";
-                            }
-                          ];
 
                           env =
                             dbEnv
                             ++ redisEnv
-                            ++ lib.optional (cfg.environment != null) {
-                              name = "ENVIRONMENT";
-                              value = cfg.environment;
-                            }
                             ++ [
                               {
-                                name = "NODE_ENV";
-                                value = if cfg.dev.enable then "development" else "production";
+                                name = "ENVIRONMENT";
+                                value = cfg.environment;
                               }
-                            ]
-                            ++ lib.optional cfg.dev.enable {
-                              name = "CHOKIDAR_USEPOLLING";
-                              value = "true";
-                            }
-                            ++ [
+                              {
+                                name = "NODE_ENV";
+                                value = cfg.environment;
+                              }
                               {
                                 name = "PORT";
                                 value = "3000";
@@ -276,57 +214,6 @@
                           # };
                           # };
                         };
-                        volumes = lib.mkIf cfg.dev.enable [
-                          {
-                            name = "ui-src";
-                            hostPath = {
-                              path = "${cfg.dev.hostUiPath}/src";
-                              type = "Directory";
-                            };
-                          }
-                          {
-                            name = "ui-static";
-                            hostPath = {
-                              path = "${cfg.dev.hostUiPath}/static";
-                              type = "Directory";
-                            };
-                          }
-                          {
-                            name = "ui-drizzle";
-                            hostPath = {
-                              path = "${cfg.dev.hostUiPath}/drizzle";
-                              type = "Directory";
-                            };
-                          }
-                          {
-                            name = "ui-svelte-config";
-                            hostPath = {
-                              path = "${cfg.dev.hostUiPath}/svelte.config.js";
-                              type = "File";
-                            };
-                          }
-                          {
-                            name = "ui-vite-config";
-                            hostPath = {
-                              path = "${cfg.dev.hostUiPath}/vite.config.ts";
-                              type = "File";
-                            };
-                          }
-                          {
-                            name = "ui-tsconfig";
-                            hostPath = {
-                              path = "${cfg.dev.hostUiPath}/tsconfig.json";
-                              type = "File";
-                            };
-                          }
-                          {
-                            name = "ui-drizzle-config";
-                            hostPath = {
-                              path = "${cfg.dev.hostUiPath}/drizzle.config.ts";
-                              type = "File";
-                            };
-                          }
-                        ];
                       };
                   };
                 };
