@@ -54,7 +54,7 @@
               [[ -e ${configPath} ]] && rm -f ${configPath}
               cp ${configuration} ${configPath} \
                 && ${terraform} ${terraformArgs}init \
-                && ${terraform} ${terraformArgs}${command} -parallelism=24
+                && ${terraform} ${terraformArgs}${command} -parallelism=24 $@
             ''
           );
         };

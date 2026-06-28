@@ -1,3 +1,5 @@
+{ self, ... }:
+
 {
   flake = {
     local-image-uri = img: "k3d-datalk-local-registry:5000/${img.imageName}:local";
@@ -25,12 +27,12 @@
               export DOCKER_HOST="unix://$XDG_RUNTIME_DIR/podman/podman.sock"
               export DOCKER_SOCK="$XDG_RUNTIME_DIR/podman/podman.sock"
             '';
-            cluster = "datalk-local";
+            cluster = "${self.gcloud.name}-local";
             registry = {
-              name = "datalk-local-registry";
+              name = "${cluster}-registry";
               port = "5001";
             };
-            k3dConfig = (pkgs.formats.yaml { }).generate "k3d-datalk-local.yaml" {
+            k3dConfig = (pkgs.formats.yaml { }).generate "k3d-${cluster}.yaml" {
               apiVersion = "k3d.io/v1alpha5";
               kind = "Simple";
               metadata.name = cluster;
