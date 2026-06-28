@@ -40,10 +40,6 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
     process-compose-flake.url = "github:Platonic-Systems/process-compose-flake";
-    secrets = {
-      url = "git+ssh://git@github.com/benvansleen/datalk-secrets.git";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
     terranix = {
       url = "github:terranix/terranix";
       inputs = {

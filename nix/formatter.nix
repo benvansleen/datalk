@@ -16,7 +16,6 @@
     projectRootFile = "flake.nix";
     settings.global.excludes = [
       ".envrc"
-      "*.sops*"
       "*.png"
     ];
 

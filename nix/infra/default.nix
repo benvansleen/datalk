@@ -20,7 +20,7 @@
     }:
 
     let
-      terraform = pkgs.opentofu;
+      terraform = lib.getExe pkgs.opentofu;
       terraformConfiguration = inputs.terranix.lib.terranixConfiguration {
         inherit system;
         modules = with self.modules.infra; [
@@ -35,132 +35,143 @@
           k3d
         ];
       };
+      mkTerraformApp =
+        {
+          name,
+          configuration,
+          command,
+          chdir ? null,
+        }:
+        let
+          configPath = if chdir == null then "config.tf.json" else "${chdir}/config.tf.json";
+          terraformArgs = lib.optionalString (chdir != null) "-chdir=${chdir} ";
+        in
+        {
+          type = "app";
+          program = toString (
+            pkgs.writers.writeBash name /* sh */ ''
+              ${lib.optionalString (chdir != null) "mkdir -p ${chdir}"}
+              [[ -e ${configPath} ]] && rm -f ${configPath}
+              cp ${configuration} ${configPath} \
+                && ${terraform} ${terraformArgs}init \
+                && ${terraform} ${terraformArgs}${command} -parallelism=24
+            ''
+          );
+        };
     in
     {
       apps = {
-        tf-apply = {
-          type = "app";
-          program = toString (
-            pkgs.writers.writeBash "apply" /* sh */ ''
-              [[ -e config.tf.json ]] && rm -f config.tf.json
-              cp ${terraformConfiguration} config.tf.json \
-              && ${lib.getExe terraform} init \
-              && ${lib.getExe terraform} apply
-            ''
-          );
+        tf-apply = mkTerraformApp {
+          name = "tf-apply";
+          configuration = terraformConfiguration;
+          command = "apply";
         };
-        tf-destroy = {
-          type = "app";
-          program = toString (
-            pkgs.writers.writeBash "destroy" /* sh */ ''
-              [[ -e config.tf.json ]] && rm -f config.tf.json
-              cp ${terraformConfiguration} config.tf.json \
-              && ${lib.getExe terraform} init \
-              && ${lib.getExe terraform} destroy
-            ''
-          );
+        tf-destroy = mkTerraformApp {
+          name = "tf-destroy";
+          configuration = terraformConfiguration;
+          command = "destroy";
         };
 
-        tf-apply-local = {
-          type = "app";
-          program = toString (
-            pkgs.writers.writeBash "apply-local" /* sh */ ''
-              [[ -e .terraform/local/config.tf.json ]] && rm -f .terraform/local/config.tf.json
-              mkdir -p .terraform/local
-              cp ${localTerraformConfiguration} .terraform/local/config.tf.json \
-              && ${lib.getExe terraform} -chdir=.terraform/local init \
-              && ${lib.getExe terraform} -chdir=.terraform/local apply
-            ''
-          );
+        tf-apply-local = mkTerraformApp {
+          name = "tf-apply-local";
+          configuration = localTerraformConfiguration;
+          command = "apply";
+          chdir = ".terraform/local";
         };
-        tf-destroy-local = {
-          type = "app";
-          program = toString (
-            pkgs.writers.writeBash "apply-local" /* sh */ ''
-              [[ -e .terraform/local/config.tf.json ]] && rm -f .terraform/local/config.tf.json
-              mkdir -p .terraform/local
-              cp ${localTerraformConfiguration} .terraform/local/config.tf.json \
-              && ${lib.getExe terraform} -chdir=.terraform/local init \
-              && ${lib.getExe terraform} -chdir=.terraform/local destroy
-            ''
-          );
+        tf-destroy-local = mkTerraformApp {
+          name = "tf-destroy-local";
+          configuration = localTerraformConfiguration;
+          command = "destroy";
+          chdir = ".terraform/local";
         };
 
         populate-prod-secrets = {
           type = "app";
-          program = toString (
-            pkgs.writers.writeBash "populate-prod-secrets" /* sh */ ''
-              set -euo pipefail
+          program = lib.getExe (
+            pkgs.writers.writePython3Bin "populate-prod-secrets" { } /* python */ ''
+              import shlex
+              import subprocess
+              import sys
+              from pathlib import Path
 
-              env_file="''${1:-.env.prod.k8s}"
 
-              if [ ! -f "$env_file" ]; then
-                echo "missing $env_file" >&2
-                exit 1
-              fi
+              PROJECT = "${self.gcloud.project}"
+              GCLOUD = "${lib.getExe pkgs.google-cloud-sdk}" # noqa
+              SECRET_IDS = {
+                  "BETTER_AUTH_SECRET": "better-auth-secret",
+                  "OPENAI_API_KEY": "openai-api-key",
+                  "REDIS_USER": "redis-user",
+                  "REDIS_PASSWORD": "redis-password",
+                  "TAILSCALE_OAUTH_CLIENT_ID": "tailscale-oauth-client-id",
+                  "TAILSCALE_OAUTH_CLIENT_SECRET": "tailscale-oauth-client-secret",
+              }
 
-              declare -A secret_ids=(
-                [BETTER_AUTH_SECRET]=better-auth-secret
-                [OPENAI_API_KEY]=openai-api-key
-                [REDIS_USER]=redis-user
-                [REDIS_PASSWORD]=redis-password
-                [TAILSCALE_OAUTH_CLIENT_ID]=tailscale-oauth-client-id
-                [TAILSCALE_OAUTH_CLIENT_SECRET]=tailscale-oauth-client-secret
-              )
-              ordered_keys=(
-                BETTER_AUTH_SECRET
-                OPENAI_API_KEY
-                REDIS_USER
-                REDIS_PASSWORD
-                TAILSCALE_OAUTH_CLIENT_ID
-                TAILSCALE_OAUTH_CLIENT_SECRET
-              )
 
-              declare -A values=()
-              while IFS= read -r line || [ -n "$line" ]; do
-                line="''${line%$'\r'}"
-                if [[ -z "$line" || "$line" == \#* ]]; then
-                  continue
-                fi
-                if [[ "$line" == export\ * ]]; then
-                  line="''${line#export }"
-                fi
-                if [[ "$line" != *=* ]]; then
-                  continue
-                fi
+              def parse_env(path: Path) -> dict[str, str]:
+                  values = {}
+                  for raw_line in path.read_text().splitlines():
+                      line = raw_line.strip()
+                      if not line or line.startswith("#"):
+                          continue
+                      if line.startswith("export "):
+                          line = line[len("export "):].lstrip()
+                      if "=" not in line:
+                          continue
 
-                key="''${line%%=*}"
-                value="''${line#*=}"
-                key="''${key#"''${key%%[![:space:]]*}"}"
-                key="''${key%"''${key##*[![:space:]]}"}"
-                if [[ "$value" == \"*\" && "$value" == *\" ]]; then
-                  value="''${value:1:''${#value}-2}"
-                elif [[ "$value" == \'*\' && "$value" == *\' ]]; then
-                  value="''${value:1:''${#value}-2}"
-                fi
+                      key, value = line.split("=", 1)
+                      key = key.strip()
+                      value = value.strip()
 
-                values["$key"]="$value"
-              done < "$env_file"
+                      if value.startswith(("'", '"')):
+                          try:
+                              parsed = shlex.split(value, comments=False, posix=True)
+                          except ValueError as error:
+                              message = f"invalid value for {key} in {path}: {error}"
+                              raise SystemExit(message) from error
+                          values[key] = parsed[0] if parsed else ""
+                      else:
+                          values[key] = value
+                  return values
 
-              missing=()
-              for key in "''${ordered_keys[@]}"; do
-                if [[ ! -v "values[$key]" ]]; then
-                  missing+=("$key")
-                fi
-              done
-              if [ "''${#missing[@]}" -gt 0 ]; then
-                echo "missing keys in $env_file: ''${missing[*]}" >&2
-                exit 1
-              fi
 
-              for key in "''${ordered_keys[@]}"; do
-                secret_id="''${secret_ids[$key]}"
-                echo "adding Secret Manager version for $secret_id from $key"
-                printf %s "''${values[$key]}" \
-                  | ${pkgs.google-cloud-sdk}/bin/gcloud secrets versions add "$secret_id" \
-                    --project ${self.gcloud.project} \
-                    --data-file=-
-              done
+              def main() -> int:
+                  env_file = Path(sys.argv[1] if len(sys.argv) > 1 else ".env.prod.k8s")
+                  if not env_file.is_file():
+                      print(f"missing {env_file}", file=sys.stderr)
+                      return 1
+
+                  values = parse_env(env_file)
+                  missing = [key for key in SECRET_IDS if key not in values]
+                  if missing:
+                      missing_keys = " ".join(missing)
+                      print(
+                          f"missing keys in {env_file}: {missing_keys}",
+                          file=sys.stderr,
+                      )
+                      return 1
+
+                  for key, secret_id in SECRET_IDS.items():
+                      print(f"adding Secret Manager version for {secret_id} from {key}")
+                      subprocess.run(
+                          [
+                              GCLOUD,
+                              "secrets",
+                              "versions",
+                              "add",
+                              secret_id,
+                              "--project",
+                              PROJECT,
+                              "--data-file=-",
+                          ],
+                          input=values[key].encode(),
+                          check=True,
+                      )
+
+                  return 0
+
+
+              if __name__ == "__main__":
+                  raise SystemExit(main())
             ''
           );
         };

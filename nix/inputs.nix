@@ -18,14 +18,6 @@
       nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
       nixpkgs-stable.url = "github:nixos/nixpkgs/nixos-25.11";
       flake-file.url = "github:vic/flake-file";
-
-      secrets = {
-        url = "git+ssh://git@github.com/benvansleen/datalk-secrets.git";
-        # url = "path:/home/ben/Code/datalk/secrets";
-        inputs = {
-          nixpkgs.follows = "nixpkgs";
-        };
-      };
     };
     outputs = /* nix */ "inputs: inputs.flake-parts.lib.mkFlake { inherit inputs; } (inputs.import-tree ./nix)";
   };
