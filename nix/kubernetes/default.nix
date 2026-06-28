@@ -108,13 +108,14 @@
       inputs',
       self',
       pkgs,
-      lib,
       system,
       ...
     }:
     {
       packages = {
-        nixidy = inputs'.nixidy.packages.default;
+        nixidy = inputs'.nixidy.packages.default.overrideAttrs (old: {
+          meta.mainProgram = old.meta.mainProgram or "nixidy";
+        });
         "generators/cloudnative-pg" = inputs'.nixidy.packages.generators.fromChartCRD {
           name = "cloudnative-pg";
           chart = inputs.nixhelm.chartsDerivations.${system}.cloudnative-pg.cloudnative-pg;
@@ -141,26 +142,6 @@
       };
 
       apps = {
-        push-images =
-          ## gcloud auth configure-docker us-east4-docker.pkg.dev
-          let
-            imgs = with self'.packages; [
-              datalk-image
-              python-server-image
-            ];
-          in
-          {
-            type = "app";
-            program =
-              (pkgs.writeShellScript "push-images-local" /* bash */ ''
-                set -euo pipefail
-                ${lib.concatMapStringsSep "\n\n" (img: /* sh */ ''
-                  uri="docker://${toString (self.image-uri img)}"
-                  echo "pushing $uri"
-                  ${img.copyTo}/bin/copy-to "$uri"
-                '') imgs}
-              '').outPath;
-          };
         generate = {
           type = "app";
           program =
@@ -172,32 +153,6 @@
               cat ${self'.packages."generators/tailscale"} > nix/_generated/tailscale-operator.nix
             '').outPath;
         };
-        push-images-local =
-          let
-            imgs = with self'.packages; [
-              datalk-image
-              datalk-dev-image
-              python-server-image
-            ];
-          in
-          {
-            type = "app";
-            program =
-              (pkgs.writeShellScript "push-images-local" /* bash */ ''
-                set -euo pipefail
-                ${lib.concatMapStringsSep "\n\n" (img: /* sh */ ''
-                  uri="docker://${toString (self.local-image-push-uri img)}"
-                  echo "pushing $uri"
-                  ${img.copyTo}/bin/copy-to --dest-tls-verify=false "$uri"
-                '') imgs}
-              '').outPath;
-          };
       };
     };
-
-  flake.image-uri =
-    let
-      inherit (self.gcloud) project region name;
-    in
-    img: "${region}-docker.pkg.dev/${project}/${name}/${img.imageName}:git-${self.shortRev or "dirty"}";
 }

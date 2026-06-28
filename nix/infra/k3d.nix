@@ -2,11 +2,15 @@
 
 {
   flake = {
-    local-image-uri = img: "k3d-datalk-local-registry:5000/${img.imageName}:local";
-    local-image-push-uri = img: "localhost:5001/${img.imageName}:local";
+    local-image-uri = img: "k3d-datalk-local-registry:5000/${img.imageName}:${self.image-tag img}";
+    local-image-push-uri = img: "localhost:5001/${img.imageName}:${self.image-tag img}";
 
     modules.infra.k3d =
-      { pkgs, lib, ... }:
+      {
+        pkgs,
+        lib,
+        ...
+      }:
       {
         terraform.required_providers.null = {
           source = "hashicorp/null";
@@ -15,6 +19,7 @@
 
         resource.null_resource =
           let
+            inherit (pkgs.stdenv.hostPlatform) system;
             k3d = lib.getExe pkgs.k3d;
             git = lib.getExe pkgs.git;
             kubectl = lib.getExe pkgs.kubectl;
@@ -86,6 +91,45 @@
             };
           in
           {
+            apply_local = {
+              triggers.nixidy_env = "${self.legacyPackages.${system}.nixidyEnvs.${system}.local.declarativePackage
+              }";
+              depends_on = [
+                "null_resource.k3d_cluster"
+                "null_resource.local_secrets"
+                "null_resource.push_images_local"
+              ];
+              provisioner.local-exec.command = /* sh */ ''
+                repo_root="$(${git} rev-parse --show-toplevel)"
+                cd "$repo_root"
+                ${lib.getExe pkgs.kubectl} config use-context k3d-${self.gcloud.name}-local
+                ${lib.getExe self.packages.${system}.nixidy} apply .#local
+              '';
+            };
+
+            push_images_local =
+              let
+                imgs = with self.packages.${system}; [
+                  datalk-image
+                  datalk-dev-image
+                  python-server-image
+                ];
+              in
+              {
+                triggers = builtins.listToAttrs (
+                  map (img: {
+                    name = img.imageName;
+                    value = "${img}";
+                  }) imgs
+                );
+                depends_on = [ "null_resource.k3d_registry" ];
+                provisioner.local-exec.command = lib.concatMapStringsSep "\n\n" (img: /* sh */ ''
+                  uri="docker://${self.local-image-push-uri img}"
+                  echo "pushing $uri"
+                  ${img.copyTo}/bin/copy-to --dest-tls-verify=false "$uri"
+                '') imgs;
+              };
+
             local_secrets =
               let
                 ## relative to .terraform/local/

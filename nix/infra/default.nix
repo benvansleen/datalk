@@ -24,6 +24,7 @@
       terraformConfiguration = inputs.terranix.lib.terranixConfiguration {
         inherit system;
         modules = with self.modules.infra; [
+          application
           k8s
           providers
           secrets
@@ -177,4 +178,6 @@
         };
       };
     };
+
+  flake.image-tag = img: builtins.substring 11 32 (toString img.outPath);
 }
