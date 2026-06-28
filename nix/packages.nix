@@ -45,6 +45,32 @@
           };
         };
 
+        datalk-dev-image = inputs'.nix2container.packages.nix2container.buildImage {
+          name = "datalk-dev";
+          tag = "local";
+          copyToRoot = pkgs.buildEnv {
+            name = "datalk-dev-image-root";
+            paths = [
+              self'.packages.ui.devRoot
+              pkgs.nodejs_22
+            ];
+            pathsToLink = [ "/" ];
+          };
+          config = {
+            Cmd = [
+              "/bin/node"
+              "/app/node_modules/vite/bin/vite.js"
+              "--host"
+              "0.0.0.0"
+            ];
+            WorkingDir = "/app";
+            Env = [
+              "NODE_EXTRA_CA_CERTS=${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt"
+              "SSL_CERT_FILE=${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt"
+            ];
+          };
+        };
+
         python-server-image = inputs'.nix2container.packages.nix2container.buildImage {
           name = "python-server";
           tag = "local";

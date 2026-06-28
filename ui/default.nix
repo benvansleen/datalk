@@ -1,45 +1,51 @@
 {
-  lib,
-  pkgs,
   buildNpmPackage,
-  importNpmLock,
-  writeShellApplication,
+  esbuild,
   gitignore,
+  importNpmLock,
+  lib,
+  nodejs_22,
+  writeShellApplication,
   ...
 }:
 
 let
   inherit (gitignore.lib) gitignoreSource;
-  nodejs = pkgs.nodejs_22;
+  nodejs = nodejs_22;
   root = ./.;
   packageJSON = lib.importJSON (root + "/package.json");
-  site = buildNpmPackage {
+  commonNpmPackageAttrs = {
     inherit nodejs;
     inherit (packageJSON) version;
     inherit (importNpmLock) npmConfigHook;
-
-    pname = packageJSON.name;
     src = gitignoreSource root;
     npmPackFlags = [ ];
     npmDeps = importNpmLock { npmRoot = root; };
-    nativeBuildInputs = with pkgs; [ esbuild ];
-
-    postBuild = /* sh */ ''
-      esbuild scripts/migrate.ts \
-        --bundle \
-        --platform=node \
-        --format=esm \
-        --target=node22 \
-        --outfile=migrate.mjs
-    '';
-
-    installPhase = /* sh */ ''
-      mkdir -p $out/
-      cp -r build/* $out/
-      cp migrate.mjs $out/migrate.mjs
-      cp -r drizzle $out/drizzle
-    '';
+    nativeBuildInputs = [ esbuild ];
   };
+  bundleMigrate = outfile: /* sh */ ''
+    esbuild scripts/migrate.ts \
+      --bundle \
+      --platform=node \
+      --format=esm \
+      --target=node22 \
+      --outfile=${outfile}
+  '';
+  site = buildNpmPackage (
+    commonNpmPackageAttrs
+    // {
+      pname = packageJSON.name;
+
+      postBuild = bundleMigrate "migrate.mjs";
+
+      installPhase = /* sh */ ''
+        mkdir -p $out/
+        cp -r build/* $out/
+        cp migrate.mjs $out/migrate.mjs
+        cp -r drizzle $out/drizzle
+      '';
+    }
+  );
 
   migrate = writeShellApplication {
     name = "migrate";
@@ -48,6 +54,25 @@ let
       exec ${lib.getExe nodejs} ./migrate.mjs
     '';
   };
+  devRoot = buildNpmPackage (
+    commonNpmPackageAttrs
+    // {
+      pname = "${packageJSON.name}-dev-root";
+      dontNpmBuild = true;
+
+      installPhase = /* sh */ ''
+        runHook preInstall
+
+        mkdir -p $out/app
+        cp package.json package-lock.json $out/app/
+        cp svelte.config.js vite.config.ts tsconfig.json drizzle.config.ts $out/app/
+        cp -r node_modules scripts drizzle static $out/app/
+        ${bundleMigrate "$out/app/migrate.mjs"}
+
+        runHook postInstall
+      '';
+    }
+  );
 in
 writeShellApplication {
   inherit (packageJSON) name;
@@ -57,6 +82,6 @@ writeShellApplication {
     ${lib.getExe nodejs} ${site}
   '';
   passthru = {
-    inherit site migrate;
+    inherit site migrate devRoot;
   };
 }

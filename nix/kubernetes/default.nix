@@ -62,38 +62,45 @@
         };
       };
 
-    local = {
-      imports = with self.modules.kubernetes; [
-        cloudnative-pg
-        datalk
-        python-server
-        valkey
-      ];
-      nixidy = {
-        target = {
-          rootPath = "./manifests/k3s";
-          repository = "";
-          branch = "";
-        };
-      };
-      modules = {
-        cloudnative-pg.enable = true;
-        datalk = {
-          enable = true;
-          image = self.local-image-uri self.packages.x86_64-linux.datalk-image;
-          publicUrl = "http://datalk.localhost:8080";
-          ingress = {
-            type = "local";
-            host = "datalk.localhost";
+    local =
+      let
+        hotReload = true;
+      in
+      {
+        imports = with self.modules.kubernetes; [
+          cloudnative-pg
+          datalk
+          python-server
+          valkey
+        ];
+        nixidy = {
+          target = {
+            rootPath = "./manifests/local";
+            repository = "";
+            branch = "";
           };
         };
-        python-server = {
-          enable = true;
-          image = self.local-image-uri self.packages.x86_64-linux.python-server-image;
+        modules = {
+          cloudnative-pg.enable = true;
+          datalk = {
+            enable = true;
+            dev.enable = hotReload;
+            image = self.local-image-uri (
+              with self.packages.x86_64-linux; if hotReload then datalk-dev-image else datalk-image
+            );
+            publicUrl = "http://datalk.localhost:8080";
+            ingress = {
+              type = "local";
+              host = "datalk.localhost";
+            };
+          };
+          python-server = {
+            enable = true;
+            image = self.local-image-uri self.packages.x86_64-linux.python-server-image;
+          };
+          valkey.enable = true;
         };
-        valkey.enable = true;
       };
-    };
   };
 
   perSystem =
@@ -169,6 +176,7 @@
           let
             imgs = with self'.packages; [
               datalk-image
+              datalk-dev-image
               python-server-image
             ];
           in

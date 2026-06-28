@@ -14,6 +14,7 @@
         resource.null_resource =
           let
             k3d = lib.getExe pkgs.k3d;
+            git = lib.getExe pkgs.git;
             kubectl = lib.getExe pkgs.kubectl;
             podman = lib.getExe pkgs.podman;
             # `systemctl --user enable --now podman.socket`
@@ -127,9 +128,11 @@
                     if ${k3d} cluster list ${cluster} >/dev/null 2>&1; then
                       echo "k3d cluster ${cluster} already exists"
                     else
+                      repo_root="$(${git} rev-parse --show-toplevel)"
                       ${k3d} cluster create \
                         --config ${k3dConfig} \
                         --network ${cluster} \
+                        --volume "$repo_root:/workspace/datalk@all" \
                         --registry-use "k3d-${registry.name}:5000"
                     fi
                   '';
