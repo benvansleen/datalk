@@ -70,7 +70,6 @@
         imports = with self.modules.kubernetes; [
           cloudnative-pg
           datalk
-          datalk-dev
           python-server
           valkey
         ];
@@ -89,10 +88,10 @@
             image = self.local-image-uri (
               with self.packages.x86_64-linux; if hotReload then datalk-dev-image else datalk-image
             );
-            publicUrl = "http://datalk.localhost:8080";
+            publicUrl = "http://localhost:8080";
             ingress = {
               type = "local";
-              host = "datalk.localhost";
+              host = "localhost";
             };
           };
           python-server = {

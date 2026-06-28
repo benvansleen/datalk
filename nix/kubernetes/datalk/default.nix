@@ -1,3 +1,5 @@
+{ self, ... }:
+
 {
   flake.modules.kubernetes.datalk =
     { config, lib, ... }:
@@ -16,30 +18,13 @@
           type = types.str;
           default = "production";
         };
-        ingress = mkOption {
-          type = types.nullOr (
-            types.submodule {
-              options = {
-                type = mkOption {
-                  type = types.enum [
-                    "local"
-                    "tailscale"
-                  ];
-                };
-                host = mkOption { type = types.str; };
-              };
-            }
-          );
-          default = null;
-        };
-        runtimeExternalSecret = {
-          enable = mkEnableOption "syncing datalk-runtime with External Secrets Operator";
-          storeName = mkOption {
-            type = types.str;
-            default = "google-secret-manager";
-          };
-        };
       };
+
+      imports = with self.modules.kubernetes; [
+        datalk-dev
+        datalk-external-secrets
+        datalk-ingress
+      ];
 
       config =
         let
@@ -53,14 +38,6 @@
             resources =
               let
                 app-label = "datalk";
-                ingressPath = {
-                  path = "/";
-                  pathType = "Prefix";
-                  backend.service = {
-                    name = "datalk";
-                    port.name = "http";
-                  };
-                };
               in
               {
                 services.datalk = {
@@ -215,61 +192,6 @@
                           # };
                         };
                       };
-                  };
-                };
-                ingresses = lib.mkIf (cfg.ingress != null) {
-                  datalk.spec = {
-                    rules = [
-                      {
-                        inherit (cfg.ingress) host;
-                        http.paths = [ ingressPath ];
-                      }
-                    ];
-                  }
-                  // lib.optionalAttrs (cfg.ingress.type == "tailscale") {
-                    ingressClassName = "tailscale";
-                    tls = [
-                      {
-                        hosts = [ cfg.ingress.host ];
-                      }
-                    ];
-                  };
-                };
-              }
-              // lib.optionalAttrs cfg.runtimeExternalSecret.enable {
-                externalSecrets = {
-                  datalk-runtime = {
-                    apiVersion = "external-secrets.io/v1";
-                    kind = "ExternalSecret";
-                    spec = {
-                      refreshInterval = "1h";
-                      secretStoreRef = {
-                        name = cfg.runtimeExternalSecret.storeName;
-                        kind = "ClusterSecretStore";
-                      };
-                      target = {
-                        name = "datalk-runtime";
-                        creationPolicy = "Owner";
-                      };
-                      data = [
-                        {
-                          secretKey = "BETTER_AUTH_SECRET";
-                          remoteRef.key = "better-auth-secret";
-                        }
-                        {
-                          secretKey = "OPENAI_API_KEY";
-                          remoteRef.key = "openai-api-key";
-                        }
-                        {
-                          secretKey = "REDIS_USER";
-                          remoteRef.key = "redis-user";
-                        }
-                        {
-                          secretKey = "REDIS_PASSWORD";
-                          remoteRef.key = "redis-password";
-                        }
-                      ];
-                    };
                   };
                 };
               };
