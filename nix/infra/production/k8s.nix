@@ -23,10 +23,12 @@
         };
 
         google_service_account.gke_nodes = {
+          inherit (self.gcloud) project;
           account_id = "${name}-gke-nodes";
         };
 
         google_artifact_registry_repository.${name} = {
+          inherit (self.gcloud) project;
           location = self.gcloud.region;
           repository_id = "${name}";
           format = "DOCKER";

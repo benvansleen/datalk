@@ -9,6 +9,7 @@
       };
 
       google_service_account.external_secrets = {
+        inherit (self.gcloud) project;
         account_id = "external-secrets";
         depends_on = [
           "google_project_service.secretmanager"
@@ -34,6 +35,7 @@
 
       google_secret_manager_secret = {
         tailscale_oauth_client_id = {
+          inherit (self.gcloud) project;
           secret_id = "tailscale-oauth-client-id";
           replication.auto = { };
           depends_on = [
@@ -41,6 +43,7 @@
           ];
         };
         tailscale_oauth_client_secret = {
+          inherit (self.gcloud) project;
           secret_id = "tailscale-oauth-client-secret";
           replication.auto = { };
           depends_on = [
@@ -48,6 +51,7 @@
           ];
         };
         better_auth_secret = {
+          inherit (self.gcloud) project;
           secret_id = "better-auth-secret";
           replication.auto = { };
           depends_on = [
@@ -55,6 +59,7 @@
           ];
         };
         openai_api_key = {
+          inherit (self.gcloud) project;
           secret_id = "openai-api-key";
           replication.auto = { };
           depends_on = [
@@ -62,6 +67,7 @@
           ];
         };
         redis_user = {
+          inherit (self.gcloud) project;
           secret_id = "redis-user";
           replication.auto = { };
           depends_on = [
@@ -69,6 +75,7 @@
           ];
         };
         redis_password = {
+          inherit (self.gcloud) project;
           secret_id = "redis-password";
           replication.auto = { };
           depends_on = [

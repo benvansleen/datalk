@@ -27,6 +27,7 @@
             plugins: with plugins; [
               # gcloud container clusters get-credentials datalk --zone us-east4-a
               hashicorp_google
+              hashicorp_external
             ]
           )
         );
