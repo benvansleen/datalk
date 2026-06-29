@@ -15,11 +15,6 @@
         ...
       }:
       {
-        terraform.required_providers.null = {
-          source = "hashicorp/null";
-          version = "~> 3.2";
-        };
-
         resource.null_resource =
           let
             inherit (pkgs.stdenv.hostPlatform) system;
@@ -73,15 +68,9 @@
               in
               {
                 triggers.env_file_sha = "\${filesha256(\"${secretsFile}\")}";
-                ## TODO: extract programmatically
-                depends_on = [
-                  "google_secret_manager_secret.tailscale_oauth_client_id"
-                  "google_secret_manager_secret.tailscale_oauth_client_secret"
-                  "google_secret_manager_secret.better_auth_secret"
-                  "google_secret_manager_secret.openai_api_key"
-                  "google_secret_manager_secret.redis_user"
-                  "google_secret_manager_secret.redis_password"
-                ];
+                depends_on = map (
+                  name: "google_secret_manager_secret.${name}"
+                ) builtins.attrNames self.modules.infra.secrets.resource.google_secret_manager_secret;
                 provisioner.local-exec.command = /* sh */ ''
                   ${self.apps.${system}.populate-prod-secrets.program}
                 '';

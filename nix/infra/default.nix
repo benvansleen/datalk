@@ -20,7 +20,16 @@
     }:
 
     let
-      terraform = lib.getExe pkgs.opentofu;
+      terraform =
+        with pkgs;
+        lib.getExe (
+          opentofu.withPlugins (
+            plugins: with plugins; [
+              hashicorp_null
+              hashicorp_google
+            ]
+          )
+        );
       terraformConfiguration = inputs.terranix.lib.terranixConfiguration {
         inherit system;
         modules = with self.modules.infra; [

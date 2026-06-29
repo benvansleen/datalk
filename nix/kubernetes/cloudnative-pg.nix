@@ -35,6 +35,10 @@
                     podMonitorEnabled = false;
                     grafanaDashboard.create = false;
                   };
+                  webhook = {
+                    mutating.failurePolicy = "Ignore";
+                    validating.failurePolicy = "Ignore";
+                  };
                 };
               };
             };
