@@ -2,15 +2,15 @@
 # Manual edits may be lost in future updates.
 
 provider "registry.opentofu.org/hashicorp/external" {
-  version = "2.3.5"
+  version = "2.4.0"
   hashes = [
-    "h1:en/2hMK/W/2hKtsEkbxGiiYwi/pSPS/UoGDILHIHjmw=",
+    "h1:PuutftW+PMJVHo1zVBxpTu8A7JjKQgnsxky1YxG089w=",
   ]
 }
 
 provider "registry.opentofu.org/hashicorp/google" {
-  version = "7.15.0"
+  version = "7.37.0"
   hashes = [
-    "h1:7/0vbelkJKtGLMI2QOSdcw+xjDsH1ydk78V97kwaGQQ=",
+    "h1:ulEY5TfZ/cBKEdQMIPvDhgLBRcFazm9uubnmtwsGhhY=",
   ]
 }

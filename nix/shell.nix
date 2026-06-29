@@ -5,12 +5,11 @@
       devShells.default =
         with pkgs;
         mkShell {
-          buildInputs = [
+          buildInputs =
             self'.checks.pre-commit-check.enabledPackages
-            self'.packages.ui.buildInputs
-            self'.packages.ui.nativeBuildInputs
-            self'.packages.ui.propagatedBuildInputs
-          ];
+            ++ self'.packages.ui.buildInputs
+            ++ self'.packages.ui.nativeBuildInputs
+            ++ self'.packages.ui.propagatedBuildInputs;
           inherit (self'.checks.pre-commit-check) shellHook;
           packages = with pkgs; [
             self'.packages.nixidy
