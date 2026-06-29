@@ -148,9 +148,10 @@
             (pkgs.writeShellScript "generate-crds" /* bash */ ''
               set -eo pipefail
 
-              cat ${self'.packages."generators/cloudnative-pg"} > nix/_generated/cloudnative-pg.nix
-              cat ${self'.packages."generators/external-secrets"} > nix/_generated/external-secrets.nix
-              cat ${self'.packages."generators/tailscale"} > nix/_generated/tailscale-operator.nix
+              mkdir -p nix/kubernetes/_generated
+              cat ${self'.packages."generators/cloudnative-pg"} > nix/kubernetes/_generated/cloudnative-pg.nix
+              cat ${self'.packages."generators/external-secrets"} > nix/kubernetes/_generated/external-secrets.nix
+              cat ${self'.packages."generators/tailscale"} > nix/kubernetes/_generated/tailscale-operator.nix
             '').outPath;
         };
       };

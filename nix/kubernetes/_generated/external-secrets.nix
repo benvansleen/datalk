@@ -106,8 +106,7 @@ let
   submoduleOf =
     ref:
     types.submodule (
-      { name, ... }:
-      {
+      { name, ... }: {
         options = definitions."${ref}".options or { };
         config = definitions."${ref}".config or { };
       }
@@ -116,8 +115,7 @@ let
   globalSubmoduleOf =
     ref:
     types.submodule (
-      { name, ... }:
-      {
+      { name, ... }: {
         options = config.definitions."${ref}".options or { };
         config = config.definitions."${ref}".config or { };
       }
@@ -155,8 +153,7 @@ let
       apiVersion = if group == "core" then version else "${group}/${version}";
     in
     types.submodule (
-      { name, ... }:
-      {
+      { name, ... }: {
         inherit (definitions."${ref}") options;
 
         imports = getDefaults resource group version kind;
@@ -313,6 +310,12 @@ let
             submoduleOf "external-secrets.io.v1.ClusterExternalSecretSpecExternalSecretSpecSecretStoreRef"
           );
         };
+        "syncWindows" = mkOption {
+          description = "SyncWindows optionally restricts when periodic refreshes may occur.\nEvaluated in UTC, only for Periodic refresh policy (or when refreshPolicy is unset).";
+          type = types.nullOr (
+            submoduleOf "external-secrets.io.v1.ClusterExternalSecretSpecExternalSecretSpecSyncWindows"
+          );
+        };
         "target" = mkOption {
           description = "ExternalSecretTarget defines the Kubernetes Secret to be created,\nthere can be only one target per ExternalSecret.";
           type = types.nullOr (
@@ -327,6 +330,7 @@ let
         "refreshInterval" = mkOverride 1002 null;
         "refreshPolicy" = mkOverride 1002 null;
         "secretStoreRef" = mkOverride 1002 null;
+        "syncWindows" = mkOverride 1002 null;
         "target" = mkOverride 1002 null;
       };
 
@@ -775,6 +779,40 @@ let
       };
 
     };
+    "external-secrets.io.v1.ClusterExternalSecretSpecExternalSecretSpecSyncWindows" = {
+
+      options = {
+        "kind" = mkOption {
+          description = "Kind applies to every window in the list.\n\"allow\" -- syncs are permitted only while at least one window is active;\n           all other times are blocked.\n\"deny\"  -- syncs are blocked while any window is active;\n           all other times are permitted.";
+          type = types.str;
+        };
+        "windows" = mkOption {
+          description = "Windows is the list of schedule+duration pairs.";
+          type = types.listOf (
+            submoduleOf "external-secrets.io.v1.ClusterExternalSecretSpecExternalSecretSpecSyncWindowsWindows"
+          );
+        };
+      };
+
+      config = { };
+
+    };
+    "external-secrets.io.v1.ClusterExternalSecretSpecExternalSecretSpecSyncWindowsWindows" = {
+
+      options = {
+        "duration" = mkOption {
+          description = "Duration specifies how long the window stays open after each Schedule\nfiring. Example: \"8h\".";
+          type = types.str;
+        };
+        "schedule" = mkOption {
+          description = "Schedule is a standard 5-field cron expression evaluated in UTC, or a\nnamed shorthand such as @daily or @every 1h. It marks the start time of\neach window occurrence.\nExample: \"0 22 * * 1-5\" opens a window every weekday at 22:00 UTC.";
+          type = types.str;
+        };
+      };
+
+      config = { };
+
+    };
     "external-secrets.io.v1.ClusterExternalSecretSpecExternalSecretSpecTarget" = {
 
       options = {
@@ -926,6 +964,10 @@ let
           description = "Target specifies where to place the template result.\nFor Secret resources, common values are: \"Data\", \"Annotations\", \"Labels\".\nFor custom resources (when spec.target.manifest is set), this supports\nnested paths like \"spec.database.config\" or \"data\".";
           type = types.nullOr types.str;
         };
+        "valuesDecodingStrategy" = mkOption {
+          description = "Used to define a decoding Strategy for the rendered template values.";
+          type = types.nullOr types.str;
+        };
       };
 
       config = {
@@ -933,6 +975,7 @@ let
         "literal" = mkOverride 1002 null;
         "secret" = mkOverride 1002 null;
         "target" = mkOverride 1002 null;
+        "valuesDecodingStrategy" = mkOverride 1002 null;
       };
 
     };
@@ -1340,6 +1383,12 @@ let
             submoduleOf "external-secrets.io.v1.ClusterSecretStoreSpecProviderBeyondtrust"
           );
         };
+        "beyondtrustworkloadcredentials" = mkOption {
+          description = "BeyondtrustWorkloadCredentials configures this store to sync secrets using the BeyondTrust Workload Credentials provider.";
+          type = types.nullOr (
+            submoduleOf "external-secrets.io.v1.ClusterSecretStoreSpecProviderBeyondtrustworkloadcredentials"
+          );
+        };
         "bitwardensecretsmanager" = mkOption {
           description = "BitwardenSecretsManager configures this store to sync secrets using BitwardenSecretsManager provider";
           type = types.nullOr (
@@ -1436,6 +1485,10 @@ let
             submoduleOf "external-secrets.io.v1.ClusterSecretStoreSpecProviderOnepasswordSDK"
           );
         };
+        "openBao" = mkOption {
+          description = "OpenBao configures this store to sync secrets using the OpenBao provider.";
+          type = types.nullOr (submoduleOf "external-secrets.io.v1.ClusterSecretStoreSpecProviderOpenBao");
+        };
         "oracle" = mkOption {
           description = "Oracle configures this store to sync secrets using Oracle Vault provider";
           type = types.nullOr (submoduleOf "external-secrets.io.v1.ClusterSecretStoreSpecProviderOracle");
@@ -1510,6 +1563,7 @@ let
         "azurekv" = mkOverride 1002 null;
         "barbican" = mkOverride 1002 null;
         "beyondtrust" = mkOverride 1002 null;
+        "beyondtrustworkloadcredentials" = mkOverride 1002 null;
         "bitwardensecretsmanager" = mkOverride 1002 null;
         "chef" = mkOverride 1002 null;
         "cloudrusm" = mkOverride 1002 null;
@@ -1531,6 +1585,7 @@ let
         "onboardbase" = mkOverride 1002 null;
         "onepassword" = mkOverride 1002 null;
         "onepasswordSDK" = mkOverride 1002 null;
+        "openBao" = mkOverride 1002 null;
         "oracle" = mkOverride 1002 null;
         "ovh" = mkOverride 1002 null;
         "passbolt" = mkOverride 1002 null;
@@ -2088,7 +2143,7 @@ let
           );
         };
         "authType" = mkOption {
-          description = "Auth type defines how to authenticate to the keyvault service.\nValid values are:\n- \"ServicePrincipal\" (default): Using a service principal (tenantId, clientId, clientSecret)\n- \"ManagedIdentity\": Using Managed Identity assigned to the pod (see aad-pod-identity)";
+          description = "Auth type defines how to authenticate to the keyvault service.\nValid values are:\n- \"ServicePrincipal\" (default): Using a service principal (tenantId, clientId, clientSecret)\n- \"ManagedIdentity\": Using Managed Identity assigned to the pod (see aad-pod-identity)\n- \"WorkloadIdentity\": Using a Kubernetes ServiceAccount federated with Entra ID";
           type = types.nullOr types.str;
         };
         "customCloudConfig" = mkOption {
@@ -2776,6 +2831,132 @@ let
         "retrievalType" = mkOverride 1002 null;
         "separator" = mkOverride 1002 null;
       };
+
+    };
+    "external-secrets.io.v1.ClusterSecretStoreSpecProviderBeyondtrustworkloadcredentials" = {
+
+      options = {
+        "auth" = mkOption {
+          description = "Auth configures how the Operator authenticates with the BeyondTrust Workload Credentials API.\nCurrently supports API key authentication via Kubernetes secret reference.\nFor authentication setup, see: https://docs.beyondtrust.com/bt-docs/docs/secrets-api#authentication";
+          type = submoduleOf "external-secrets.io.v1.ClusterSecretStoreSpecProviderBeyondtrustworkloadcredentialsAuth";
+        };
+        "caBundle" = mkOption {
+          description = "CABundle is a base64-encoded CA certificate used to validate the BeyondTrust Workload Credentials API TLS certificate.\nUse this when your BeyondTrust instance uses a self-signed certificate or internal CA.\nIf not set, the system's trusted root certificates are used.";
+          type = types.nullOr types.str;
+        };
+        "caProvider" = mkOption {
+          description = "CAProvider points to a Secret or ConfigMap containing a PEM-encoded CA certificate.\nThis is used to validate the BeyondTrust Workload Credentials API TLS certificate.\nUse this as an alternative to CABundle when you want to reference an existing Kubernetes resource.";
+          type = types.nullOr (
+            submoduleOf "external-secrets.io.v1.ClusterSecretStoreSpecProviderBeyondtrustworkloadcredentialsCaProvider"
+          );
+        };
+        "folderPath" = mkOption {
+          description = "FolderPath specifies the default folder path for secret retrieval.\nSecrets will be fetched from this folder unless overridden in the ExternalSecret spec.\nExample: \"production/database\" or \"dev/api-keys\"\nLeave empty to retrieve secrets from the root folder.\nFor folder organization, see: https://docs.beyondtrust.com/bt-docs/docs/secrets-api#folders";
+          type = types.nullOr types.str;
+        };
+        "server" = mkOption {
+          description = "Server configures the BeyondTrust Workload Credentials server connection details.\nIncludes the API URL and Site ID for your BeyondTrust instance.\nFor API reference, see: https://docs.beyondtrust.com/bt-docs/docs/secrets-api";
+          type = submoduleOf "external-secrets.io.v1.ClusterSecretStoreSpecProviderBeyondtrustworkloadcredentialsServer";
+        };
+      };
+
+      config = {
+        "caBundle" = mkOverride 1002 null;
+        "caProvider" = mkOverride 1002 null;
+        "folderPath" = mkOverride 1002 null;
+      };
+
+    };
+    "external-secrets.io.v1.ClusterSecretStoreSpecProviderBeyondtrustworkloadcredentialsAuth" = {
+
+      options = {
+        "apikey" = mkOption {
+          description = "APIKey configures API token authentication for BeyondTrust Workload Credentials.\nThe token is retrieved from a Kubernetes secret and used as a Bearer token for API requests.";
+          type = submoduleOf "external-secrets.io.v1.ClusterSecretStoreSpecProviderBeyondtrustworkloadcredentialsAuthApikey";
+        };
+      };
+
+      config = { };
+
+    };
+    "external-secrets.io.v1.ClusterSecretStoreSpecProviderBeyondtrustworkloadcredentialsAuthApikey" = {
+
+      options = {
+        "token" = mkOption {
+          description = "Token references the Kubernetes secret containing the BeyondTrust Workload Credentials API token.\nThe secret should contain the API key used to authenticate with BeyondTrust Workload Credentials.\nCreate an API token in your BeyondTrust Workload Credentials console and store it in a Kubernetes secret.\nFor details on creating API tokens, see: https://docs.beyondtrust.com/bt-docs/docs/secrets-api#authentication";
+          type = submoduleOf "external-secrets.io.v1.ClusterSecretStoreSpecProviderBeyondtrustworkloadcredentialsAuthApikeyToken";
+        };
+      };
+
+      config = { };
+
+    };
+    "external-secrets.io.v1.ClusterSecretStoreSpecProviderBeyondtrustworkloadcredentialsAuthApikeyToken" =
+      {
+
+        options = {
+          "key" = mkOption {
+            description = "A key in the referenced Secret.\nSome instances of this field may be defaulted, in others it may be required.";
+            type = types.nullOr types.str;
+          };
+          "name" = mkOption {
+            description = "The name of the Secret resource being referred to.";
+            type = types.nullOr types.str;
+          };
+          "namespace" = mkOption {
+            description = "The namespace of the Secret resource being referred to.\nIgnored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.";
+            type = types.nullOr types.str;
+          };
+        };
+
+        config = {
+          "key" = mkOverride 1002 null;
+          "name" = mkOverride 1002 null;
+          "namespace" = mkOverride 1002 null;
+        };
+
+      };
+    "external-secrets.io.v1.ClusterSecretStoreSpecProviderBeyondtrustworkloadcredentialsCaProvider" = {
+
+      options = {
+        "key" = mkOption {
+          description = "The key where the CA certificate can be found in the Secret or ConfigMap.";
+          type = types.nullOr types.str;
+        };
+        "name" = mkOption {
+          description = "The name of the object located at the provider type.";
+          type = types.str;
+        };
+        "namespace" = mkOption {
+          description = "The namespace the Provider type is in.\nCan only be defined when used in a ClusterSecretStore.";
+          type = types.nullOr types.str;
+        };
+        "type" = mkOption {
+          description = "The type of provider to use such as \"Secret\", or \"ConfigMap\".";
+          type = types.str;
+        };
+      };
+
+      config = {
+        "key" = mkOverride 1002 null;
+        "namespace" = mkOverride 1002 null;
+      };
+
+    };
+    "external-secrets.io.v1.ClusterSecretStoreSpecProviderBeyondtrustworkloadcredentialsServer" = {
+
+      options = {
+        "apiUrl" = mkOption {
+          description = "APIURL is the base URL of your BeyondTrust Workload Credentials API server.\nThis should be the full URL to your BeyondTrust instance.\nExample: https://api.beyondtrust.io/siie\nFor more information, see: https://docs.beyondtrust.com/bt-docs/docs/secrets-api#base-url";
+          type = types.str;
+        };
+        "siteId" = mkOption {
+          description = "SiteID is your BeyondTrust Workload Credentials site identifier (UUID format).\nThis identifier is unique to your BeyondTrust Workload Credentials instance.\nYou can find your Site ID in the BeyondTrust Workload Credentials admin console.\nExample: a1b2c3d4-e5f6-4890-abcd-ef1234567890\nFor more information, see: https://docs.beyondtrust.com/bt-docs/docs/secrets-api";
+          type = types.str;
+        };
+      };
+
+      config = { };
 
     };
     "external-secrets.io.v1.ClusterSecretStoreSpecProviderBitwardensecretsmanager" = {
@@ -5267,6 +5448,10 @@ let
           description = "ExpandSecretReferences indicates whether secret references should be expanded. Defaults to true if not provided.";
           type = types.nullOr types.bool;
         };
+        "organizationSlug" = mkOption {
+          description = "OrganizationSlug is the optional slug that identifies the organization that will be used\nduring authentication. Useful for sub-organization setups";
+          type = types.nullOr types.str;
+        };
         "projectSlug" = mkOption {
           description = "ProjectSlug is the required slug identifier for the project.";
           type = types.str;
@@ -5283,6 +5468,7 @@ let
 
       config = {
         "expandSecretReferences" = mkOverride 1002 null;
+        "organizationSlug" = mkOverride 1002 null;
         "recursive" = mkOverride 1002 null;
         "secretsPath" = mkOverride 1002 null;
       };
@@ -6095,6 +6281,264 @@ let
       config = {
         "name" = mkOverride 1002 null;
         "version" = mkOverride 1002 null;
+      };
+
+    };
+    "external-secrets.io.v1.ClusterSecretStoreSpecProviderOpenBao" = {
+
+      options = {
+        "auth" = mkOption {
+          description = "Auth configures how secret-manager authenticates with the OpenBao server.";
+          type = types.nullOr (
+            submoduleOf "external-secrets.io.v1.ClusterSecretStoreSpecProviderOpenBaoAuth"
+          );
+        };
+        "caBundle" = mkOption {
+          description = "PEM encoded CA bundle used to validate the OpenBao server certificate. If\nthis and `caProvider` are not set the system root certificates are used\nto validate the TLS connection.";
+          type = types.nullOr types.str;
+        };
+        "caProvider" = mkOption {
+          description = "The provider for the CA bundle to use to validate OpenBao server\ncertificate. If this and `caBundle` are not set the system root\ncertificates are used to validate the TLS connection.";
+          type = types.nullOr (
+            submoduleOf "external-secrets.io.v1.ClusterSecretStoreSpecProviderOpenBaoCaProvider"
+          );
+        };
+        "namespace" = mkOption {
+          description = "Name of the [OpenBao Namespace]. Namespaces is a set of features within\nOpenBao that allows OpenBao environments to support secure multi-tenancy.\ne.g: \"ns1\".\n\n[OpenBao Namespace]: https://openbao.org/docs/concepts/namespaces/";
+          type = types.nullOr types.str;
+        };
+        "path" = mkOption {
+          description = "Path is the mount path of the OpenBao KV backend endpoint, e.g:\n\"secret\". The v2 KV secret engine version specific \"/data\" path suffix\nfor fetching secrets from OpenBao is optional and will be appended\nif not present in specified path.";
+          type = types.nullOr types.str;
+        };
+        "server" = mkOption {
+          description = "Server is the connection address for the OpenBao server, e.g: `https://openbao.example.com:8200`.";
+          type = types.str;
+        };
+        "version" = mkOption {
+          description = "Version is the OpenBao KV secret engine version. This can be either \"v1\" or\n\"v2\". Version defaults to \"v2\".";
+          type = types.nullOr types.str;
+        };
+      };
+
+      config = {
+        "auth" = mkOverride 1002 null;
+        "caBundle" = mkOverride 1002 null;
+        "caProvider" = mkOverride 1002 null;
+        "namespace" = mkOverride 1002 null;
+        "path" = mkOverride 1002 null;
+        "version" = mkOverride 1002 null;
+      };
+
+    };
+    "external-secrets.io.v1.ClusterSecretStoreSpecProviderOpenBaoAuth" = {
+
+      options = {
+        "appRole" = mkOption {
+          description = "AppRole authenticates with OpenBao using the [App Role auth mechanism],\nwith the role and secret stored in a Kubernetes Secret resource.\n\n[App Role auth mechanism]: https://openbao.org/docs/auth/approle/";
+          type = types.nullOr (
+            submoduleOf "external-secrets.io.v1.ClusterSecretStoreSpecProviderOpenBaoAuthAppRole"
+          );
+        };
+        "namespace" = mkOption {
+          description = "Name of the [OpenBao Namespace] to authenticate to. This can be different\nthan the namespace your secret is in. Namespaces is a set of features\nwithin OpenBao that allows OpenBao environments to support secure\nmulti-tenancy. e.g: \"ns1\". This will default to OpenBao.Namespace field\nif set, or empty otherwise\n\n[OpenBao Namespace]: https://openbao.org/docs/concepts/namespaces/";
+          type = types.nullOr types.str;
+        };
+        "tokenSecretRef" = mkOption {
+          description = "TokenSecretRef authenticates with OpenBao by presenting a token.";
+          type = types.nullOr (
+            submoduleOf "external-secrets.io.v1.ClusterSecretStoreSpecProviderOpenBaoAuthTokenSecretRef"
+          );
+        };
+        "userPass" = mkOption {
+          description = "UserPass authenticates with OpenBao by passing a username/password pair";
+          type = types.nullOr (
+            submoduleOf "external-secrets.io.v1.ClusterSecretStoreSpecProviderOpenBaoAuthUserPass"
+          );
+        };
+      };
+
+      config = {
+        "appRole" = mkOverride 1002 null;
+        "namespace" = mkOverride 1002 null;
+        "tokenSecretRef" = mkOverride 1002 null;
+        "userPass" = mkOverride 1002 null;
+      };
+
+    };
+    "external-secrets.io.v1.ClusterSecretStoreSpecProviderOpenBaoAuthAppRole" = {
+
+      options = {
+        "path" = mkOption {
+          description = "Path where the App Role authentication backend is mounted\nin OpenBao, e.g: \"approle\"";
+          type = types.str;
+        };
+        "roleId" = mkOption {
+          description = "RoleID configured in the App Role authentication backend when setting\nup the authentication backend in OpenBao.";
+          type = types.nullOr types.str;
+        };
+        "roleRef" = mkOption {
+          description = "Reference to a key in a Secret that contains the App Role ID used\nto authenticate with OpenBao.\nThe `key` field must be specified and denotes which entry within the Secret\nresource is used as the app role id.";
+          type = types.nullOr (
+            submoduleOf "external-secrets.io.v1.ClusterSecretStoreSpecProviderOpenBaoAuthAppRoleRoleRef"
+          );
+        };
+        "secretRef" = mkOption {
+          description = "Reference to a key in a Secret that contains the App Role secret used\nto authenticate with OpenBao.\nThe `key` field must be specified and denotes which entry within the Secret\nresource is used as the app role secret.";
+          type = submoduleOf "external-secrets.io.v1.ClusterSecretStoreSpecProviderOpenBaoAuthAppRoleSecretRef";
+        };
+      };
+
+      config = {
+        "roleId" = mkOverride 1002 null;
+        "roleRef" = mkOverride 1002 null;
+      };
+
+    };
+    "external-secrets.io.v1.ClusterSecretStoreSpecProviderOpenBaoAuthAppRoleRoleRef" = {
+
+      options = {
+        "key" = mkOption {
+          description = "A key in the referenced Secret.\nSome instances of this field may be defaulted, in others it may be required.";
+          type = types.nullOr types.str;
+        };
+        "name" = mkOption {
+          description = "The name of the Secret resource being referred to.";
+          type = types.nullOr types.str;
+        };
+        "namespace" = mkOption {
+          description = "The namespace of the Secret resource being referred to.\nIgnored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.";
+          type = types.nullOr types.str;
+        };
+      };
+
+      config = {
+        "key" = mkOverride 1002 null;
+        "name" = mkOverride 1002 null;
+        "namespace" = mkOverride 1002 null;
+      };
+
+    };
+    "external-secrets.io.v1.ClusterSecretStoreSpecProviderOpenBaoAuthAppRoleSecretRef" = {
+
+      options = {
+        "key" = mkOption {
+          description = "A key in the referenced Secret.\nSome instances of this field may be defaulted, in others it may be required.";
+          type = types.nullOr types.str;
+        };
+        "name" = mkOption {
+          description = "The name of the Secret resource being referred to.";
+          type = types.nullOr types.str;
+        };
+        "namespace" = mkOption {
+          description = "The namespace of the Secret resource being referred to.\nIgnored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.";
+          type = types.nullOr types.str;
+        };
+      };
+
+      config = {
+        "key" = mkOverride 1002 null;
+        "name" = mkOverride 1002 null;
+        "namespace" = mkOverride 1002 null;
+      };
+
+    };
+    "external-secrets.io.v1.ClusterSecretStoreSpecProviderOpenBaoAuthTokenSecretRef" = {
+
+      options = {
+        "key" = mkOption {
+          description = "A key in the referenced Secret.\nSome instances of this field may be defaulted, in others it may be required.";
+          type = types.nullOr types.str;
+        };
+        "name" = mkOption {
+          description = "The name of the Secret resource being referred to.";
+          type = types.nullOr types.str;
+        };
+        "namespace" = mkOption {
+          description = "The namespace of the Secret resource being referred to.\nIgnored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.";
+          type = types.nullOr types.str;
+        };
+      };
+
+      config = {
+        "key" = mkOverride 1002 null;
+        "name" = mkOverride 1002 null;
+        "namespace" = mkOverride 1002 null;
+      };
+
+    };
+    "external-secrets.io.v1.ClusterSecretStoreSpecProviderOpenBaoAuthUserPass" = {
+
+      options = {
+        "path" = mkOption {
+          description = "Path where the UserPassword authentication backend is mounted\nin OpenBao, e.g: \"userpass\"";
+          type = types.str;
+        };
+        "secretRef" = mkOption {
+          description = "SecretRef to a key in a Secret resource containing password for the user\nused to authenticate with OpenBao using the [UserPass authentication\nmethod]\n\n[UserPass authentication method]: https://openbao.org/docs/auth/userpass/";
+          type = types.nullOr (
+            submoduleOf "external-secrets.io.v1.ClusterSecretStoreSpecProviderOpenBaoAuthUserPassSecretRef"
+          );
+        };
+        "username" = mkOption {
+          description = "Username is a username used to authenticate using the [UserPass\nauthentication method]\n\n[UserPass authentication method]: https://openbao.org/docs/auth/userpass/";
+          type = types.str;
+        };
+      };
+
+      config = {
+        "secretRef" = mkOverride 1002 null;
+      };
+
+    };
+    "external-secrets.io.v1.ClusterSecretStoreSpecProviderOpenBaoAuthUserPassSecretRef" = {
+
+      options = {
+        "key" = mkOption {
+          description = "A key in the referenced Secret.\nSome instances of this field may be defaulted, in others it may be required.";
+          type = types.nullOr types.str;
+        };
+        "name" = mkOption {
+          description = "The name of the Secret resource being referred to.";
+          type = types.nullOr types.str;
+        };
+        "namespace" = mkOption {
+          description = "The namespace of the Secret resource being referred to.\nIgnored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.";
+          type = types.nullOr types.str;
+        };
+      };
+
+      config = {
+        "key" = mkOverride 1002 null;
+        "name" = mkOverride 1002 null;
+        "namespace" = mkOverride 1002 null;
+      };
+
+    };
+    "external-secrets.io.v1.ClusterSecretStoreSpecProviderOpenBaoCaProvider" = {
+
+      options = {
+        "key" = mkOption {
+          description = "The key where the CA certificate can be found in the Secret or ConfigMap.";
+          type = types.nullOr types.str;
+        };
+        "name" = mkOption {
+          description = "The name of the object located at the provider type.";
+          type = types.str;
+        };
+        "namespace" = mkOption {
+          description = "The namespace the Provider type is in.\nCan only be defined when used in a ClusterSecretStore.";
+          type = types.nullOr types.str;
+        };
+        "type" = mkOption {
+          description = "The type of provider to use such as \"Secret\", or \"ConfigMap\".";
+          type = types.str;
+        };
+      };
+
+      config = {
+        "key" = mkOverride 1002 null;
+        "namespace" = mkOverride 1002 null;
       };
 
     };
@@ -9098,6 +9542,10 @@ let
           description = "SecretStoreRef defines which SecretStore to fetch the ExternalSecret data.";
           type = types.nullOr (submoduleOf "external-secrets.io.v1.ExternalSecretSpecSecretStoreRef");
         };
+        "syncWindows" = mkOption {
+          description = "SyncWindows optionally restricts when periodic refreshes may occur.\nEvaluated in UTC, only for Periodic refresh policy (or when refreshPolicy is unset).";
+          type = types.nullOr (submoduleOf "external-secrets.io.v1.ExternalSecretSpecSyncWindows");
+        };
         "target" = mkOption {
           description = "ExternalSecretTarget defines the Kubernetes Secret to be created,\nthere can be only one target per ExternalSecret.";
           type = types.nullOr (submoduleOf "external-secrets.io.v1.ExternalSecretSpecTarget");
@@ -9110,6 +9558,7 @@ let
         "refreshInterval" = mkOverride 1002 null;
         "refreshPolicy" = mkOverride 1002 null;
         "secretStoreRef" = mkOverride 1002 null;
+        "syncWindows" = mkOverride 1002 null;
         "target" = mkOverride 1002 null;
       };
 
@@ -9539,6 +9988,38 @@ let
       };
 
     };
+    "external-secrets.io.v1.ExternalSecretSpecSyncWindows" = {
+
+      options = {
+        "kind" = mkOption {
+          description = "Kind applies to every window in the list.\n\"allow\" -- syncs are permitted only while at least one window is active;\n           all other times are blocked.\n\"deny\"  -- syncs are blocked while any window is active;\n           all other times are permitted.";
+          type = types.str;
+        };
+        "windows" = mkOption {
+          description = "Windows is the list of schedule+duration pairs.";
+          type = types.listOf (submoduleOf "external-secrets.io.v1.ExternalSecretSpecSyncWindowsWindows");
+        };
+      };
+
+      config = { };
+
+    };
+    "external-secrets.io.v1.ExternalSecretSpecSyncWindowsWindows" = {
+
+      options = {
+        "duration" = mkOption {
+          description = "Duration specifies how long the window stays open after each Schedule\nfiring. Example: \"8h\".";
+          type = types.str;
+        };
+        "schedule" = mkOption {
+          description = "Schedule is a standard 5-field cron expression evaluated in UTC, or a\nnamed shorthand such as @daily or @every 1h. It marks the start time of\neach window occurrence.\nExample: \"0 22 * * 1-5\" opens a window every weekday at 22:00 UTC.";
+          type = types.str;
+        };
+      };
+
+      config = { };
+
+    };
     "external-secrets.io.v1.ExternalSecretSpecTarget" = {
 
       options = {
@@ -9682,6 +10163,10 @@ let
           description = "Target specifies where to place the template result.\nFor Secret resources, common values are: \"Data\", \"Annotations\", \"Labels\".\nFor custom resources (when spec.target.manifest is set), this supports\nnested paths like \"spec.database.config\" or \"data\".";
           type = types.nullOr types.str;
         };
+        "valuesDecodingStrategy" = mkOption {
+          description = "Used to define a decoding Strategy for the rendered template values.";
+          type = types.nullOr types.str;
+        };
       };
 
       config = {
@@ -9689,6 +10174,7 @@ let
         "literal" = mkOverride 1002 null;
         "secret" = mkOverride 1002 null;
         "target" = mkOverride 1002 null;
+        "valuesDecodingStrategy" = mkOverride 1002 null;
       };
 
     };
@@ -10002,6 +10488,12 @@ let
           description = "Beyondtrust configures this store to sync secrets using Password Safe provider.";
           type = types.nullOr (submoduleOf "external-secrets.io.v1.SecretStoreSpecProviderBeyondtrust");
         };
+        "beyondtrustworkloadcredentials" = mkOption {
+          description = "BeyondtrustWorkloadCredentials configures this store to sync secrets using the BeyondTrust Workload Credentials provider.";
+          type = types.nullOr (
+            submoduleOf "external-secrets.io.v1.SecretStoreSpecProviderBeyondtrustworkloadcredentials"
+          );
+        };
         "bitwardensecretsmanager" = mkOption {
           description = "BitwardenSecretsManager configures this store to sync secrets using BitwardenSecretsManager provider";
           type = types.nullOr (
@@ -10088,6 +10580,10 @@ let
           description = "OnePasswordSDK configures this store to use 1Password's new Go SDK to sync secrets.";
           type = types.nullOr (submoduleOf "external-secrets.io.v1.SecretStoreSpecProviderOnepasswordSDK");
         };
+        "openBao" = mkOption {
+          description = "OpenBao configures this store to sync secrets using the OpenBao provider.";
+          type = types.nullOr (submoduleOf "external-secrets.io.v1.SecretStoreSpecProviderOpenBao");
+        };
         "oracle" = mkOption {
           description = "Oracle configures this store to sync secrets using Oracle Vault provider";
           type = types.nullOr (submoduleOf "external-secrets.io.v1.SecretStoreSpecProviderOracle");
@@ -10154,6 +10650,7 @@ let
         "azurekv" = mkOverride 1002 null;
         "barbican" = mkOverride 1002 null;
         "beyondtrust" = mkOverride 1002 null;
+        "beyondtrustworkloadcredentials" = mkOverride 1002 null;
         "bitwardensecretsmanager" = mkOverride 1002 null;
         "chef" = mkOverride 1002 null;
         "cloudrusm" = mkOverride 1002 null;
@@ -10175,6 +10672,7 @@ let
         "onboardbase" = mkOverride 1002 null;
         "onepassword" = mkOverride 1002 null;
         "onepasswordSDK" = mkOverride 1002 null;
+        "openBao" = mkOverride 1002 null;
         "oracle" = mkOverride 1002 null;
         "ovh" = mkOverride 1002 null;
         "passbolt" = mkOverride 1002 null;
@@ -10726,7 +11224,7 @@ let
           );
         };
         "authType" = mkOption {
-          description = "Auth type defines how to authenticate to the keyvault service.\nValid values are:\n- \"ServicePrincipal\" (default): Using a service principal (tenantId, clientId, clientSecret)\n- \"ManagedIdentity\": Using Managed Identity assigned to the pod (see aad-pod-identity)";
+          description = "Auth type defines how to authenticate to the keyvault service.\nValid values are:\n- \"ServicePrincipal\" (default): Using a service principal (tenantId, clientId, clientSecret)\n- \"ManagedIdentity\": Using Managed Identity assigned to the pod (see aad-pod-identity)\n- \"WorkloadIdentity\": Using a Kubernetes ServiceAccount federated with Entra ID";
           type = types.nullOr types.str;
         };
         "customCloudConfig" = mkOption {
@@ -11414,6 +11912,131 @@ let
         "retrievalType" = mkOverride 1002 null;
         "separator" = mkOverride 1002 null;
       };
+
+    };
+    "external-secrets.io.v1.SecretStoreSpecProviderBeyondtrustworkloadcredentials" = {
+
+      options = {
+        "auth" = mkOption {
+          description = "Auth configures how the Operator authenticates with the BeyondTrust Workload Credentials API.\nCurrently supports API key authentication via Kubernetes secret reference.\nFor authentication setup, see: https://docs.beyondtrust.com/bt-docs/docs/secrets-api#authentication";
+          type = submoduleOf "external-secrets.io.v1.SecretStoreSpecProviderBeyondtrustworkloadcredentialsAuth";
+        };
+        "caBundle" = mkOption {
+          description = "CABundle is a base64-encoded CA certificate used to validate the BeyondTrust Workload Credentials API TLS certificate.\nUse this when your BeyondTrust instance uses a self-signed certificate or internal CA.\nIf not set, the system's trusted root certificates are used.";
+          type = types.nullOr types.str;
+        };
+        "caProvider" = mkOption {
+          description = "CAProvider points to a Secret or ConfigMap containing a PEM-encoded CA certificate.\nThis is used to validate the BeyondTrust Workload Credentials API TLS certificate.\nUse this as an alternative to CABundle when you want to reference an existing Kubernetes resource.";
+          type = types.nullOr (
+            submoduleOf "external-secrets.io.v1.SecretStoreSpecProviderBeyondtrustworkloadcredentialsCaProvider"
+          );
+        };
+        "folderPath" = mkOption {
+          description = "FolderPath specifies the default folder path for secret retrieval.\nSecrets will be fetched from this folder unless overridden in the ExternalSecret spec.\nExample: \"production/database\" or \"dev/api-keys\"\nLeave empty to retrieve secrets from the root folder.\nFor folder organization, see: https://docs.beyondtrust.com/bt-docs/docs/secrets-api#folders";
+          type = types.nullOr types.str;
+        };
+        "server" = mkOption {
+          description = "Server configures the BeyondTrust Workload Credentials server connection details.\nIncludes the API URL and Site ID for your BeyondTrust instance.\nFor API reference, see: https://docs.beyondtrust.com/bt-docs/docs/secrets-api";
+          type = submoduleOf "external-secrets.io.v1.SecretStoreSpecProviderBeyondtrustworkloadcredentialsServer";
+        };
+      };
+
+      config = {
+        "caBundle" = mkOverride 1002 null;
+        "caProvider" = mkOverride 1002 null;
+        "folderPath" = mkOverride 1002 null;
+      };
+
+    };
+    "external-secrets.io.v1.SecretStoreSpecProviderBeyondtrustworkloadcredentialsAuth" = {
+
+      options = {
+        "apikey" = mkOption {
+          description = "APIKey configures API token authentication for BeyondTrust Workload Credentials.\nThe token is retrieved from a Kubernetes secret and used as a Bearer token for API requests.";
+          type = submoduleOf "external-secrets.io.v1.SecretStoreSpecProviderBeyondtrustworkloadcredentialsAuthApikey";
+        };
+      };
+
+      config = { };
+
+    };
+    "external-secrets.io.v1.SecretStoreSpecProviderBeyondtrustworkloadcredentialsAuthApikey" = {
+
+      options = {
+        "token" = mkOption {
+          description = "Token references the Kubernetes secret containing the BeyondTrust Workload Credentials API token.\nThe secret should contain the API key used to authenticate with BeyondTrust Workload Credentials.\nCreate an API token in your BeyondTrust Workload Credentials console and store it in a Kubernetes secret.\nFor details on creating API tokens, see: https://docs.beyondtrust.com/bt-docs/docs/secrets-api#authentication";
+          type = submoduleOf "external-secrets.io.v1.SecretStoreSpecProviderBeyondtrustworkloadcredentialsAuthApikeyToken";
+        };
+      };
+
+      config = { };
+
+    };
+    "external-secrets.io.v1.SecretStoreSpecProviderBeyondtrustworkloadcredentialsAuthApikeyToken" = {
+
+      options = {
+        "key" = mkOption {
+          description = "A key in the referenced Secret.\nSome instances of this field may be defaulted, in others it may be required.";
+          type = types.nullOr types.str;
+        };
+        "name" = mkOption {
+          description = "The name of the Secret resource being referred to.";
+          type = types.nullOr types.str;
+        };
+        "namespace" = mkOption {
+          description = "The namespace of the Secret resource being referred to.\nIgnored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.";
+          type = types.nullOr types.str;
+        };
+      };
+
+      config = {
+        "key" = mkOverride 1002 null;
+        "name" = mkOverride 1002 null;
+        "namespace" = mkOverride 1002 null;
+      };
+
+    };
+    "external-secrets.io.v1.SecretStoreSpecProviderBeyondtrustworkloadcredentialsCaProvider" = {
+
+      options = {
+        "key" = mkOption {
+          description = "The key where the CA certificate can be found in the Secret or ConfigMap.";
+          type = types.nullOr types.str;
+        };
+        "name" = mkOption {
+          description = "The name of the object located at the provider type.";
+          type = types.str;
+        };
+        "namespace" = mkOption {
+          description = "The namespace the Provider type is in.\nCan only be defined when used in a ClusterSecretStore.";
+          type = types.nullOr types.str;
+        };
+        "type" = mkOption {
+          description = "The type of provider to use such as \"Secret\", or \"ConfigMap\".";
+          type = types.str;
+        };
+      };
+
+      config = {
+        "key" = mkOverride 1002 null;
+        "namespace" = mkOverride 1002 null;
+      };
+
+    };
+    "external-secrets.io.v1.SecretStoreSpecProviderBeyondtrustworkloadcredentialsServer" = {
+
+      options = {
+        "apiUrl" = mkOption {
+          description = "APIURL is the base URL of your BeyondTrust Workload Credentials API server.\nThis should be the full URL to your BeyondTrust instance.\nExample: https://api.beyondtrust.io/siie\nFor more information, see: https://docs.beyondtrust.com/bt-docs/docs/secrets-api#base-url";
+          type = types.str;
+        };
+        "siteId" = mkOption {
+          description = "SiteID is your BeyondTrust Workload Credentials site identifier (UUID format).\nThis identifier is unique to your BeyondTrust Workload Credentials instance.\nYou can find your Site ID in the BeyondTrust Workload Credentials admin console.\nExample: a1b2c3d4-e5f6-4890-abcd-ef1234567890\nFor more information, see: https://docs.beyondtrust.com/bt-docs/docs/secrets-api";
+          type = types.str;
+        };
+      };
+
+      config = { };
 
     };
     "external-secrets.io.v1.SecretStoreSpecProviderBitwardensecretsmanager" = {
@@ -13877,6 +14500,10 @@ let
           description = "ExpandSecretReferences indicates whether secret references should be expanded. Defaults to true if not provided.";
           type = types.nullOr types.bool;
         };
+        "organizationSlug" = mkOption {
+          description = "OrganizationSlug is the optional slug that identifies the organization that will be used\nduring authentication. Useful for sub-organization setups";
+          type = types.nullOr types.str;
+        };
         "projectSlug" = mkOption {
           description = "ProjectSlug is the required slug identifier for the project.";
           type = types.str;
@@ -13893,6 +14520,7 @@ let
 
       config = {
         "expandSecretReferences" = mkOverride 1002 null;
+        "organizationSlug" = mkOverride 1002 null;
         "recursive" = mkOverride 1002 null;
         "secretsPath" = mkOverride 1002 null;
       };
@@ -14695,6 +15323,260 @@ let
       config = {
         "name" = mkOverride 1002 null;
         "version" = mkOverride 1002 null;
+      };
+
+    };
+    "external-secrets.io.v1.SecretStoreSpecProviderOpenBao" = {
+
+      options = {
+        "auth" = mkOption {
+          description = "Auth configures how secret-manager authenticates with the OpenBao server.";
+          type = types.nullOr (submoduleOf "external-secrets.io.v1.SecretStoreSpecProviderOpenBaoAuth");
+        };
+        "caBundle" = mkOption {
+          description = "PEM encoded CA bundle used to validate the OpenBao server certificate. If\nthis and `caProvider` are not set the system root certificates are used\nto validate the TLS connection.";
+          type = types.nullOr types.str;
+        };
+        "caProvider" = mkOption {
+          description = "The provider for the CA bundle to use to validate OpenBao server\ncertificate. If this and `caBundle` are not set the system root\ncertificates are used to validate the TLS connection.";
+          type = types.nullOr (submoduleOf "external-secrets.io.v1.SecretStoreSpecProviderOpenBaoCaProvider");
+        };
+        "namespace" = mkOption {
+          description = "Name of the [OpenBao Namespace]. Namespaces is a set of features within\nOpenBao that allows OpenBao environments to support secure multi-tenancy.\ne.g: \"ns1\".\n\n[OpenBao Namespace]: https://openbao.org/docs/concepts/namespaces/";
+          type = types.nullOr types.str;
+        };
+        "path" = mkOption {
+          description = "Path is the mount path of the OpenBao KV backend endpoint, e.g:\n\"secret\". The v2 KV secret engine version specific \"/data\" path suffix\nfor fetching secrets from OpenBao is optional and will be appended\nif not present in specified path.";
+          type = types.nullOr types.str;
+        };
+        "server" = mkOption {
+          description = "Server is the connection address for the OpenBao server, e.g: `https://openbao.example.com:8200`.";
+          type = types.str;
+        };
+        "version" = mkOption {
+          description = "Version is the OpenBao KV secret engine version. This can be either \"v1\" or\n\"v2\". Version defaults to \"v2\".";
+          type = types.nullOr types.str;
+        };
+      };
+
+      config = {
+        "auth" = mkOverride 1002 null;
+        "caBundle" = mkOverride 1002 null;
+        "caProvider" = mkOverride 1002 null;
+        "namespace" = mkOverride 1002 null;
+        "path" = mkOverride 1002 null;
+        "version" = mkOverride 1002 null;
+      };
+
+    };
+    "external-secrets.io.v1.SecretStoreSpecProviderOpenBaoAuth" = {
+
+      options = {
+        "appRole" = mkOption {
+          description = "AppRole authenticates with OpenBao using the [App Role auth mechanism],\nwith the role and secret stored in a Kubernetes Secret resource.\n\n[App Role auth mechanism]: https://openbao.org/docs/auth/approle/";
+          type = types.nullOr (
+            submoduleOf "external-secrets.io.v1.SecretStoreSpecProviderOpenBaoAuthAppRole"
+          );
+        };
+        "namespace" = mkOption {
+          description = "Name of the [OpenBao Namespace] to authenticate to. This can be different\nthan the namespace your secret is in. Namespaces is a set of features\nwithin OpenBao that allows OpenBao environments to support secure\nmulti-tenancy. e.g: \"ns1\". This will default to OpenBao.Namespace field\nif set, or empty otherwise\n\n[OpenBao Namespace]: https://openbao.org/docs/concepts/namespaces/";
+          type = types.nullOr types.str;
+        };
+        "tokenSecretRef" = mkOption {
+          description = "TokenSecretRef authenticates with OpenBao by presenting a token.";
+          type = types.nullOr (
+            submoduleOf "external-secrets.io.v1.SecretStoreSpecProviderOpenBaoAuthTokenSecretRef"
+          );
+        };
+        "userPass" = mkOption {
+          description = "UserPass authenticates with OpenBao by passing a username/password pair";
+          type = types.nullOr (
+            submoduleOf "external-secrets.io.v1.SecretStoreSpecProviderOpenBaoAuthUserPass"
+          );
+        };
+      };
+
+      config = {
+        "appRole" = mkOverride 1002 null;
+        "namespace" = mkOverride 1002 null;
+        "tokenSecretRef" = mkOverride 1002 null;
+        "userPass" = mkOverride 1002 null;
+      };
+
+    };
+    "external-secrets.io.v1.SecretStoreSpecProviderOpenBaoAuthAppRole" = {
+
+      options = {
+        "path" = mkOption {
+          description = "Path where the App Role authentication backend is mounted\nin OpenBao, e.g: \"approle\"";
+          type = types.str;
+        };
+        "roleId" = mkOption {
+          description = "RoleID configured in the App Role authentication backend when setting\nup the authentication backend in OpenBao.";
+          type = types.nullOr types.str;
+        };
+        "roleRef" = mkOption {
+          description = "Reference to a key in a Secret that contains the App Role ID used\nto authenticate with OpenBao.\nThe `key` field must be specified and denotes which entry within the Secret\nresource is used as the app role id.";
+          type = types.nullOr (
+            submoduleOf "external-secrets.io.v1.SecretStoreSpecProviderOpenBaoAuthAppRoleRoleRef"
+          );
+        };
+        "secretRef" = mkOption {
+          description = "Reference to a key in a Secret that contains the App Role secret used\nto authenticate with OpenBao.\nThe `key` field must be specified and denotes which entry within the Secret\nresource is used as the app role secret.";
+          type = submoduleOf "external-secrets.io.v1.SecretStoreSpecProviderOpenBaoAuthAppRoleSecretRef";
+        };
+      };
+
+      config = {
+        "roleId" = mkOverride 1002 null;
+        "roleRef" = mkOverride 1002 null;
+      };
+
+    };
+    "external-secrets.io.v1.SecretStoreSpecProviderOpenBaoAuthAppRoleRoleRef" = {
+
+      options = {
+        "key" = mkOption {
+          description = "A key in the referenced Secret.\nSome instances of this field may be defaulted, in others it may be required.";
+          type = types.nullOr types.str;
+        };
+        "name" = mkOption {
+          description = "The name of the Secret resource being referred to.";
+          type = types.nullOr types.str;
+        };
+        "namespace" = mkOption {
+          description = "The namespace of the Secret resource being referred to.\nIgnored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.";
+          type = types.nullOr types.str;
+        };
+      };
+
+      config = {
+        "key" = mkOverride 1002 null;
+        "name" = mkOverride 1002 null;
+        "namespace" = mkOverride 1002 null;
+      };
+
+    };
+    "external-secrets.io.v1.SecretStoreSpecProviderOpenBaoAuthAppRoleSecretRef" = {
+
+      options = {
+        "key" = mkOption {
+          description = "A key in the referenced Secret.\nSome instances of this field may be defaulted, in others it may be required.";
+          type = types.nullOr types.str;
+        };
+        "name" = mkOption {
+          description = "The name of the Secret resource being referred to.";
+          type = types.nullOr types.str;
+        };
+        "namespace" = mkOption {
+          description = "The namespace of the Secret resource being referred to.\nIgnored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.";
+          type = types.nullOr types.str;
+        };
+      };
+
+      config = {
+        "key" = mkOverride 1002 null;
+        "name" = mkOverride 1002 null;
+        "namespace" = mkOverride 1002 null;
+      };
+
+    };
+    "external-secrets.io.v1.SecretStoreSpecProviderOpenBaoAuthTokenSecretRef" = {
+
+      options = {
+        "key" = mkOption {
+          description = "A key in the referenced Secret.\nSome instances of this field may be defaulted, in others it may be required.";
+          type = types.nullOr types.str;
+        };
+        "name" = mkOption {
+          description = "The name of the Secret resource being referred to.";
+          type = types.nullOr types.str;
+        };
+        "namespace" = mkOption {
+          description = "The namespace of the Secret resource being referred to.\nIgnored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.";
+          type = types.nullOr types.str;
+        };
+      };
+
+      config = {
+        "key" = mkOverride 1002 null;
+        "name" = mkOverride 1002 null;
+        "namespace" = mkOverride 1002 null;
+      };
+
+    };
+    "external-secrets.io.v1.SecretStoreSpecProviderOpenBaoAuthUserPass" = {
+
+      options = {
+        "path" = mkOption {
+          description = "Path where the UserPassword authentication backend is mounted\nin OpenBao, e.g: \"userpass\"";
+          type = types.str;
+        };
+        "secretRef" = mkOption {
+          description = "SecretRef to a key in a Secret resource containing password for the user\nused to authenticate with OpenBao using the [UserPass authentication\nmethod]\n\n[UserPass authentication method]: https://openbao.org/docs/auth/userpass/";
+          type = types.nullOr (
+            submoduleOf "external-secrets.io.v1.SecretStoreSpecProviderOpenBaoAuthUserPassSecretRef"
+          );
+        };
+        "username" = mkOption {
+          description = "Username is a username used to authenticate using the [UserPass\nauthentication method]\n\n[UserPass authentication method]: https://openbao.org/docs/auth/userpass/";
+          type = types.str;
+        };
+      };
+
+      config = {
+        "secretRef" = mkOverride 1002 null;
+      };
+
+    };
+    "external-secrets.io.v1.SecretStoreSpecProviderOpenBaoAuthUserPassSecretRef" = {
+
+      options = {
+        "key" = mkOption {
+          description = "A key in the referenced Secret.\nSome instances of this field may be defaulted, in others it may be required.";
+          type = types.nullOr types.str;
+        };
+        "name" = mkOption {
+          description = "The name of the Secret resource being referred to.";
+          type = types.nullOr types.str;
+        };
+        "namespace" = mkOption {
+          description = "The namespace of the Secret resource being referred to.\nIgnored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.";
+          type = types.nullOr types.str;
+        };
+      };
+
+      config = {
+        "key" = mkOverride 1002 null;
+        "name" = mkOverride 1002 null;
+        "namespace" = mkOverride 1002 null;
+      };
+
+    };
+    "external-secrets.io.v1.SecretStoreSpecProviderOpenBaoCaProvider" = {
+
+      options = {
+        "key" = mkOption {
+          description = "The key where the CA certificate can be found in the Secret or ConfigMap.";
+          type = types.nullOr types.str;
+        };
+        "name" = mkOption {
+          description = "The name of the object located at the provider type.";
+          type = types.str;
+        };
+        "namespace" = mkOption {
+          description = "The namespace the Provider type is in.\nCan only be defined when used in a ClusterSecretStore.";
+          type = types.nullOr types.str;
+        };
+        "type" = mkOption {
+          description = "The type of provider to use such as \"Secret\", or \"ConfigMap\".";
+          type = types.str;
+        };
+      };
+
+      config = {
+        "key" = mkOverride 1002 null;
+        "namespace" = mkOverride 1002 null;
       };
 
     };
@@ -18309,6 +19191,10 @@ let
           description = "Target specifies where to place the template result.\nFor Secret resources, common values are: \"Data\", \"Annotations\", \"Labels\".\nFor custom resources (when spec.target.manifest is set), this supports\nnested paths like \"spec.database.config\" or \"data\".";
           type = types.nullOr types.str;
         };
+        "valuesDecodingStrategy" = mkOption {
+          description = "Used to define a decoding Strategy for the rendered template values.";
+          type = types.nullOr types.str;
+        };
       };
 
       config = {
@@ -18316,6 +19202,7 @@ let
         "literal" = mkOverride 1002 null;
         "secret" = mkOverride 1002 null;
         "target" = mkOverride 1002 null;
+        "valuesDecodingStrategy" = mkOverride 1002 null;
       };
 
     };
@@ -19063,6 +19950,10 @@ let
           description = "Target specifies where to place the template result.\nFor Secret resources, common values are: \"Data\", \"Annotations\", \"Labels\".\nFor custom resources (when spec.target.manifest is set), this supports\nnested paths like \"spec.database.config\" or \"data\".";
           type = types.nullOr types.str;
         };
+        "valuesDecodingStrategy" = mkOption {
+          description = "Used to define a decoding Strategy for the rendered template values.";
+          type = types.nullOr types.str;
+        };
       };
 
       config = {
@@ -19070,6 +19961,7 @@ let
         "literal" = mkOverride 1002 null;
         "secret" = mkOverride 1002 null;
         "target" = mkOverride 1002 null;
+        "valuesDecodingStrategy" = mkOverride 1002 null;
       };
 
     };
@@ -19438,6 +20330,213 @@ let
         };
 
       };
+    "generators.external-secrets.io.v1alpha1.BeyondtrustWorkloadCredentialsDynamicSecret" = {
+
+      options = {
+        "apiVersion" = mkOption {
+          description = "APIVersion defines the versioned schema of this representation of an object.\nServers should convert recognized schemas to the latest internal value, and\nmay reject unrecognized values.\nMore info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources";
+          type = types.nullOr types.str;
+        };
+        "kind" = mkOption {
+          description = "Kind is a string value representing the REST resource this object represents.\nServers may infer this from the endpoint the client submits requests to.\nCannot be updated.\nIn CamelCase.\nMore info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds";
+          type = types.nullOr types.str;
+        };
+        "metadata" = mkOption {
+          description = "Standard object's metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata";
+          type = types.nullOr (globalSubmoduleOf "io.k8s.apimachinery.pkg.apis.meta.v1.ObjectMeta");
+        };
+        "spec" = mkOption {
+          description = "BeyondtrustWorkloadCredentialsDynamicSecretSpec defines the desired spec for BeyondtrustWorkloadCredentials dynamic generator.\nThis generator enables obtaining temporary, short-lived credentials from BeyondTrust Workload Credentials.\nFor more information, see: https://docs.beyondtrust.com/bt-docs/docs/secrets-api";
+          type = types.nullOr (
+            submoduleOf "generators.external-secrets.io.v1alpha1.BeyondtrustWorkloadCredentialsDynamicSecretSpec"
+          );
+        };
+      };
+
+      config = {
+        "apiVersion" = mkOverride 1002 null;
+        "kind" = mkOverride 1002 null;
+        "metadata" = mkOverride 1002 null;
+        "spec" = mkOverride 1002 null;
+      };
+
+    };
+    "generators.external-secrets.io.v1alpha1.BeyondtrustWorkloadCredentialsDynamicSecretSpec" = {
+
+      options = {
+        "controller" = mkOption {
+          description = "Controller selects the controller that should handle this generator.\nLeave empty to use the default controller.";
+          type = types.nullOr types.str;
+        };
+        "provider" = mkOption {
+          description = "Provider contains the BeyondtrustWorkloadCredentials provider configuration including authentication,\nserver connection details, and the folder path to the dynamic secret definition.\nThe folderPath should point to a dynamic secret definition that has been created in\nBeyondTrust Workload Credentials (e.g., \"production/aws-temp\").\nFor setup details, see: https://docs.beyondtrust.com/bt-docs/docs/secrets-api";
+          type = submoduleOf "generators.external-secrets.io.v1alpha1.BeyondtrustWorkloadCredentialsDynamicSecretSpecProvider";
+        };
+        "retrySettings" = mkOption {
+          description = "RetrySettings configures exponential backoff for failed API requests.\nIf not specified, uses the default retry settings.";
+          type = types.nullOr (
+            submoduleOf "generators.external-secrets.io.v1alpha1.BeyondtrustWorkloadCredentialsDynamicSecretSpecRetrySettings"
+          );
+        };
+      };
+
+      config = {
+        "controller" = mkOverride 1002 null;
+        "retrySettings" = mkOverride 1002 null;
+      };
+
+    };
+    "generators.external-secrets.io.v1alpha1.BeyondtrustWorkloadCredentialsDynamicSecretSpecProvider" =
+      {
+
+        options = {
+          "auth" = mkOption {
+            description = "Auth configures how the Operator authenticates with the BeyondTrust Workload Credentials API.\nCurrently supports API key authentication via Kubernetes secret reference.\nFor authentication setup, see: https://docs.beyondtrust.com/bt-docs/docs/secrets-api#authentication";
+            type = submoduleOf "generators.external-secrets.io.v1alpha1.BeyondtrustWorkloadCredentialsDynamicSecretSpecProviderAuth";
+          };
+          "caBundle" = mkOption {
+            description = "CABundle is a base64-encoded CA certificate used to validate the BeyondTrust Workload Credentials API TLS certificate.\nUse this when your BeyondTrust instance uses a self-signed certificate or internal CA.\nIf not set, the system's trusted root certificates are used.";
+            type = types.nullOr types.str;
+          };
+          "caProvider" = mkOption {
+            description = "CAProvider points to a Secret or ConfigMap containing a PEM-encoded CA certificate.\nThis is used to validate the BeyondTrust Workload Credentials API TLS certificate.\nUse this as an alternative to CABundle when you want to reference an existing Kubernetes resource.";
+            type = types.nullOr (
+              submoduleOf "generators.external-secrets.io.v1alpha1.BeyondtrustWorkloadCredentialsDynamicSecretSpecProviderCaProvider"
+            );
+          };
+          "folderPath" = mkOption {
+            description = "FolderPath specifies the default folder path for secret retrieval.\nSecrets will be fetched from this folder unless overridden in the ExternalSecret spec.\nExample: \"production/database\" or \"dev/api-keys\"\nLeave empty to retrieve secrets from the root folder.\nFor folder organization, see: https://docs.beyondtrust.com/bt-docs/docs/secrets-api#folders";
+            type = types.nullOr types.str;
+          };
+          "server" = mkOption {
+            description = "Server configures the BeyondTrust Workload Credentials server connection details.\nIncludes the API URL and Site ID for your BeyondTrust instance.\nFor API reference, see: https://docs.beyondtrust.com/bt-docs/docs/secrets-api";
+            type = submoduleOf "generators.external-secrets.io.v1alpha1.BeyondtrustWorkloadCredentialsDynamicSecretSpecProviderServer";
+          };
+        };
+
+        config = {
+          "caBundle" = mkOverride 1002 null;
+          "caProvider" = mkOverride 1002 null;
+          "folderPath" = mkOverride 1002 null;
+        };
+
+      };
+    "generators.external-secrets.io.v1alpha1.BeyondtrustWorkloadCredentialsDynamicSecretSpecProviderAuth" =
+      {
+
+        options = {
+          "apikey" = mkOption {
+            description = "APIKey configures API token authentication for BeyondTrust Workload Credentials.\nThe token is retrieved from a Kubernetes secret and used as a Bearer token for API requests.";
+            type = submoduleOf "generators.external-secrets.io.v1alpha1.BeyondtrustWorkloadCredentialsDynamicSecretSpecProviderAuthApikey";
+          };
+        };
+
+        config = { };
+
+      };
+    "generators.external-secrets.io.v1alpha1.BeyondtrustWorkloadCredentialsDynamicSecretSpecProviderAuthApikey" =
+      {
+
+        options = {
+          "token" = mkOption {
+            description = "Token references the Kubernetes secret containing the BeyondTrust Workload Credentials API token.\nThe secret should contain the API key used to authenticate with BeyondTrust Workload Credentials.\nCreate an API token in your BeyondTrust Workload Credentials console and store it in a Kubernetes secret.\nFor details on creating API tokens, see: https://docs.beyondtrust.com/bt-docs/docs/secrets-api#authentication";
+            type = submoduleOf "generators.external-secrets.io.v1alpha1.BeyondtrustWorkloadCredentialsDynamicSecretSpecProviderAuthApikeyToken";
+          };
+        };
+
+        config = { };
+
+      };
+    "generators.external-secrets.io.v1alpha1.BeyondtrustWorkloadCredentialsDynamicSecretSpecProviderAuthApikeyToken" =
+      {
+
+        options = {
+          "key" = mkOption {
+            description = "A key in the referenced Secret.\nSome instances of this field may be defaulted, in others it may be required.";
+            type = types.nullOr types.str;
+          };
+          "name" = mkOption {
+            description = "The name of the Secret resource being referred to.";
+            type = types.nullOr types.str;
+          };
+          "namespace" = mkOption {
+            description = "The namespace of the Secret resource being referred to.\nIgnored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.";
+            type = types.nullOr types.str;
+          };
+        };
+
+        config = {
+          "key" = mkOverride 1002 null;
+          "name" = mkOverride 1002 null;
+          "namespace" = mkOverride 1002 null;
+        };
+
+      };
+    "generators.external-secrets.io.v1alpha1.BeyondtrustWorkloadCredentialsDynamicSecretSpecProviderCaProvider" =
+      {
+
+        options = {
+          "key" = mkOption {
+            description = "The key where the CA certificate can be found in the Secret or ConfigMap.";
+            type = types.nullOr types.str;
+          };
+          "name" = mkOption {
+            description = "The name of the object located at the provider type.";
+            type = types.str;
+          };
+          "namespace" = mkOption {
+            description = "The namespace the Provider type is in.\nCan only be defined when used in a ClusterSecretStore.";
+            type = types.nullOr types.str;
+          };
+          "type" = mkOption {
+            description = "The type of provider to use such as \"Secret\", or \"ConfigMap\".";
+            type = types.str;
+          };
+        };
+
+        config = {
+          "key" = mkOverride 1002 null;
+          "namespace" = mkOverride 1002 null;
+        };
+
+      };
+    "generators.external-secrets.io.v1alpha1.BeyondtrustWorkloadCredentialsDynamicSecretSpecProviderServer" =
+      {
+
+        options = {
+          "apiUrl" = mkOption {
+            description = "APIURL is the base URL of your BeyondTrust Workload Credentials API server.\nThis should be the full URL to your BeyondTrust instance.\nExample: https://api.beyondtrust.io/siie\nFor more information, see: https://docs.beyondtrust.com/bt-docs/docs/secrets-api#base-url";
+            type = types.str;
+          };
+          "siteId" = mkOption {
+            description = "SiteID is your BeyondTrust Workload Credentials site identifier (UUID format).\nThis identifier is unique to your BeyondTrust Workload Credentials instance.\nYou can find your Site ID in the BeyondTrust Workload Credentials admin console.\nExample: a1b2c3d4-e5f6-4890-abcd-ef1234567890\nFor more information, see: https://docs.beyondtrust.com/bt-docs/docs/secrets-api";
+            type = types.str;
+          };
+        };
+
+        config = { };
+
+      };
+    "generators.external-secrets.io.v1alpha1.BeyondtrustWorkloadCredentialsDynamicSecretSpecRetrySettings" =
+      {
+
+        options = {
+          "maxRetries" = mkOption {
+            description = "";
+            type = types.nullOr types.int;
+          };
+          "retryInterval" = mkOption {
+            description = "";
+            type = types.nullOr types.str;
+          };
+        };
+
+        config = {
+          "maxRetries" = mkOverride 1002 null;
+          "retryInterval" = mkOverride 1002 null;
+        };
+
+      };
     "generators.external-secrets.io.v1alpha1.CloudsmithAccessToken" = {
 
       options = {
@@ -19572,6 +20671,12 @@ let
             submoduleOf "generators.external-secrets.io.v1alpha1.ClusterGeneratorSpecGeneratorAcrAccessTokenSpec"
           );
         };
+        "beyondtrustWorkloadCredentialsDynamicSecretSpec" = mkOption {
+          description = "BeyondtrustWorkloadCredentialsDynamicSecretSpec defines the desired spec for BeyondtrustWorkloadCredentials dynamic generator.\nThis generator enables obtaining temporary, short-lived credentials from BeyondTrust Workload Credentials.\nFor more information, see: https://docs.beyondtrust.com/bt-docs/docs/secrets-api";
+          type = types.nullOr (
+            submoduleOf "generators.external-secrets.io.v1alpha1.ClusterGeneratorSpecGeneratorBeyondtrustWorkloadCredentialsDynamicSecretSpec"
+          );
+        };
         "cloudsmithAccessTokenSpec" = mkOption {
           description = "CloudsmithAccessTokenSpec defines the configuration for generating a Cloudsmith access token using OIDC authentication.";
           type = types.nullOr (
@@ -19658,6 +20763,7 @@ let
 
       config = {
         "acrAccessTokenSpec" = mkOverride 1002 null;
+        "beyondtrustWorkloadCredentialsDynamicSecretSpec" = mkOverride 1002 null;
         "cloudsmithAccessTokenSpec" = mkOverride 1002 null;
         "ecrAuthorizationTokenSpec" = mkOverride 1002 null;
         "fakeSpec" = mkOverride 1002 null;
@@ -19877,6 +20983,183 @@ let
         config = {
           "audiences" = mkOverride 1002 null;
           "namespace" = mkOverride 1002 null;
+        };
+
+      };
+    "generators.external-secrets.io.v1alpha1.ClusterGeneratorSpecGeneratorBeyondtrustWorkloadCredentialsDynamicSecretSpec" =
+      {
+
+        options = {
+          "controller" = mkOption {
+            description = "Controller selects the controller that should handle this generator.\nLeave empty to use the default controller.";
+            type = types.nullOr types.str;
+          };
+          "provider" = mkOption {
+            description = "Provider contains the BeyondtrustWorkloadCredentials provider configuration including authentication,\nserver connection details, and the folder path to the dynamic secret definition.\nThe folderPath should point to a dynamic secret definition that has been created in\nBeyondTrust Workload Credentials (e.g., \"production/aws-temp\").\nFor setup details, see: https://docs.beyondtrust.com/bt-docs/docs/secrets-api";
+            type = submoduleOf "generators.external-secrets.io.v1alpha1.ClusterGeneratorSpecGeneratorBeyondtrustWorkloadCredentialsDynamicSecretSpecProvider";
+          };
+          "retrySettings" = mkOption {
+            description = "RetrySettings configures exponential backoff for failed API requests.\nIf not specified, uses the default retry settings.";
+            type = types.nullOr (
+              submoduleOf "generators.external-secrets.io.v1alpha1.ClusterGeneratorSpecGeneratorBeyondtrustWorkloadCredentialsDynamicSecretSpecRetrySettings"
+            );
+          };
+        };
+
+        config = {
+          "controller" = mkOverride 1002 null;
+          "retrySettings" = mkOverride 1002 null;
+        };
+
+      };
+    "generators.external-secrets.io.v1alpha1.ClusterGeneratorSpecGeneratorBeyondtrustWorkloadCredentialsDynamicSecretSpecProvider" =
+      {
+
+        options = {
+          "auth" = mkOption {
+            description = "Auth configures how the Operator authenticates with the BeyondTrust Workload Credentials API.\nCurrently supports API key authentication via Kubernetes secret reference.\nFor authentication setup, see: https://docs.beyondtrust.com/bt-docs/docs/secrets-api#authentication";
+            type = submoduleOf "generators.external-secrets.io.v1alpha1.ClusterGeneratorSpecGeneratorBeyondtrustWorkloadCredentialsDynamicSecretSpecProviderAuth";
+          };
+          "caBundle" = mkOption {
+            description = "CABundle is a base64-encoded CA certificate used to validate the BeyondTrust Workload Credentials API TLS certificate.\nUse this when your BeyondTrust instance uses a self-signed certificate or internal CA.\nIf not set, the system's trusted root certificates are used.";
+            type = types.nullOr types.str;
+          };
+          "caProvider" = mkOption {
+            description = "CAProvider points to a Secret or ConfigMap containing a PEM-encoded CA certificate.\nThis is used to validate the BeyondTrust Workload Credentials API TLS certificate.\nUse this as an alternative to CABundle when you want to reference an existing Kubernetes resource.";
+            type = types.nullOr (
+              submoduleOf "generators.external-secrets.io.v1alpha1.ClusterGeneratorSpecGeneratorBeyondtrustWorkloadCredentialsDynamicSecretSpecProviderCaProvider"
+            );
+          };
+          "folderPath" = mkOption {
+            description = "FolderPath specifies the default folder path for secret retrieval.\nSecrets will be fetched from this folder unless overridden in the ExternalSecret spec.\nExample: \"production/database\" or \"dev/api-keys\"\nLeave empty to retrieve secrets from the root folder.\nFor folder organization, see: https://docs.beyondtrust.com/bt-docs/docs/secrets-api#folders";
+            type = types.nullOr types.str;
+          };
+          "server" = mkOption {
+            description = "Server configures the BeyondTrust Workload Credentials server connection details.\nIncludes the API URL and Site ID for your BeyondTrust instance.\nFor API reference, see: https://docs.beyondtrust.com/bt-docs/docs/secrets-api";
+            type = submoduleOf "generators.external-secrets.io.v1alpha1.ClusterGeneratorSpecGeneratorBeyondtrustWorkloadCredentialsDynamicSecretSpecProviderServer";
+          };
+        };
+
+        config = {
+          "caBundle" = mkOverride 1002 null;
+          "caProvider" = mkOverride 1002 null;
+          "folderPath" = mkOverride 1002 null;
+        };
+
+      };
+    "generators.external-secrets.io.v1alpha1.ClusterGeneratorSpecGeneratorBeyondtrustWorkloadCredentialsDynamicSecretSpecProviderAuth" =
+      {
+
+        options = {
+          "apikey" = mkOption {
+            description = "APIKey configures API token authentication for BeyondTrust Workload Credentials.\nThe token is retrieved from a Kubernetes secret and used as a Bearer token for API requests.";
+            type = submoduleOf "generators.external-secrets.io.v1alpha1.ClusterGeneratorSpecGeneratorBeyondtrustWorkloadCredentialsDynamicSecretSpecProviderAuthApikey";
+          };
+        };
+
+        config = { };
+
+      };
+    "generators.external-secrets.io.v1alpha1.ClusterGeneratorSpecGeneratorBeyondtrustWorkloadCredentialsDynamicSecretSpecProviderAuthApikey" =
+      {
+
+        options = {
+          "token" = mkOption {
+            description = "Token references the Kubernetes secret containing the BeyondTrust Workload Credentials API token.\nThe secret should contain the API key used to authenticate with BeyondTrust Workload Credentials.\nCreate an API token in your BeyondTrust Workload Credentials console and store it in a Kubernetes secret.\nFor details on creating API tokens, see: https://docs.beyondtrust.com/bt-docs/docs/secrets-api#authentication";
+            type = submoduleOf "generators.external-secrets.io.v1alpha1.ClusterGeneratorSpecGeneratorBeyondtrustWorkloadCredentialsDynamicSecretSpecProviderAuthApikeyToken";
+          };
+        };
+
+        config = { };
+
+      };
+    "generators.external-secrets.io.v1alpha1.ClusterGeneratorSpecGeneratorBeyondtrustWorkloadCredentialsDynamicSecretSpecProviderAuthApikeyToken" =
+      {
+
+        options = {
+          "key" = mkOption {
+            description = "A key in the referenced Secret.\nSome instances of this field may be defaulted, in others it may be required.";
+            type = types.nullOr types.str;
+          };
+          "name" = mkOption {
+            description = "The name of the Secret resource being referred to.";
+            type = types.nullOr types.str;
+          };
+          "namespace" = mkOption {
+            description = "The namespace of the Secret resource being referred to.\nIgnored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.";
+            type = types.nullOr types.str;
+          };
+        };
+
+        config = {
+          "key" = mkOverride 1002 null;
+          "name" = mkOverride 1002 null;
+          "namespace" = mkOverride 1002 null;
+        };
+
+      };
+    "generators.external-secrets.io.v1alpha1.ClusterGeneratorSpecGeneratorBeyondtrustWorkloadCredentialsDynamicSecretSpecProviderCaProvider" =
+      {
+
+        options = {
+          "key" = mkOption {
+            description = "The key where the CA certificate can be found in the Secret or ConfigMap.";
+            type = types.nullOr types.str;
+          };
+          "name" = mkOption {
+            description = "The name of the object located at the provider type.";
+            type = types.str;
+          };
+          "namespace" = mkOption {
+            description = "The namespace the Provider type is in.\nCan only be defined when used in a ClusterSecretStore.";
+            type = types.nullOr types.str;
+          };
+          "type" = mkOption {
+            description = "The type of provider to use such as \"Secret\", or \"ConfigMap\".";
+            type = types.str;
+          };
+        };
+
+        config = {
+          "key" = mkOverride 1002 null;
+          "namespace" = mkOverride 1002 null;
+        };
+
+      };
+    "generators.external-secrets.io.v1alpha1.ClusterGeneratorSpecGeneratorBeyondtrustWorkloadCredentialsDynamicSecretSpecProviderServer" =
+      {
+
+        options = {
+          "apiUrl" = mkOption {
+            description = "APIURL is the base URL of your BeyondTrust Workload Credentials API server.\nThis should be the full URL to your BeyondTrust instance.\nExample: https://api.beyondtrust.io/siie\nFor more information, see: https://docs.beyondtrust.com/bt-docs/docs/secrets-api#base-url";
+            type = types.str;
+          };
+          "siteId" = mkOption {
+            description = "SiteID is your BeyondTrust Workload Credentials site identifier (UUID format).\nThis identifier is unique to your BeyondTrust Workload Credentials instance.\nYou can find your Site ID in the BeyondTrust Workload Credentials admin console.\nExample: a1b2c3d4-e5f6-4890-abcd-ef1234567890\nFor more information, see: https://docs.beyondtrust.com/bt-docs/docs/secrets-api";
+            type = types.str;
+          };
+        };
+
+        config = { };
+
+      };
+    "generators.external-secrets.io.v1alpha1.ClusterGeneratorSpecGeneratorBeyondtrustWorkloadCredentialsDynamicSecretSpecRetrySettings" =
+      {
+
+        options = {
+          "maxRetries" = mkOption {
+            description = "";
+            type = types.nullOr types.int;
+          };
+          "retryInterval" = mkOption {
+            description = "";
+            type = types.nullOr types.str;
+          };
+        };
+
+        config = {
+          "maxRetries" = mkOverride 1002 null;
+          "retryInterval" = mkOverride 1002 null;
         };
 
       };
@@ -25434,6 +26717,20 @@ in
         );
         default = { };
       };
+      "generators.external-secrets.io"."v1alpha1"."BeyondtrustWorkloadCredentialsDynamicSecret" =
+        mkOption
+          {
+            description = "BeyondtrustWorkloadCredentialsDynamicSecret represents a generator that requests dynamic credentials from BeyondTrust Workload Credentials.\nThis generator calls the BeyondTrust Workload Credentials API to generate fresh, temporary credentials\n(such as AWS STS credentials) each time an ExternalSecret is refreshed.\nDynamic secret definitions must be created in BeyondTrust Workload Credentials before they can be referenced.\nFor complete documentation, see: https://docs.beyondtrust.com/bt-docs/docs/secrets-api";
+            type = types.attrsOf (
+              submoduleForDefinition
+                "generators.external-secrets.io.v1alpha1.BeyondtrustWorkloadCredentialsDynamicSecret"
+                "beyondtrustworkloadcredentialsdynamicsecrets"
+                "BeyondtrustWorkloadCredentialsDynamicSecret"
+                "generators.external-secrets.io"
+                "v1alpha1"
+            );
+            default = { };
+          };
       "generators.external-secrets.io"."v1alpha1"."CloudsmithAccessToken" = mkOption {
         description = "CloudsmithAccessToken generates Cloudsmith access token using OIDC authentication";
         type = types.attrsOf (
@@ -25600,6 +26897,18 @@ in
         type = types.attrsOf (
           submoduleForDefinition "generators.external-secrets.io.v1alpha1.ACRAccessToken" "acraccesstokens"
             "ACRAccessToken"
+            "generators.external-secrets.io"
+            "v1alpha1"
+        );
+        default = { };
+      };
+      "beyondtrustWorkloadCredentialsDynamicSecrets" = mkOption {
+        description = "BeyondtrustWorkloadCredentialsDynamicSecret represents a generator that requests dynamic credentials from BeyondTrust Workload Credentials.\nThis generator calls the BeyondTrust Workload Credentials API to generate fresh, temporary credentials\n(such as AWS STS credentials) each time an ExternalSecret is refreshed.\nDynamic secret definitions must be created in BeyondTrust Workload Credentials before they can be referenced.\nFor complete documentation, see: https://docs.beyondtrust.com/bt-docs/docs/secrets-api";
+        type = types.attrsOf (
+          submoduleForDefinition
+            "generators.external-secrets.io.v1alpha1.BeyondtrustWorkloadCredentialsDynamicSecret"
+            "beyondtrustworkloadcredentialsdynamicsecrets"
+            "BeyondtrustWorkloadCredentialsDynamicSecret"
             "generators.external-secrets.io"
             "v1alpha1"
         );
@@ -25880,6 +27189,13 @@ in
         attrName = "acrAccessTokens";
       }
       {
+        name = "beyondtrustworkloadcredentialsdynamicsecrets";
+        group = "generators.external-secrets.io";
+        version = "v1alpha1";
+        kind = "BeyondtrustWorkloadCredentialsDynamicSecret";
+        attrName = "beyondtrustWorkloadCredentialsDynamicSecrets";
+      }
+      {
         name = "cloudsmithaccesstokens";
         group = "generators.external-secrets.io";
         version = "v1alpha1";
@@ -25997,6 +27313,9 @@ in
       "generators.external-secrets.io"."v1alpha1"."ACRAccessToken" =
         mkAliasDefinitions
           options.resources."acrAccessTokens";
+      "generators.external-secrets.io"."v1alpha1"."BeyondtrustWorkloadCredentialsDynamicSecret" =
+        mkAliasDefinitions
+          options.resources."beyondtrustWorkloadCredentialsDynamicSecrets";
       "generators.external-secrets.io"."v1alpha1"."CloudsmithAccessToken" =
         mkAliasDefinitions
           options.resources."cloudsmithAccessTokens";
@@ -26081,6 +27400,12 @@ in
         group = "generators.external-secrets.io";
         version = "v1alpha1";
         kind = "ACRAccessToken";
+        default.metadata.namespace = lib.mkDefault config.namespace;
+      }
+      {
+        group = "generators.external-secrets.io";
+        version = "v1alpha1";
+        kind = "BeyondtrustWorkloadCredentialsDynamicSecret";
         default.metadata.namespace = lib.mkDefault config.namespace;
       }
       {

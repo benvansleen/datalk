@@ -18,7 +18,7 @@
           cfg = config.modules.external-secrets;
         in
         lib.mkIf cfg.enable {
-          nixidy.applicationImports = [ ../_generated/external-secrets.nix ];
+          nixidy.applicationImports = [ ./_generated/external-secrets.nix ];
 
           applications.external-secrets = {
             namespace = "external-secrets";

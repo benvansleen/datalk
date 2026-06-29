@@ -20,7 +20,7 @@
           cfg = config.modules.tailscale-operator;
         in
         lib.mkIf cfg.enable {
-          nixidy.applicationImports = [ ../_generated/tailscale-operator.nix ];
+          nixidy.applicationImports = [ ./_generated/tailscale-operator.nix ];
 
           applications.tailscale-operator = {
             inherit (cfg) namespace;

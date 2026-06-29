@@ -20,7 +20,7 @@
           cfg = config.modules.cloudnative-pg;
         in
         lib.mkIf cfg.enable {
-          nixidy.applicationImports = [ ../_generated/cloudnative-pg.nix ];
+          nixidy.applicationImports = [ ./_generated/cloudnative-pg.nix ];
 
           applications = {
             cloudnative-pg = {
