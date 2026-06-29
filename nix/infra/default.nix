@@ -25,7 +25,6 @@
         lib.getExe (
           opentofu.withPlugins (
             plugins: with plugins; [
-              hashicorp_null
               hashicorp_google
             ]
           )
@@ -51,6 +50,8 @@
           configuration,
           command,
           chdir ? null,
+          beforeCommand ? "",
+          afterCommand ? "",
         }:
         let
           configPath = if chdir == null then "config.tf.json" else "${chdir}/config.tf.json";
@@ -60,14 +61,32 @@
           type = "app";
           program = toString (
             pkgs.writers.writeBash name /* sh */ ''
+              set -euo pipefail
+
               ${lib.optionalString (chdir != null) "mkdir -p ${chdir}"}
-              [[ -e ${configPath} ]] && rm -f ${configPath}
+              ${beforeCommand}
+              rm -f ${configPath}
               cp ${configuration} ${configPath} \
                 && ${terraform} ${terraformArgs}init \
-                && ${terraform} ${terraformArgs}${command} -parallelism=24 $@
+                && ${terraform} ${terraformArgs}${command} -parallelism=24 "$@"
+              ${afterCommand}
             ''
           );
         };
+
+      nixidy = lib.getExe self.packages.${system}.nixidy;
+      setNixidyBaseline = env: /* sh */ ''
+        ${nixidy} build .#${env} --out-link .terraform/nixidy-applied/${env}
+      '';
+      nixidyDiff = env: /* sh */ ''
+        mkdir -p .terraform/nixidy-applied
+        nixidy_baseline=.terraform/nixidy-applied/${env}
+        if [[ -e "$nixidy_baseline" ]]; then
+          ${nixidy} diff .#${env} --path "$nixidy_baseline" || true
+        else
+          echo "No previous default Nixidy baseline; skipping nixidy diff"
+        fi
+      '';
     in
     {
       apps = {
@@ -75,6 +94,8 @@
           name = "tf-apply";
           configuration = terraformConfiguration;
           command = "apply";
+          beforeCommand = nixidyDiff "default";
+          afterCommand = setNixidyBaseline "default";
         };
         tf-destroy = mkTerraformApp {
           name = "tf-destroy";
@@ -87,7 +108,10 @@
           configuration = localTerraformConfiguration;
           command = "apply";
           chdir = ".terraform/local";
+          beforeCommand = nixidyDiff "local";
+          afterCommand = setNixidyBaseline "local";
         };
+
         tf-destroy-local = mkTerraformApp {
           name = "tf-destroy-local";
           configuration = localTerraformConfiguration;
