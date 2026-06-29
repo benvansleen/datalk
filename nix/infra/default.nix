@@ -25,6 +25,7 @@
         lib.getExe (
           opentofu.withPlugins (
             plugins: with plugins; [
+              # gcloud container clusters get-credentials datalk --zone us-east4-a
               hashicorp_google
             ]
           )
@@ -32,10 +33,7 @@
       terraformConfiguration = inputs.terranix.lib.terranixConfiguration {
         inherit system;
         modules = with self.modules.infra; [
-          application
-          k8s
-          providers
-          secrets
+          production
         ];
       };
       localTerraformConfiguration = inputs.terranix.lib.terranixConfiguration {
@@ -75,12 +73,14 @@
         };
 
       nixidy = lib.getExe self.packages.${system}.nixidy;
+      nixidyBaseline = env: ".terraform/nixidy-applied/${env}";
       setNixidyBaseline = env: /* sh */ ''
-        ${nixidy} build .#${env} --out-link .terraform/nixidy-applied/${env}
+        ${nixidy} build .#${env} --out-link ${nixidyBaseline env}
       '';
+      removeNixidyBaseline = env: /* sh */ "rm -f ${nixidyBaseline env}";
       nixidyDiff = env: /* sh */ ''
         mkdir -p .terraform/nixidy-applied
-        nixidy_baseline=.terraform/nixidy-applied/${env}
+        nixidy_baseline="${nixidyBaseline env}"
         if [[ -e "$nixidy_baseline" ]]; then
           ${nixidy} diff .#${env} --path "$nixidy_baseline" || true
         else
@@ -101,6 +101,7 @@
           name = "tf-destroy";
           configuration = terraformConfiguration;
           command = "destroy";
+          afterCommand = removeNixidyBaseline "default";
         };
 
         tf-apply-local = mkTerraformApp {
@@ -117,6 +118,7 @@
           configuration = localTerraformConfiguration;
           command = "destroy";
           chdir = ".terraform/local";
+          afterCommand = removeNixidyBaseline "local";
         };
 
         populate-prod-secrets = {

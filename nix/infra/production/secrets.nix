@@ -1,7 +1,7 @@
 { self, ... }:
 
 {
-  flake.modules.infra.secrets = {
+  flake.modules.infra.production-secrets = {
     resource = {
       google_project_service.secretmanager = {
         inherit (self.gcloud) project;
@@ -19,7 +19,7 @@
         role = "roles/iam.workloadIdentityUser";
         member = "serviceAccount:${self.gcloud.project}.svc.id.goog[external-secrets/external-secrets]";
         depends_on = [
-          "google_container_cluster.datalk"
+          "google_container_cluster.${self.gcloud.name}"
           "google_service_account.external_secrets"
         ];
       };
