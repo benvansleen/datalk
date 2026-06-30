@@ -1,6 +1,8 @@
 { inputs, self, ... }:
 
 {
+  imports = [ inputs.terranix.flakeModule ];
+
   flake-file.inputs = {
     terranix = {
       url = "github:terranix/terranix";
@@ -22,106 +24,86 @@
     let
       terraform =
         with pkgs;
-        lib.getExe (
-          opentofu.withPlugins (
-            plugins: with plugins; [
-              # gcloud container clusters get-credentials datalk --zone us-east4-a
-              hashicorp_google
-              hashicorp_external
-            ]
-          )
+        opentofu.withPlugins (
+          plugins: with plugins; [
+            # gcloud container clusters get-credentials datalk --zone us-east4-a
+            hashicorp_google
+            hashicorp_external
+          ]
         );
-      terraformConfiguration = inputs.terranix.lib.terranixConfiguration {
-        inherit system;
-        modules = with self.modules.infra; [
-          production
-        ];
-      };
-      localTerraformConfiguration = inputs.terranix.lib.terranixConfiguration {
-        inherit system;
-        modules = with self.modules.infra; [
-          k3d
-        ];
-      };
-      mkTerraformApp =
-        {
-          name,
-          configuration,
-          command,
-          chdir ? null,
-          beforeCommand ? "",
-          afterCommand ? "",
-        }:
-        let
-          configPath = if chdir == null then "config.tf.json" else "${chdir}/config.tf.json";
-          terraformArgs = lib.optionalString (chdir != null) "-chdir=${chdir} ";
-        in
-        {
-          type = "app";
-          program = toString (
-            pkgs.writers.writeBash name /* sh */ ''
-              set -euo pipefail
 
-              ${lib.optionalString (chdir != null) "mkdir -p ${chdir}"}
-              ${beforeCommand}
-              rm -f ${configPath}
-              cp ${configuration} ${configPath} \
-                && ${terraform} ${terraformArgs}init \
-                && ${terraform} ${terraformArgs}${command} -parallelism=24 "$@"
-              ${afterCommand}
-            ''
-          );
-        };
+      tfLifecycle =
+        {
+          init ? "",
+          apply ? "",
+          destroy ? "",
+        }:
+        /* sh */ ''
+          case "$1" in
+            init)
+              ${init}
+            ;;
+            apply)
+              ${apply}
+            ;;
+            destroy)
+              ${destroy}
+            ;;
+          esac
+        '';
 
       nixidy = lib.getExe self.packages.${system}.nixidy;
       nixidyBaseline = env: ".terraform/nixidy-applied/${env}";
-      setNixidyBaseline = env: /* sh */ ''
-        ${nixidy} build .#${env} --out-link ${nixidyBaseline env}
-      '';
-      removeNixidyBaseline = env: /* sh */ "rm -f ${nixidyBaseline env}";
-      nixidyDiff = env: /* sh */ ''
-        mkdir -p .terraform/nixidy-applied
-        nixidy_baseline="${nixidyBaseline env}"
-        if [[ -e "$nixidy_baseline" ]]; then
-          ${nixidy} diff .#${env} --path "$nixidy_baseline" || true
-        else
-          echo "No previous default Nixidy baseline; skipping nixidy diff"
-        fi
-      '';
+      setNixidyBaseline =
+        env:
+        tfLifecycle {
+          apply = /* sh */ ''
+            ${nixidy} build .#${env} --out-link ${nixidyBaseline env}
+          '';
+          destroy = /* sh */ ''
+            rm -f ${nixidyBaseline env}
+          '';
+        };
+      nixidyDiff =
+        env:
+        tfLifecycle {
+          apply = /* sh */ ''
+            mkdir -p .terraform/nixidy-applied
+            nixidy_baseline="${nixidyBaseline env}"
+            if [[ -e "$nixidy_baseline" ]]; then
+              ${nixidy} diff .#${env} --path "$nixidy_baseline" || true
+            else
+              echo "No previous default Nixidy baseline; skipping nixidy diff"
+            fi
+          '';
+
+        };
     in
     {
+      terranix = {
+        exportDevShells = false;
+        terranixConfigurations = {
+          production = {
+            modules = with self.modules.infra; [ production ];
+            terraformWrapper = {
+              package = terraform;
+              prefixText = nixidyDiff "production";
+              suffixText = setNixidyBaseline "production";
+            };
+          };
+          local = {
+            modules = with self.modules.infra; [ k3d ];
+            workdir = ".terraform/local";
+            terraformWrapper = {
+              package = terraform;
+              prefixText = nixidyDiff "local";
+              suffixText = setNixidyBaseline "local";
+            };
+          };
+        };
+      };
+
       apps = {
-        tf-apply = mkTerraformApp {
-          name = "tf-apply";
-          configuration = terraformConfiguration;
-          command = "apply";
-          beforeCommand = nixidyDiff "default";
-          afterCommand = setNixidyBaseline "default";
-        };
-        tf-destroy = mkTerraformApp {
-          name = "tf-destroy";
-          configuration = terraformConfiguration;
-          command = "destroy";
-          afterCommand = removeNixidyBaseline "default";
-        };
-
-        tf-apply-local = mkTerraformApp {
-          name = "tf-apply-local";
-          configuration = localTerraformConfiguration;
-          command = "apply";
-          chdir = ".terraform/local";
-          beforeCommand = nixidyDiff "local";
-          afterCommand = setNixidyBaseline "local";
-        };
-
-        tf-destroy-local = mkTerraformApp {
-          name = "tf-destroy-local";
-          configuration = localTerraformConfiguration;
-          command = "destroy";
-          chdir = ".terraform/local";
-          afterCommand = removeNixidyBaseline "local";
-        };
-
         populate-prod-secrets = {
           type = "app";
           program = lib.getExe (
