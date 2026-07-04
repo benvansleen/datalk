@@ -52,147 +52,86 @@
           esac
         '';
 
-      nixidy = lib.getExe self.packages.${system}.nixidy;
-      nixidyBaseline = env: ".terraform/nixidy-applied/${env}";
-      setNixidyBaseline =
-        env:
-        tfLifecycle {
-          apply = /* sh */ ''
-            ${nixidy} build .#${env} --out-link ${nixidyBaseline env}
-          '';
-          destroy = /* sh */ ''
-            rm -f ${nixidyBaseline env}
-          '';
-        };
+      kubectl = lib.getExe pkgs.kubectl;
       nixidyDiff =
         env:
         tfLifecycle {
           apply = /* sh */ ''
-            mkdir -p .terraform/nixidy-applied
-            nixidy_baseline="${nixidyBaseline env}"
-            if [[ -e "$nixidy_baseline" ]]; then
-              ${nixidy} diff .#${env} --path "$nixidy_baseline" || true
-            else
-              echo "No previous default Nixidy baseline; skipping nixidy diff"
+            to_apply="${env}"
+
+            diff_status=0
+            found_manifests=0
+            for manifest in "$to_apply"/*/*.yaml; do
+              [ -e "$manifest" ] || continue
+              case "$manifest" in
+                "$to_apply"/apps/*)
+                  continue
+                ;;
+              esac
+
+              found_manifests=1
+
+              if KUBECTL_EXTERNAL_DIFF=${
+                lib.getExe self.packages.${system}.cleanKubectlDiff
+              } ${kubectl} diff -f "$manifest"; then
+                true
+              else
+                status=$?
+                if [ "$status" -eq 1 ]; then
+                  diff_status=1
+                else
+                  echo "kubectl diff failed for $manifest with exit code $status" >&2
+                  exit "$status"
+                fi
+              fi
+            done
+
+            if [ "$found_manifests" -eq 0 ]; then
+              echo "No manifests found under $to_apply" >&2
+              exit 1
+            fi
+
+            if [ "$diff_status" -eq 0 ]; then
+              echo "No changes to cluster"
             fi
           '';
-
         };
     in
     {
       terranix = {
         exportDevShells = false;
         terranixConfigurations = {
-          production = {
-            modules = with self.modules.infra; [ production ];
-            terraformWrapper = {
-              package = terraform;
-              prefixText = nixidyDiff "production";
-              suffixText = setNixidyBaseline "production";
+          production =
+            let
+              manifest = self.legacyPackages.${system}.nixidyEnvs.${system}.default;
+            in
+            {
+              modules = with self.modules.infra; [
+                production
+                { manifest = manifest.declarativePackage; }
+              ];
+              terraformWrapper = {
+                package = terraform;
+                prefixText = nixidyDiff manifest.environmentPackage;
+              };
             };
-          };
-          local = {
-            modules = with self.modules.infra; [ k3d ];
-            workdir = ".terraform/local";
-            terraformWrapper = {
-              package = terraform;
-              prefixText = nixidyDiff "local";
-              suffixText = setNixidyBaseline "local";
+          local =
+            let
+              manifest = self.legacyPackages.${system}.nixidyEnvs.${system}.local;
+            in
+            {
+              modules = with self.modules.infra; [
+                k3d
+                {
+                  manifest = manifest.declarativePackage;
+                }
+              ];
+              workdir = ".terraform/local";
+              terraformWrapper = {
+                package = terraform;
+                prefixText = nixidyDiff manifest.environmentPackage;
+              };
             };
-          };
-        };
-      };
-
-      apps = {
-        populate-prod-secrets = {
-          type = "app";
-          program = lib.getExe (
-            pkgs.writers.writePython3Bin "populate-prod-secrets" { } /* python */ ''
-              import shlex
-              import subprocess
-              import sys
-              from pathlib import Path
-
-
-              PROJECT = "${self.gcloud.project}"
-              GCLOUD = "${lib.getExe pkgs.google-cloud-sdk}" # noqa
-              SECRET_IDS = {
-                  "BETTER_AUTH_SECRET": "better-auth-secret",
-                  "OPENAI_API_KEY": "openai-api-key",
-                  "REDIS_USER": "redis-user",
-                  "REDIS_PASSWORD": "redis-password",
-                  "TAILSCALE_OAUTH_CLIENT_ID": "tailscale-oauth-client-id",
-                  "TAILSCALE_OAUTH_CLIENT_SECRET": "tailscale-oauth-client-secret",
-              }
-
-
-              def parse_env(path: Path) -> dict[str, str]:
-                  values = {}
-                  for raw_line in path.read_text().splitlines():
-                      line = raw_line.strip()
-                      if not line or line.startswith("#"):
-                          continue
-                      if line.startswith("export "):
-                          line = line[len("export "):].lstrip()
-                      if "=" not in line:
-                          continue
-
-                      key, value = line.split("=", 1)
-                      key = key.strip()
-                      value = value.strip()
-
-                      if value.startswith(("'", '"')):
-                          try:
-                              parsed = shlex.split(value, comments=False, posix=True)
-                          except ValueError as error:
-                              message = f"invalid value for {key} in {path}: {error}"
-                              raise SystemExit(message) from error
-                          values[key] = parsed[0] if parsed else ""
-                      else:
-                          values[key] = value
-                  return values
-
-
-              def main() -> int:
-                  env_file = Path(sys.argv[1] if len(sys.argv) > 1 else ".env.prod.k8s")
-                  if not env_file.is_file():
-                      print(f"missing {env_file}", file=sys.stderr)
-                      return 1
-
-                  values = parse_env(env_file)
-                  missing = [key for key in SECRET_IDS if key not in values]
-                  if missing:
-                      missing_keys = " ".join(missing)
-                      print(
-                          f"missing keys in {env_file}: {missing_keys}",
-                          file=sys.stderr,
-                      )
-                      return 1
-
-                  for key, secret_id in SECRET_IDS.items():
-                      print(f"adding Secret Manager version for {secret_id} from {key}")
-                      subprocess.run(
-                          [
-                              GCLOUD,
-                              "secrets",
-                              "versions",
-                              "add",
-                              secret_id,
-                              "--project",
-                              PROJECT,
-                              "--data-file=-",
-                          ],
-                          input=values[key].encode(),
-                          check=True,
-                      )
-
-                  return 0
-
-
-              if __name__ == "__main__":
-                  raise SystemExit(main())
-            ''
-          );
         };
       };
     };

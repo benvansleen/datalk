@@ -20,7 +20,6 @@
         git = lib.getExe pkgs.git;
         gcloud = lib.getExe pkgs.google-cloud-sdk;
         kubectl = lib.getExe pkgs.kubectl;
-        nixidy = lib.getExe self.packages.${system}.nixidy;
         skopeo = lib.getExe pkgs.skopeo;
         imgs = with self.packages.${system}; [
           datalk-image
@@ -48,72 +47,79 @@
           };
         };
         pushImages = builtins.listToAttrs (map pushImage imgs);
-        manifest = self.legacyPackages.${system}.nixidyEnvs.${system}.default.declarativePackage;
       in
       {
+        options.manifest =
+          with lib;
+          mkOption {
+            type = types.package;
+          };
+
         imports = with self.modules.infra; [
           production-k8s
           production-secrets
         ];
 
-        resource.terraform_data = {
+        config = {
+          resource.terraform_data = {
 
-          apply = {
-            triggers_replace.manifest = toString manifest;
-            provisioner.local-exec.command = /* sh */ ''
-              repo_root="$(${git} rev-parse --show-toplevel)"
-              cd "$repo_root"
-              ${gcloud} container clusters \
-                get-credentials ${self.gcloud.name} \
-                --zone ${self.gcloud.zone}
-              ${kubectl} config use-context gke_${self.gcloud.project}_${self.gcloud.zone}_${self.gcloud.name}
-              ${nixidy} apply .#default
-            '';
-            depends_on = [
-              "google_container_cluster.${self.gcloud.name}"
-              "terraform_data.propagate_secrets"
-            ]
-            ++ map (img: "terraform_data.push_${imageKey img}") imgs;
-          };
-
-          propagate_secrets =
-            let
-              secretsFile = "./.env.prod.k8s";
-            in
-            {
-              input.env_file_sha = "\${filesha256(\"${secretsFile}\")}";
-              triggers_replace.env_file_sha = "\${filesha256(\"${secretsFile}\")}";
-              depends_on = map (name: "google_secret_manager_secret.${name}") (
-                builtins.attrNames config.resource.google_secret_manager_secret
-              );
+            apply = {
+              triggers_replace.manifest = toString config.manifest;
               provisioner.local-exec.command = /* sh */ ''
-                ${self.apps.${system}.populate-prod-secrets.program}
+                repo_root="$(${git} rev-parse --show-toplevel)"
+                cd "$repo_root"
+                ${gcloud} container clusters \
+                  get-credentials ${self.gcloud.name} \
+                  --zone ${self.gcloud.zone}
+                ${kubectl} config use-context gke_${self.gcloud.project}_${self.gcloud.zone}_${self.gcloud.name}
+                ${config.manifest}/apply
               '';
+              depends_on = [
+                "google_container_cluster.${self.gcloud.name}"
+                "terraform_data.propagate_secrets"
+              ]
+              ++ map (img: "terraform_data.push_${imageKey img}") imgs;
             };
 
-        }
-        // pushImages;
+            propagate_secrets =
+              let
+                secretsFile = "./.env.prod.k8s";
+              in
+              {
+                input.env_file_sha = "\${filesha256(\"${secretsFile}\")}";
+                triggers_replace.env_file_sha = "\${filesha256(\"${secretsFile}\")}";
+                depends_on = map (name: "google_secret_manager_secret.${name}") (
+                  builtins.attrNames config.resource.google_secret_manager_secret
+                );
+                provisioner.local-exec.command = /* sh */ ''
+                  ${self.apps.${system}.populate-prod-secrets.program}
+                '';
+              };
 
-        data.external = builtins.listToAttrs (
-          map (img: {
-            name = "image_exists_${imageKey img}";
-            value = {
-              program = [
-                (lib.getExe pkgs.bash)
-                "-c"
-                /* sh */ ''
-                  if ${skopeo} inspect "docker://${self.image-uri img}" >/dev/null 2>&1;
-                  then
-                    printf '{"exists":"true"}\n'
-                  else
-                    printf '{"exists":"false"}\n'
-                  fi
-                ''
-              ];
-              depends_on = [ "google_artifact_registry_repository.${self.gcloud.name}" ];
-            };
-          }) imgs
-        );
+          }
+          // pushImages;
+
+          data.external = builtins.listToAttrs (
+            map (img: {
+              name = "image_exists_${imageKey img}";
+              value = {
+                program = [
+                  (lib.getExe pkgs.bash)
+                  "-c"
+                  /* sh */ ''
+                    if ${skopeo} inspect "docker://${self.image-uri img}" >/dev/null 2>&1;
+                    then
+                      printf '{"exists":"true"}\n'
+                    else
+                      printf '{"exists":"false"}\n'
+                    fi
+                  ''
+                ];
+                depends_on = [ "google_artifact_registry_repository.${self.gcloud.name}" ];
+              };
+            }) imgs
+          );
+        };
       };
   };
 }

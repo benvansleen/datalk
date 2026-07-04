@@ -7,6 +7,7 @@
 
     modules.infra.k3d =
       {
+        config,
         pkgs,
         lib,
         ...
@@ -43,51 +44,58 @@
           };
         };
         pushImages = builtins.listToAttrs (map pushImage imgs);
-        manifest = self.legacyPackages.${system}.nixidyEnvs.${system}.local.declarativePackage;
       in
       {
+        options.manifest =
+          with lib;
+          mkOption {
+            type = types.package;
+          };
+
         imports = with self.modules.infra; [
           k3d-cluster
           k3d-secrets
         ];
 
-        resource.terraform_data = pushImages // {
-          apply_local = {
-            triggers_replace.manifest = toString manifest;
-            provisioner.local-exec.command = /* sh */ ''
-              repo_root="$(${git} rev-parse --show-toplevel)"
-              cd "$repo_root"
-              ${kubectl} config use-context k3d-${self.gcloud.name}-local
-              ${lib.getExe self.packages.${system}.nixidy} apply .#local
-            '';
-            depends_on = [
-              "terraform_data.k3d_cluster"
-              "terraform_data.local_secrets"
-            ]
-            ++ map (img: "terraform_data.push_${imageKey img}") imgs;
-          };
-        };
-
-        data.external = builtins.listToAttrs (
-          map (img: {
-            name = "image_exists_${imageKey img}";
-            value = {
-              program = [
-                (lib.getExe pkgs.bash)
-                "-c"
-                /* sh */ ''
-                  if ${skopeo} inspect --tls-verify=false "docker://${self.local-image-push-uri img}" >/dev/null 2>&1;
-                  then
-                    printf '{"exists":"true"}\n'
-                  else
-                    printf '{"exists":"false"}\n'
-                  fi
-                ''
-              ];
-              depends_on = [ "terraform_data.k3d_registry" ];
+        config = {
+          resource.terraform_data = pushImages // {
+            apply_local = {
+              triggers_replace.manifest = toString config.manifest;
+              provisioner.local-exec.command = /* sh */ ''
+                repo_root="$(${git} rev-parse --show-toplevel)"
+                cd "$repo_root"
+                ${kubectl} config use-context k3d-${self.gcloud.name}-local
+                ${config.manifest}/apply
+              '';
+              depends_on = [
+                "terraform_data.k3d_cluster"
+                "terraform_data.local_secrets"
+              ]
+              ++ map (img: "terraform_data.push_${imageKey img}") imgs;
             };
-          }) imgs
-        );
+          };
+
+          data.external = builtins.listToAttrs (
+            map (img: {
+              name = "image_exists_${imageKey img}";
+              value = {
+                program = [
+                  (lib.getExe pkgs.bash)
+                  "-c"
+                  /* sh */ ''
+                    if ${skopeo} inspect --tls-verify=false "docker://${self.local-image-push-uri img}" >/dev/null 2>&1;
+                    then
+                      printf '{"exists":"true"}\n'
+                    else
+                      printf '{"exists":"false"}\n'
+                    fi
+                  ''
+                ];
+                depends_on = [ "terraform_data.k3d_registry" ];
+              };
+            }) imgs
+          );
+        };
       };
   };
 }
