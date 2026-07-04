@@ -106,8 +106,8 @@
   perSystem =
     {
       inputs',
-      self',
       pkgs,
+      lib,
       system,
       ...
     }:
@@ -116,18 +116,6 @@
         nixidy = inputs'.nixidy.packages.default.overrideAttrs (old: {
           meta.mainProgram = old.meta.mainProgram or "nixidy";
         });
-        "generators/cloudnative-pg" = inputs'.nixidy.packages.generators.fromChartCRD {
-          name = "cloudnative-pg";
-          chart = inputs.nixhelm.chartsDerivations.${system}.cloudnative-pg.cloudnative-pg;
-        };
-        "generators/external-secrets" = inputs'.nixidy.packages.generators.fromChartCRD {
-          name = "external-secrets";
-          chart = inputs.nixhelm.chartsDerivations.${system}.external-secrets.external-secrets;
-        };
-        "generators/tailscale" = inputs'.nixidy.packages.generators.fromChartCRD {
-          name = "tailscale";
-          chart = inputs.nixhelm.chartsDerivations.${system}.tailscale.tailscale-operator;
-        };
       };
 
       legacyPackages = {
@@ -142,18 +130,45 @@
       };
 
       apps = {
-        generate = {
-          type = "app";
-          program =
-            (pkgs.writeShellScript "generate-crds" /* bash */ ''
-              set -eo pipefail
+        generate =
+          let
+            inherit (inputs'.nixidy.packages.generators) fromChartCRD;
+            toGenerate = {
+              cloudnative-pg = fromChartCRD {
+                name = "cloudnative-pg";
+                chart = inputs.nixhelm.chartsDerivations.${system}.cloudnative-pg.cloudnative-pg;
+              };
+              external-secrets = fromChartCRD {
+                name = "external-secrets";
+                chart = inputs.nixhelm.chartsDerivations.${system}.external-secrets.external-secrets;
+              };
+              tailscale-operator = fromChartCRD {
+                name = "tailscale";
+                chart = inputs.nixhelm.chartsDerivations.${system}.tailscale.tailscale-operator;
+              };
+            };
+            generatedOutputDir = "nix/kubernetes/_generated";
+            generate =
+              with lib;
+              pipe toGenerate [
+                (mapAttrsToList (
+                  name: generator: /* sh */ ''
+                    cat ${generator} > "${generatedOutputDir}/${name}.nix"
+                  ''
+                ))
+                (concatStringsSep "\n")
+              ];
+          in
+          {
+            type = "app";
+            program =
+              (pkgs.writeShellScript "generate-crds" /* bash */ ''
+                set -eo pipefail
 
-              mkdir -p nix/kubernetes/_generated
-              cat ${self'.packages."generators/cloudnative-pg"} > nix/kubernetes/_generated/cloudnative-pg.nix
-              cat ${self'.packages."generators/external-secrets"} > nix/kubernetes/_generated/external-secrets.nix
-              cat ${self'.packages."generators/tailscale"} > nix/kubernetes/_generated/tailscale-operator.nix
-            '').outPath;
-        };
+                mkdir -p "${generatedOutputDir}"
+                ${generate}
+              '').outPath;
+          };
       };
     };
 }

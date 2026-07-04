@@ -20,7 +20,6 @@
         git = lib.getExe pkgs.git;
         gcloud = lib.getExe pkgs.google-cloud-sdk;
         kubectl = lib.getExe pkgs.kubectl;
-        skopeo = lib.getExe pkgs.skopeo;
         imgs = with self.packages.${system}; [
           datalk-image
           python-server-image
@@ -30,19 +29,12 @@
           name = "push_${imageKey img}";
           value = {
             triggers_replace = "${img}";
-            input = {
-              uri = self.image-uri img;
-              exists = "\${data.external.image_exists_${imageKey img}.result.exists}";
-            };
+            input.uri = self.image-uri img;
             depends_on = [ "google_artifact_registry_repository.${self.gcloud.name}" ];
             provisioner.local-exec.command = /* sh */ ''
               uri="docker://''${self.input.uri}"
-              if [ "''${self.input.exists}" = true ]; then
-                echo "image already present: $uri"
-              else
-                echo "pushing $uri"
-                ${img.copyTo}/bin/copy-to --dest-tls-verify=false "$uri"
-              fi
+              echo "pushing $uri"
+              ${img.copyTo}/bin/copy-to "$uri"
             '';
           };
         };
@@ -61,8 +53,7 @@
         ];
 
         config = {
-          resource.terraform_data = {
-
+          resource.terraform_data = pushImages // {
             apply = {
               triggers_replace.manifest = toString config.manifest;
               provisioner.local-exec.command = /* sh */ ''
@@ -96,29 +87,7 @@
                 '';
               };
 
-          }
-          // pushImages;
-
-          data.external = builtins.listToAttrs (
-            map (img: {
-              name = "image_exists_${imageKey img}";
-              value = {
-                program = [
-                  (lib.getExe pkgs.bash)
-                  "-c"
-                  /* sh */ ''
-                    if ${skopeo} inspect "docker://${self.image-uri img}" >/dev/null 2>&1;
-                    then
-                      printf '{"exists":"true"}\n'
-                    else
-                      printf '{"exists":"false"}\n'
-                    fi
-                  ''
-                ];
-                depends_on = [ "google_artifact_registry_repository.${self.gcloud.name}" ];
-              };
-            }) imgs
-          );
+          };
         };
       };
   };

@@ -15,6 +15,7 @@
 
   perSystem =
     {
+      self',
       pkgs,
       lib,
       system,
@@ -71,9 +72,7 @@
 
               found_manifests=1
 
-              if KUBECTL_EXTERNAL_DIFF=${
-                lib.getExe self.packages.${system}.cleanKubectlDiff
-              } ${kubectl} diff -f "$manifest"; then
+              if KUBECTL_EXTERNAL_DIFF=${lib.getExe self'.packages.cleanKubectlDiff} ${kubectl} diff -f "$manifest"; then
                 true
               else
                 status=$?
@@ -103,7 +102,7 @@
         terranixConfigurations = {
           production =
             let
-              manifest = self.legacyPackages.${system}.nixidyEnvs.${system}.default;
+              manifest = self'.legacyPackages.nixidyEnvs.${system}.default;
             in
             {
               modules = with self.modules.infra; [
@@ -117,7 +116,7 @@
             };
           local =
             let
-              manifest = self.legacyPackages.${system}.nixidyEnvs.${system}.local;
+              manifest = self'.legacyPackages.nixidyEnvs.${system}.local;
             in
             {
               modules = with self.modules.infra; [
