@@ -344,8 +344,7 @@
               const form = e.currentTarget.closest('form');
               form?.requestSubmit();
             }
-          }}
-        ></textarea>
+          }}></textarea>
 
         {#if generating}
           <Item.Root variant="muted">

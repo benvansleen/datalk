@@ -15,13 +15,16 @@ export const handle: Handle = async ({ event, resolve }) => {
         const auth = yield* Auth;
 
         const session = isUnprotectedRoute
-          ? yield* auth.getSession(event.request.headers).pipe(
-              Effect.catchAllCause((cause) =>
-                Effect.logWarning('Session lookup failed on unprotected route', Cause.pretty(cause)).pipe(
-                  Effect.as(Option.none()),
+          ? yield* auth
+              .getSession(event.request.headers)
+              .pipe(
+                Effect.catchAllCause((cause) =>
+                  Effect.logWarning(
+                    'Session lookup failed on unprotected route',
+                    Cause.pretty(cause),
+                  ).pipe(Effect.as(Option.none())),
                 ),
-              ),
-            )
+              )
           : yield* auth.getSession(event.request.headers);
         if (Option.isSome(session)) {
           event.locals.user = session.value.user;
