@@ -17,9 +17,13 @@
       }:
       let
         inherit (pkgs.stdenv.hostPlatform) system;
-        git = lib.getExe pkgs.git;
         gcloud = lib.getExe pkgs.google-cloud-sdk;
         kubectl = lib.getExe pkgs.kubectl;
+
+        registriesConf = pkgs.writeText "registries.conf" /* toml */ ''
+          unqualified-search-registries = ["docker.io"]
+        '';
+
         imgs = with self.packages.${system}; [
           datalk-image
           python-server-image
@@ -33,19 +37,37 @@
             depends_on = [ "google_artifact_registry_repository.${self.gcloud.name}" ];
             provisioner.local-exec.command = /* sh */ ''
               uri="docker://''${self.input.uri}"
+
+              containers_home="$(mktemp -d)"
+              trap 'rm -rf "$containers_home"' EXIT
+
+              mkdir -p "$containers_home/.config/containers"
+              cp ${registriesConf} "$containers_home/.config/containers/registries.conf"
+
               echo "pushing $uri"
-              ${img.copyTo}/bin/copy-to "$uri"
+              token="$(${gcloud} auth print-access-token)"
+              HOME="$containers_home" XDG_CONFIG_HOME="$containers_home/.config" \
+                ${img.copyTo}/bin/copy-to \
+                  --dest-creds "oauth2accesstoken:$token" \
+                  "$uri"
             '';
           };
         };
         pushImages = builtins.listToAttrs (map pushImage imgs);
       in
       {
-        options.manifest =
-          with lib;
-          mkOption {
+        options = with lib; {
+          context = mkOption {
+            type = types.str;
+          };
+          manifest = mkOption {
             type = types.package;
           };
+          prepareContext = mkOption {
+            type = types.str;
+            default = "";
+          };
+        };
 
         imports = with self.modules.infra; [
           production-k8s
@@ -57,12 +79,8 @@
             apply = {
               triggers_replace.manifest = toString config.manifest;
               provisioner.local-exec.command = /* sh */ ''
-                repo_root="$(${git} rev-parse --show-toplevel)"
-                cd "$repo_root"
-                ${gcloud} container clusters \
-                  get-credentials ${self.gcloud.name} \
-                  --zone ${self.gcloud.zone}
-                ${kubectl} config use-context gke_${self.gcloud.project}_${self.gcloud.zone}_${self.gcloud.name}
+                ${config.prepareContext}
+                ${kubectl} config use-context "${config.context}"
                 ${config.manifest}/apply
               '';
               depends_on = [
@@ -74,7 +92,7 @@
 
             propagate_secrets =
               let
-                secretsFile = "./.env.prod.k8s";
+                secretsFile = "../../.env.prod.k8s";
               in
               {
                 input.env_file_sha = "\${filesha256(\"${secretsFile}\")}";
@@ -83,7 +101,7 @@
                   builtins.attrNames config.resource.google_secret_manager_secret
                 );
                 provisioner.local-exec.command = /* sh */ ''
-                  ${self.apps.${system}.populate-prod-secrets.program}
+                  ${self.apps.${system}.populate-prod-secrets.program} "${secretsFile}"
                 '';
               };
 

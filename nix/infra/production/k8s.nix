@@ -45,6 +45,7 @@
 
         google_container_cluster.${name} = {
           inherit name;
+          inherit (self.gcloud) project;
           location = self.gcloud.zone;
 
           # manage node pools separately

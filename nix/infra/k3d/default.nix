@@ -15,7 +15,6 @@
       }:
       let
         inherit (pkgs.stdenv.hostPlatform) system;
-        git = lib.getExe pkgs.git;
         kubectl = lib.getExe pkgs.kubectl;
 
         registriesConf = pkgs.writeText "registries.conf" /* toml */ ''
@@ -60,11 +59,14 @@
         pushImages = builtins.listToAttrs (map pushImage imgs);
       in
       {
-        options.manifest =
-          with lib;
-          mkOption {
+        options = with lib; {
+          context = mkOption {
+            type = types.str;
+          };
+          manifest = mkOption {
             type = types.package;
           };
+        };
 
         imports = with self.modules.infra; [
           k3d-cluster
@@ -76,9 +78,7 @@
             apply_local = {
               triggers_replace.manifest = toString config.manifest;
               provisioner.local-exec.command = /* sh */ ''
-                repo_root="$(${git} rev-parse --show-toplevel)"
-                cd "$repo_root"
-                ${kubectl} config use-context k3d-${self.gcloud.name}-local
+                ${kubectl} config use-context "${config.context}"
                 ${config.manifest}/apply
               '';
               depends_on = [

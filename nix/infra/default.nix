@@ -55,11 +55,36 @@
 
       kubectl = lib.getExe pkgs.kubectl;
       nixidyDiff =
-        env:
+        {
+          env,
+          context,
+          prepareContext ? "",
+          skipIfUnavailable ? false,
+        }:
         tfLifecycle {
           apply = /* sh */ ''
             to_apply="${env}"
+            kubectl_context="${context}"
+            skip_nixidy_diff=0
 
+            if ! ${kubectl} config get-contexts "$kubectl_context" >/dev/null 2>&1; then
+              ${
+                if skipIfUnavailable then
+                  /* sh */ ''
+                    echo "Kubernetes context $kubectl_context is unavailable; skipping live nixidy diff"
+                    skip_nixidy_diff=1
+                  ''
+                else
+                  /* sh */ ''
+                    echo "Kubernetes context $kubectl_context is unavailable" >&2
+                    exit 1
+                  ''
+              }
+            fi
+
+            ${prepareContext}
+
+            if [ "$skip_nixidy_diff" -eq 0 ]; then
             diff_status=0
             found_manifests=0
             for manifest in "$to_apply"/*/*.yaml; do
@@ -72,7 +97,7 @@
 
               found_manifests=1
 
-              if KUBECTL_EXTERNAL_DIFF=${lib.getExe self'.packages.cleanKubectlDiff} ${kubectl} diff -f "$manifest"; then
+              if KUBECTL_EXTERNAL_DIFF=${lib.getExe self'.packages.cleanKubectlDiff} ${kubectl} --context "$kubectl_context" diff -f "$manifest"; then
                 true
               else
                 status=$?
@@ -93,6 +118,7 @@
             if [ "$diff_status" -eq 0 ]; then
               echo "No changes to cluster"
             fi
+            fi
           '';
         };
     in
@@ -102,33 +128,53 @@
         terranixConfigurations = {
           production =
             let
+              context = "gke_${self.gcloud.project}_${self.gcloud.zone}_${self.gcloud.name}";
               manifest = self'.legacyPackages.nixidyEnvs.${system}.default;
+              prepareContext = /* sh */ ''
+                ${lib.getExe pkgs.google-cloud-sdk} container clusters get-credentials \
+                  ${self.gcloud.name} \
+                  --zone ${self.gcloud.zone} \
+                  --project ${self.gcloud.project} >/dev/null 2>&1 || true
+              '';
             in
             {
+              workdir = ".terraform/production";
               modules = with self.modules.infra; [
                 production
-                { manifest = manifest.declarativePackage; }
+                {
+                  inherit context prepareContext;
+                  manifest = manifest.declarativePackage;
+                }
               ];
               terraformWrapper = {
                 package = terraform;
-                prefixText = nixidyDiff manifest.environmentPackage;
+                prefixText = nixidyDiff {
+                  inherit context prepareContext;
+                  env = manifest.environmentPackage;
+                  skipIfUnavailable = true;
+                };
               };
             };
           local =
             let
+              context = "k3d-${self.gcloud.name}-local";
               manifest = self'.legacyPackages.nixidyEnvs.${system}.local;
             in
             {
               modules = with self.modules.infra; [
                 k3d
                 {
+                  inherit context;
                   manifest = manifest.declarativePackage;
                 }
               ];
               workdir = ".terraform/local";
               terraformWrapper = {
                 package = terraform;
-                prefixText = nixidyDiff manifest.environmentPackage;
+                prefixText = nixidyDiff {
+                  inherit context;
+                  env = manifest.environmentPackage;
+                };
               };
             };
         };
