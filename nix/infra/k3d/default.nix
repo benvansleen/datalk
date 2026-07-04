@@ -3,7 +3,8 @@
 {
   flake = {
     local-image-uri = img: "k3d-datalk-local-registry:5000/${img.imageName}:${self.image-tag img}";
-    local-image-push-uri = img: "localhost:5001/${img.imageName}:${self.image-tag img}";
+    local-image-repo = "localhost:5001";
+    local-image-push-uri = img: "${self.local-image-repo}/${img.imageName}:${self.image-tag img}";
 
     modules.infra.k3d =
       {
@@ -16,7 +17,15 @@
         inherit (pkgs.stdenv.hostPlatform) system;
         git = lib.getExe pkgs.git;
         kubectl = lib.getExe pkgs.kubectl;
-        skopeo = lib.getExe pkgs.skopeo;
+
+        registriesConf = pkgs.writeText "registries.conf" /* toml */ ''
+          unqualified-search-registries = ["docker.io"]
+
+          [[registry]]
+          location = "${self.local-image-repo}"
+          insecure = true
+        '';
+
         imgs = with self.packages.${system}; [
           datalk-image
           datalk-dev-image
@@ -27,19 +36,24 @@
           name = "push_${imageKey img}";
           value = {
             triggers_replace = "${img}";
-            input = {
-              uri = self.local-image-push-uri img;
-              exists = "\${data.external.image_exists_${imageKey img}.result.exists}";
-            };
+            input.uri = self.local-image-push-uri img;
             depends_on = [ "terraform_data.k3d_registry" ];
             provisioner.local-exec.command = /* sh */ ''
               uri="docker://''${self.input.uri}"
-              if [ "''${self.input.exists}" = true ]; then
-                echo "image already present: $uri"
-              else
-                echo "pushing $uri"
-                ${img.copyTo}/bin/copy-to --dest-tls-verify=false "$uri"
-              fi
+
+              containers_home="$(mktemp -d)"
+              trap 'rm -rf "$containers_home"' EXIT
+
+              mkdir -p "$containers_home/.config/containers"
+              cp ${registriesConf} "$containers_home/.config/containers/registries.conf"
+
+              echo "pushing $uri"
+              HOME="$containers_home" XDG_CONFIG_HOME="$containers_home/.config" \
+                ${img.copyTo}/bin/copy-to \
+                  --dest-tls-verify=false \
+                  --dest-no-creds \
+                  --registries.d "$containers_home/.config/containers" \
+                  "$uri"
             '';
           };
         };
@@ -74,27 +88,6 @@
               ++ map (img: "terraform_data.push_${imageKey img}") imgs;
             };
           };
-
-          data.external = builtins.listToAttrs (
-            map (img: {
-              name = "image_exists_${imageKey img}";
-              value = {
-                program = [
-                  (lib.getExe pkgs.bash)
-                  "-c"
-                  /* sh */ ''
-                    if ${skopeo} inspect --tls-verify=false "docker://${self.local-image-push-uri img}" >/dev/null 2>&1;
-                    then
-                      printf '{"exists":"true"}\n'
-                    else
-                      printf '{"exists":"false"}\n'
-                    fi
-                  ''
-                ];
-                depends_on = [ "terraform_data.k3d_registry" ];
-              };
-            }) imgs
-          );
         };
       };
   };
