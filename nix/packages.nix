@@ -23,6 +23,7 @@
       packages = {
         ui = pkgs.callPackage ../ui inputs;
         python-server = pkgs.callPackage ../python-server inputs;
+        lis-python-server = pkgs.callPackage ../lis-python-server inputs;
 
         datalk-image = inputs'.nix2container.packages.nix2container.buildImage {
           name = "datalk";
