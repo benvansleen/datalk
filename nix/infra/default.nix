@@ -174,6 +174,7 @@
                 prefixText = nixidyDiff {
                   inherit context;
                   env = manifest.environmentPackage;
+                  skipIfUnavailable = true;
                 };
               };
             };
