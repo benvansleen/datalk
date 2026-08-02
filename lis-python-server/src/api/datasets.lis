@@ -1,0 +1,11 @@
+import "go:net/http"
+
+import "environments"
+
+fn list_datasets(
+  writer: http.ResponseWriter,
+  _: Ref<http.Request>,
+  service: Ref<environments.Service>,
+) {
+  write_json(writer, http.StatusOK, service.list_datasets())
+}

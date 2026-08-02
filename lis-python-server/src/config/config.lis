@@ -1,0 +1,324 @@
+import "go:encoding/json"
+import "go:os"
+import "go:time"
+
+pub struct Config {
+  pub server: ServerConfig,
+  pub kubernetes: KubernetesConfig,
+  pub environments: EnvironmentConfig,
+  pub worker: WorkerConfig,
+  pub storage: StorageConfig,
+  pub datasets: DatasetConfig,
+}
+
+#[display]
+pub enum ConfigError {
+  Invalid { field: string, error: string },
+  InvalidJson(string),
+  Missing { field: string },
+  MissingFile(string),
+  UnreadableFile { path: string },
+}
+
+pub struct ServerConfig {
+  pub address: string,
+  pub max_request_bytes: int64,
+  pub shutdown_timeout: time.Duration,
+}
+
+pub struct KubernetesConfig {
+  pub api_url: string,
+  pub execution_namespace: string,
+  pub token_path: string,
+  pub ca_path: string,
+  pub request_timeout: time.Duration,
+  pub readiness_poll_interval: time.Duration,
+}
+
+pub struct EnvironmentConfig {
+  pub max_active: int,
+  pub startup_timeout: time.Duration,
+  pub idle_timeout: time.Duration,
+  pub execution_timeout: time.Duration,
+}
+
+pub struct WorkerConfig {
+  pub image: string,
+  pub port: int,
+  pub auth_key_path: string,
+  pub runtime_class: Option<string>,
+  pub resources: WorkerResources,
+}
+
+pub struct WorkerResources {
+  pub cpu_request: string,
+  pub cpu_limit: string,
+  pub memory_request: string,
+  pub memory_limit: string,
+  pub ephemeral_storage_limit: string,
+}
+
+pub struct StorageConfig {
+  pub dataset_claim: string,
+  pub checkpoint_storage_class: string,
+  pub checkpoint_size: string,
+}
+
+pub struct DatasetConfig {
+  pub catalog_path: string,
+  pub mount_path: string,
+}
+
+pub fn load() -> Result<Config, ConfigError> {
+  let path = os.LookupEnv("CONFIG_PATH").unwrap_or("/etc/datalk/config.json")
+  Validator.new(path)?.validate()
+}
+
+struct Validator { raw: RawConfig }
+
+impl Validator {
+  fn new(path: string) -> Result<Validator, ConfigError> {
+    let data = os
+      .ReadFile(path)
+      .map_err(|_| ConfigError.UnreadableFile { path })?
+    let mut raw = RawConfig { .. }
+    json
+      .Unmarshal(data, &raw)
+      .map_err(|err| ConfigError.InvalidJson(err.Error()))?
+
+    Ok(Validator { raw })
+  }
+
+  fn validate(self) -> Result<Config, ConfigError> {
+    Ok(
+      Config {
+        server: self.mandatory("server", self.raw.server)?.validate(self)?,
+        kubernetes: self.mandatory("kubernetes", self.raw.kubernetes)?.validate(
+          self,
+        )?,
+        environments: self.mandatory("environments", self.raw.environments)?.validate(
+          self,
+        )?,
+        worker: self.mandatory("worker", self.raw.worker)?.validate(self)?,
+        storage: self.mandatory("storage", self.raw.storage)?.validate(self)?,
+        datasets: self.mandatory("datasets", self.raw.datasets)?.validate(self)?,
+      },
+    )
+  }
+
+  fn mandatory<T>(self, field: string, val: Option<T>) -> Result<T, ConfigError> {
+    val.ok_or(ConfigError.Missing { field })
+  }
+
+  fn duration(self, field: string, duration: Option<string>) -> Result<time.Duration, ConfigError> {
+    time
+      .ParseDuration(self.mandatory(field, duration)?)
+      .map_err(|err| ConfigError.Invalid { field, error: err.Error() })
+  }
+}
+
+struct RawConfig {
+  pub server: Option<RawServerConfig>,
+  pub kubernetes: Option<RawKubernetesConfig>,
+  pub environments: Option<RawEnvironmentConfig>,
+  pub worker: Option<RawWorkerConfig>,
+  pub storage: Option<RawStorageConfig>,
+  pub datasets: Option<RawDatasetConfig>,
+}
+
+#[json]
+struct RawServerConfig {
+  pub address: Option<string>,
+  pub max_request_bytes: Option<int64>,
+  pub shutdown_timeout: Option<string>,
+}
+
+impl RawServerConfig {
+  fn validate(self, super: Validator) -> Result<ServerConfig, ConfigError> {
+    Ok(
+      ServerConfig {
+        address: super.mandatory("server.address", self.address)?,
+        max_request_bytes: super.mandatory(
+          "server.max_request_bytes",
+          self.max_request_bytes,
+        )?,
+        shutdown_timeout: super.duration(
+          "server.shutdown_timeout",
+          self.shutdown_timeout,
+        )?,
+      },
+    )
+  }
+}
+
+#[json]
+struct RawKubernetesConfig {
+  pub api_url: Option<string>,
+  pub execution_namespace: Option<string>,
+  pub token_path: Option<string>,
+  pub ca_path: Option<string>,
+  pub request_timeout: Option<string>,
+  pub readiness_poll_interval: Option<string>,
+}
+
+impl RawKubernetesConfig {
+  fn validate(self, super: Validator) -> Result<KubernetesConfig, ConfigError> {
+    Ok(
+      KubernetesConfig {
+        api_url: super.mandatory("kubernetes.api_url", self.api_url)?,
+        execution_namespace: super.mandatory(
+          "kubernetes.execution_namespace",
+          self.execution_namespace,
+        )?,
+        token_path: super.mandatory("kubernetes.token_path", self.token_path)?,
+        ca_path: super.mandatory("kubernetes.ca_path", self.ca_path)?,
+        request_timeout: super.duration(
+          "kubernetes.request_timeout",
+          self.request_timeout,
+        )?,
+        readiness_poll_interval: super.duration(
+          "kubernetes.readiness_poll_interval",
+          self.readiness_poll_interval,
+        )?,
+      },
+    )
+  }
+}
+
+#[json]
+struct RawEnvironmentConfig {
+  pub max_active: Option<int>,
+  pub startup_timeout: Option<string>,
+  pub idle_timeout: Option<string>,
+  pub execution_timeout: Option<string>,
+}
+
+impl RawEnvironmentConfig {
+  fn validate(self, super: Validator) -> Result<EnvironmentConfig, ConfigError> {
+    Ok(
+      EnvironmentConfig {
+        max_active: super.mandatory("environments.max_active", self.max_active)?,
+        startup_timeout: super.duration(
+          "environments.startup_timeout",
+          self.startup_timeout,
+        )?,
+        idle_timeout: super.duration(
+          "environments.idle_timeout",
+          self.idle_timeout,
+        )?,
+        execution_timeout: super.duration(
+          "environments.execution_timeout",
+          self.execution_timeout,
+        )?,
+      },
+    )
+  }
+}
+
+#[json]
+pub struct RawWorkerConfig {
+  pub image: Option<string>,
+  pub port: Option<int>,
+  pub auth_key_path: Option<string>,
+  pub runtime_class: Option<string>,
+  pub resources: Option<RawWorkerResources>,
+}
+
+impl RawWorkerConfig {
+  fn validate(self, super: Validator) -> Result<WorkerConfig, ConfigError> {
+    Ok(
+      WorkerConfig {
+        image: super.mandatory("worker.image", self.image)?,
+        port: super.mandatory("worker.port", self.port)?,
+        auth_key_path: super.mandatory(
+          "worker.auth_key_path",
+          self.auth_key_path,
+        )?,
+        runtime_class: self.runtime_class,
+        resources: super.mandatory("worker.resources", self.resources)?.validate(
+          super,
+        )?,
+      },
+    )
+  }
+}
+
+#[json]
+pub struct RawWorkerResources {
+  pub cpu_request: Option<string>,
+  pub cpu_limit: Option<string>,
+  pub memory_request: Option<string>,
+  pub memory_limit: Option<string>,
+  pub ephemeral_storage_limit: Option<string>,
+}
+
+impl RawWorkerResources {
+  fn validate(self, super: Validator) -> Result<WorkerResources, ConfigError> {
+    Ok(
+      WorkerResources {
+        cpu_request: super.mandatory(
+          "worker.resources.cpu_request",
+          self.cpu_request,
+        )?,
+        cpu_limit: super.mandatory("worker.resources.cpu_limit", self.cpu_limit)?,
+        memory_request: super.mandatory(
+          "worker.resources.memory_request",
+          self.memory_request,
+        )?,
+        memory_limit: super.mandatory(
+          "worker.resources.memory_limit",
+          self.memory_limit,
+        )?,
+        ephemeral_storage_limit: super.mandatory(
+          "worker.resources.ephemeral_storage_limit",
+          self.ephemeral_storage_limit,
+        )?,
+      },
+    )
+  }
+}
+
+#[json]
+pub struct RawStorageConfig {
+  pub dataset_claim: Option<string>,
+  pub checkpoint_storage_class: Option<string>,
+  pub checkpoint_size: Option<string>,
+}
+
+impl RawStorageConfig {
+  fn validate(self, super: Validator) -> Result<StorageConfig, ConfigError> {
+    Ok(
+      StorageConfig {
+        dataset_claim: super.mandatory(
+          "storage.dataset_claim",
+          self.dataset_claim,
+        )?,
+        checkpoint_storage_class: super.mandatory(
+          "storage.checkpoint_storage_class",
+          self.checkpoint_storage_class,
+        )?,
+        checkpoint_size: super.mandatory(
+          "storage.checkpoint_size",
+          self.checkpoint_size,
+        )?,
+      },
+    )
+  }
+}
+
+#[json]
+pub struct RawDatasetConfig {
+  pub catalog_path: Option<string>,
+  pub mount_path: Option<string>,
+}
+
+impl RawDatasetConfig {
+  fn validate(self, super: Validator) -> Result<DatasetConfig, ConfigError> {
+    Ok(
+      DatasetConfig {
+        catalog_path: super.mandatory("dataset.catalog_path", self.catalog_path)?,
+        mount_path: super.mandatory("dataset.mount_path", self.mount_path)?,
+      },
+    )
+  }
+}

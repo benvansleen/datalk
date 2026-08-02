@@ -1,0 +1,38 @@
+import "go:encoding/json"
+import "go:net/http"
+
+fn write_json<T>(writer: http.ResponseWriter, status: int, value: T) {
+  let Ok(data) = json.Marshal(value) else {
+    write_raw_json(
+      writer,
+      http.StatusInternalServerError,
+      "{\"detail\":\"Internal Server Error\"}",
+    )
+    return
+  }
+
+  writer.Header().Set("Content-Type", "application/json")
+  writer.WriteHeader(status)
+  match writer.Write(data) {
+    Partial.Ok(_) => (),
+    Partial.Err(_) | Partial.Both(_, _) => (),
+  }
+}
+
+fn write_raw_json(writer: http.ResponseWriter, status: int, body: string) {
+  writer.Header().Set("Content-Type", "application/json")
+  writer.WriteHeader(status)
+
+  match writer.Write(body as Slice<byte>) {
+    Partial.Ok(_) => (),
+    Partial.Err(_) | Partial.Both(_, _) => (),
+  }
+}
+
+fn write_detail(writer: http.ResponseWriter, status: int, detail: string) {
+  write_json(writer, status, DetailResponse { detail })
+}
+
+fn write_null(writer: http.ResponseWriter) {
+  write_raw_json(writer, http.StatusOK, "null")
+}

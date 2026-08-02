@@ -1,6 +1,70 @@
+import "go:context"
 import "go:fmt"
+import "go:net/http"
+import "go:os"
+
+import "api"
+import "config"
+import "environments"
+import "kubernetes"
+import workerapi "worker"
 
 fn main() {
-  fmt.Println("Hello, world!")
+  let ctx = context.Background()
 
+  let cfg = config
+    .load()
+    .unwrap_or_else(|err| {
+      fmt.Println(f"configuration error: {err}")
+      os.Exit(1)
+    })
+
+  let auth = workerapi.Auth
+    .new(cfg.worker.auth_key_path)
+    .unwrap_or_else(|err| {
+      fmt.Println(f"worker auth init error: {err}")
+      os.Exit(1)
+    })
+
+  let kube = kubernetes.Runtime
+    .new(
+      ctx,
+      cfg.kubernetes,
+      cfg.environments,
+      cfg.worker,
+      cfg.storage,
+      cfg.datasets,
+      auth,
+    )
+    .unwrap_or_else(|err| {
+      fmt.Println(f"kubernetes runtime init error: {err}")
+      os.Exit(1)
+    })
+
+  let worker = workerapi.Worker.new(
+    cfg.worker,
+    cfg.environments,
+    cfg.kubernetes,
+    auth,
+  )
+
+  let catalog = environments.FileDatasetCatalog
+    .load(cfg.datasets.catalog_path)
+    .unwrap_or_else(|err| {
+      fmt.Println(f"dataset catalog error: {err}")
+      os.Exit(1)
+    })
+
+  let service = environments.Service.new(
+    kube,
+    worker,
+    catalog,
+    cfg.environments.startup_timeout,
+  )
+  let mux = http.NewServeMux()
+  api.register(mux, &service, cfg.server.max_request_bytes)
+  if let Err(err) = http.ListenAndServe(cfg.server.address, mux) {
+    fmt.Println(f"server stopped: {err}")
+    os.Exit(1)
+  }
 }

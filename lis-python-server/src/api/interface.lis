@@ -1,0 +1,44 @@
+import "go:encoding/json"
+
+#[json]
+struct RawCreateRequest {
+  chat_id: Option<json.RawMessage>,
+  dataset: Option<json.RawMessage>,
+}
+
+#[json]
+struct RawDestroyRequest { chat_id: Option<json.RawMessage> }
+
+#[json]
+struct RawExecuteRequest {
+  chat_id: Option<json.RawMessage>,
+  code: Option<json.RawMessage>,
+  language: Option<json.RawMessage>,
+}
+
+#[json]
+struct EnvironmentResponse { available_dataframes: string }
+
+#[json]
+struct ExecutionResponse { outputs: string }
+
+#[json]
+struct DetailResponse { detail: string }
+
+#[json]
+struct ValidationResponse { detail: Slice<ValidationError> }
+
+#[json]
+struct ValidationError {
+  #[json("type")]
+  kind: string,
+
+  loc: Slice<Unknown>,
+  msg: string,
+
+  #[json(!omitempty)]
+  input: Option<Unknown>,
+
+  #[json("ctx", omitempty)]
+  context: Option<Map<string, string>>,
+}

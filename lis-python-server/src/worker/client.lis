@@ -1,0 +1,196 @@
+import "go:bytes"
+import "go:context"
+import "go:encoding/json"
+import "go:errors"
+import "go:fmt"
+import "go:io"
+import "go:net"
+import "go:net/http"
+import "go:time"
+
+import env "environments"
+
+struct Client {
+  http: Ref<http.Client>,
+  auth: Auth,
+  port: int,
+  request_timeout: time.Duration,
+  execution_timeout: time.Duration,
+  startup_timeout: time.Duration,
+  max_response_bytes: int64,
+}
+
+impl Client {
+  fn new(
+    auth: Auth,
+    port: int,
+    request_timeout: time.Duration,
+    execution_timeout: time.Duration,
+    startup_timeout: time.Duration,
+  ) -> Client {
+    Client {
+      http: &http.Client { Timeout: execution_timeout + 5 * time.Second, .. },
+      auth,
+      port,
+      request_timeout,
+      execution_timeout,
+      startup_timeout,
+      max_response_bytes: 1024 * 1024 as int64,
+    }
+  }
+
+  fn metadata(self, ctx: context.Context, runtime: env.RuntimeInfo) -> Result<env.DataframeMetadata, env.WorkerError> {
+    let response = self.request(
+      ctx,
+      runtime,
+      http.MethodGet,
+      "/v1/metadata",
+      None,
+      self.request_timeout,
+    )?
+    let mut body = MetadataResponse { .. }
+    json
+      .Unmarshal(response, &body)
+      .map_err(|err| env.WorkerError.InvalidResponse(err.Error()))?
+
+    Ok(
+      env.DataframeMetadata { available_dataframes: body.available_dataframes },
+    )
+  }
+
+  fn execute(
+    self,
+    ctx: context.Context,
+    runtime: env.RuntimeInfo,
+    execution: env.Execution,
+  ) -> Result<env.ExecutionResult, env.WorkerError> {
+    let language = match execution.language {
+      env.Language.Python => "python",
+      env.Language.Sql => "sql",
+    }
+    let body = json
+      .Marshal(ExecuteRequest { code: execution.code, language })
+      .map_err(|err| {
+        env.WorkerError.Internal(err.Error())
+      })?
+
+    let response = self.request(
+      ctx,
+      runtime,
+      http.MethodPost,
+      "/v1/execute",
+      Some(body),
+      self.execution_timeout + self.startup_timeout,
+    )?
+
+    let mut result = ExecuteResponse { .. }
+    json
+      .Unmarshal(response, &result)
+      .map_err(|err| env.WorkerError.InvalidResponse(err.Error()))?
+
+    Ok(env.ExecutionResult { outputs: result.outputs })
+  }
+
+  fn request(
+    self,
+    ctx: context.Context,
+    runtime: env.RuntimeInfo,
+    method: string,
+    path: string,
+    body: Option<Slice<byte>>,
+    timeout: time.Duration,
+  ) -> Result<Slice<byte>, env.WorkerError> {
+    if runtime.pod_ip == "" {
+      return Err(env.WorkerError.Unavailable(
+        f"worker {runtime.pod_name} has no pod IP",
+      ))
+    }
+
+    let (ctx, cancel) = context.WithTimeout(ctx, timeout)
+    defer cancel()
+
+    let address = net.JoinHostPort(runtime.pod_ip, fmt.Sprint(self.port))
+    let url = f"http://{address}{path}"
+    let request_body = bytes.NewReader(body.unwrap_or([]))
+    let request = http
+      .NewRequestWithContext(ctx, method, url, request_body)
+      .map_err(|err| env.WorkerError.Internal(err.Error()))?
+    request.Header.Set(
+      "Authorization",
+      f"Bearer {self.auth.token(runtime.environment_id)}",
+    )
+    request.Header.Set("Accept", "application/json")
+    if body.is_some() { request.Header.Set("Content-Type", "application/json") }
+
+    let response = match self.http.Do(request) {
+      Ok(response) => response,
+      Err(err) if errors.Is(err, context.DeadlineExceeded) => return Err(
+        env.WorkerError.TimedOut,
+      ),
+      Err(err) => return Err(env.WorkerError.Unavailable(err.Error())),
+    }
+    let Some(response_body) = response.Body else {
+      return Err(env.WorkerError.InvalidResponse("worker response has no body"))
+    }
+    defer close_response_body(response_body)
+
+    let limited = io.LimitReader(response_body, self.max_response_bytes + 1)
+    let data = match io.ReadAll(limited) {
+      Partial.Ok(data) => data,
+      Partial.Err(err) | Partial.Both(_, err) => return Err(
+        env.WorkerError.InvalidResponse(err.Error()),
+      ),
+    }
+
+    if data.length() > self.max_response_bytes as int {
+      return Err(env.WorkerError.InvalidResponse(
+        "worker response exceeds maximum size",
+      ))
+    }
+
+    match response.StatusCode {
+      code if code >= 200 && code < 300 => Ok(data),
+      code => Err(decode_worker_error(code, data)),
+    }
+  }
+}
+
+#[json]
+struct MetadataResponse { available_dataframes: string }
+
+#[json]
+struct ExecuteRequest { code: Slice<string>, language: string }
+
+#[json]
+struct ExecuteResponse { outputs: string }
+
+#[json]
+struct ErrorResponse { code: string, message: string }
+
+fn decode_worker_error(status: int, data: Slice<byte>) -> env.WorkerError {
+  let mut response = ErrorResponse { .. }
+  if let Err(_) = json.Unmarshal(data, &response) {
+    return env.WorkerError.InvalidResponse(f"worker returned HTTP {status}")
+  }
+
+  if response.code == "" {
+    return env.WorkerError.InvalidResponse(
+      f"worker returned malformed error response with HTTP {status}",
+    )
+  }
+
+  match response.code {
+    "authentication_failed" => env.WorkerError.Authentication,
+    "checkpoint_failed" => env.WorkerError.CheckpointFailed(response.message),
+    "invalid_request" => env.WorkerError.InvalidRequest(response.message),
+    "execution_timeout" => env.WorkerError.TimedOut,
+    "kernel_unavailable" => env.WorkerError.Unavailable(response.message),
+    _ => env.WorkerError.Internal(
+      f"worker returned HTTP {status}: {response.code}: {response.message}",
+    ),
+  }
+}
+
+fn close_response_body(body: io.ReadCloser) {
+  if let Err(_) = body.Close() {}
+}

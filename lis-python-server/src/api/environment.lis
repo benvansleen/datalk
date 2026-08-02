@@ -1,0 +1,179 @@
+import "go:encoding/json"
+import "go:net/http"
+
+import "environments"
+
+fn environment_exists(
+  writer: http.ResponseWriter,
+  request: Ref<http.Request>,
+  service: Ref<environments.Service>,
+) {
+  let Some(chat_id) = require_chat_id(writer, request) else {
+    return
+  }
+  match service.exists(request.Context(), chat_id) {
+    Ok(exists) => write_json(writer, http.StatusOK, exists),
+    Err(err) => write_environment_error(writer, err),
+  }
+}
+
+fn create_environment(
+  writer: http.ResponseWriter,
+  request: Ref<http.Request>,
+  service: Ref<environments.Service>,
+  max_request_bytes: int64,
+) {
+  if !require_json_content_type(request) {
+    write_detail(
+      writer,
+      http.StatusUnsupportedMediaType,
+      "Unsupported Media Type",
+    )
+    return
+  }
+
+  let data = match read_body(request, max_request_bytes) {
+    Ok(data) => data,
+    Err(BodyError.Missing) => {
+      missing_body(writer)
+      return
+    },
+    Err(BodyError.TooLarge) => {
+      write_detail(
+        writer,
+        http.StatusRequestEntityTooLarge,
+        "Request body too large",
+      )
+      return
+    },
+    Err(BodyError.InvalidJson(_)) => {
+      invalid_json(writer)
+      return
+    },
+  }
+
+  let mut input = Map.new<string, Unknown>()
+  if let Err(_) = json.Unmarshal(data, &input) {
+    invalid_json(writer)
+    return
+  }
+
+  let mut payload = RawCreateRequest { .. }
+  if let Err(_) = json.Unmarshal(data, &payload) {
+    invalid_json(writer)
+    return
+  }
+
+  let Some(raw_chat_id) = payload.chat_id else {
+    missing_body_field(writer, "chat_id", data)
+    return
+  }
+  let mut chat_id = ""
+  if let Err(_) = json.Unmarshal(raw_chat_id, &chat_id) {
+    invalid_string_type(writer, "chat_id", raw_chat_id)
+    return
+  }
+
+  let Some(raw_dataset) = payload.dataset else {
+    missing_body_field(writer, "dataset", data)
+    return
+  }
+  let mut dataset = ""
+  if let Err(_) = json.Unmarshal(raw_dataset, &dataset) {
+    invalid_string_type(writer, "dataset", raw_dataset)
+    return
+  }
+
+  match service.create(request.Context(), chat_id, dataset) {
+    Ok(environment) => write_json(
+      writer,
+      http.StatusOK,
+      EnvironmentResponse {
+        available_dataframes: environment.available_dataframes,
+      },
+    ),
+    Err(err) => write_environment_error(writer, err),
+  }
+}
+
+fn destroy_environment(
+  writer: http.ResponseWriter,
+  request: Ref<http.Request>,
+  service: Ref<environments.Service>,
+  max_request_bytes: int64,
+) {
+  if !require_json_content_type(request) {
+    write_detail(
+      writer,
+      http.StatusUnsupportedMediaType,
+      "Unsupported Media Type",
+    )
+    return
+  }
+
+  let data = match read_body(request, max_request_bytes) {
+    Ok(data) => data,
+    Err(BodyError.Missing) => {
+      missing_body(writer)
+      return
+    },
+    Err(BodyError.TooLarge) => {
+      write_detail(
+        writer,
+        http.StatusRequestEntityTooLarge,
+        "Request body too large",
+      )
+      return
+    },
+    Err(BodyError.InvalidJson(_)) => {
+      invalid_json(writer)
+      return
+    },
+  }
+
+  let mut input = Map.new<string, Unknown>()
+  if let Err(_) = json.Unmarshal(data, &input) {
+    invalid_json(writer)
+    return
+  }
+
+  let mut payload = RawDestroyRequest { .. }
+  if let Err(_) = json.Unmarshal(data, &payload) {
+    invalid_json(writer)
+    return
+  }
+
+  let Some(raw_chat_id) = payload.chat_id else {
+    missing_body_field(writer, "chat_id", data)
+    return
+  }
+  let mut chat_id = ""
+  if let Err(_) = json.Unmarshal(raw_chat_id, &chat_id) {
+    invalid_string_type(writer, "chat_id", raw_chat_id)
+    return
+  }
+
+  match service.destroy(request.Context(), chat_id) {
+    Ok(()) => write_null(writer),
+    Err(err) => write_environment_error(writer, err),
+  }
+}
+
+fn require_chat_id(writer: http.ResponseWriter, request: Ref<http.Request>) -> Option<string> {
+  let Some(url) = request.URL else {
+    write_detail(
+      writer,
+      http.StatusInternalServerError,
+      "Internal Server Error",
+    )
+    return None
+  }
+
+  let query = url.Query()
+  if !query.Has("chat_id") {
+    missing_query_chat_id(writer)
+    return None
+  }
+
+  Some(query.Get("chat_id"))
+}

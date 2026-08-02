@@ -1,0 +1,156 @@
+import "go:encoding/json"
+import "go:net/http"
+
+fn some_unknown(value: Unknown) -> Option<Unknown> {
+  Some(value)
+}
+
+fn missing_body(writer: http.ResponseWriter) {
+  write_json(
+    writer,
+    http.StatusUnprocessableEntity,
+    ValidationResponse {
+      detail: [
+        ValidationError {
+          kind: "missing",
+          loc: ["body"],
+          msg: "Field required",
+          input: None,
+          context: None,
+        },
+      ],
+    },
+  )
+}
+
+fn missing_body_field(
+  writer: http.ResponseWriter,
+  field: string,
+  input: json.RawMessage,
+) {
+  write_json(
+    writer,
+    http.StatusUnprocessableEntity,
+    ValidationResponse {
+      detail: [
+        ValidationError {
+          kind: "missing",
+          loc: ["body", field],
+          msg: "Field Required",
+          input: some_unknown(input),
+          context: None,
+        },
+      ],
+    },
+  )
+}
+
+fn invalid_string_type(
+  writer: http.ResponseWriter,
+  field: string,
+  input: json.RawMessage,
+) {
+  write_json(
+    writer,
+    http.StatusUnprocessableEntity,
+    ValidationResponse {
+      detail: [
+        ValidationError {
+          kind: "string_type",
+          loc: ["body", field],
+          msg: "Input should be a valid string",
+          input: some_unknown(input),
+          context: None,
+        },
+      ],
+    },
+  )
+}
+
+fn invalid_json(writer: http.ResponseWriter) {
+  let mut context = Map.new()
+  context["error"] = "Expecting property name enclosed in double quotes"
+  let input = Map.new<string, Unknown>()
+  write_json(
+    writer,
+    http.StatusUnprocessableEntity,
+    ValidationResponse {
+      detail: [
+        ValidationError {
+          kind: "json_invalid",
+          loc: ["body", 1],
+          msg: "JSON decode error",
+          input: some_unknown(input),
+          context: Some(context),
+        },
+      ],
+    },
+  )
+}
+
+fn invalid_code_type(writer: http.ResponseWriter, input: json.RawMessage) {
+  write_json(
+    writer,
+    http.StatusUnprocessableEntity,
+    ValidationResponse {
+      detail: [
+        ValidationError {
+          kind: "list_type",
+          loc: ["body", "code"],
+          msg: "Input should be a valid list",
+          input: some_unknown(input),
+          context: None,
+        },
+      ],
+    },
+  )
+}
+
+fn missing_query_chat_id(writer: http.ResponseWriter) {
+  write_json(
+    writer,
+    http.StatusUnprocessableEntity,
+    ValidationResponse {
+      detail: [
+        ValidationError {
+          kind: "missing",
+          loc: ["query", "chat_id"],
+          msg: "Field required",
+          input: None,
+          context: None,
+        },
+      ],
+    },
+  )
+}
+
+fn invalid_language(writer: http.ResponseWriter, input: string) {
+  let mut python_context = Map.new<string, string>()
+  python_context["expected"] = "'python'"
+
+  let mut sql_context = Map.new<string, string>()
+  sql_context["expected"] = "'sql'"
+
+  write_json(
+    writer,
+    http.StatusUnprocessableEntity,
+    ValidationResponse {
+      detail: [
+        ValidationError {
+          kind: "literal_error",
+          loc: ["body", "language", "literal['python']"],
+          msg: "Input should be 'python'",
+          input: some_unknown(input),
+          context: Some(python_context),
+        },
+        ValidationError {
+          kind: "literal_error",
+          loc: ["body", "language", "literal['sql']"],
+          msg: "Input should be 'sql'",
+          input: some_unknown(input),
+          context: Some(sql_context),
+        },
+      ],
+    },
+  )
+}

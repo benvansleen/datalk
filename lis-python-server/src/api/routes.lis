@@ -1,0 +1,66 @@
+import "go:net/http"
+
+import "environments"
+
+pub fn register(
+  mux: Ref<http.ServeMux>,
+  service: Ref<environments.Service>,
+  max_request_bytes: int64,
+) {
+  mux.HandleFunc("GET /dataset/list", |writer, request| list_datasets(
+    writer,
+    request,
+    service,
+  ))
+  mux.HandleFunc("/dataset/list", |writer, _| method_not_allowed(writer, "GET"))
+
+  mux.HandleFunc(
+    "GET /environment/exists",
+    |writer, request| environment_exists(writer, request, service),
+  )
+  mux.HandleFunc("/environment/exists", |writer, _| method_not_allowed(
+    writer,
+    "GET",
+  ))
+
+  mux.HandleFunc(
+    "POST /environment/create",
+    |writer, request| create_environment(
+      writer,
+      request,
+      service,
+      max_request_bytes,
+    ),
+  )
+  mux.HandleFunc("/environment/create", |writer, _| method_not_allowed(
+    writer,
+    "POST",
+  ))
+
+  mux.HandleFunc(
+    "POST /environment/destroy",
+    |writer, request| destroy_environment(
+      writer,
+      request,
+      service,
+      max_request_bytes,
+    ),
+  )
+  mux.HandleFunc("/environment/destroy", |writer, _| method_not_allowed(
+    writer,
+    "POST",
+  ))
+
+  mux.HandleFunc("POST /execute", |writer, request| execute(
+    writer,
+    request,
+    service,
+    max_request_bytes,
+  ))
+  mux.HandleFunc("/execute", |writer, _| method_not_allowed(writer, "POST"))
+}
+
+fn method_not_allowed(writer: http.ResponseWriter, allow: string) {
+  writer.Header().Set("Allow", allow)
+  write_detail(writer, http.StatusMethodNotAllowed, "Method Not Allowed")
+}

@@ -1,0 +1,353 @@
+import apierrors "go:k8s.io/apimachinery/pkg/api/errors"
+import "go:context"
+import core "go:k8s.io/api/core/v1"
+import coreclient "go:k8s.io/client-go/kubernetes/typed/core/v1"
+import meta "go:k8s.io/apimachinery/pkg/apis/meta/v1"
+import resource "go:k8s.io/apimachinery/pkg/api/resource"
+import "go:strings"
+import "go:time"
+
+import "config"
+import env "environments"
+import workerapi "worker"
+
+const ENVIRONMENT_ANNOTATION = "datalk.dev/environment-id"
+
+const DATASET_ANNOTATION = "datalk.dev/dataset"
+
+const CHECKPOINT_ANNOTATION = "datalk.dev/checkpoint"
+
+const TERMINATION_GRACE_SECONDS: int64 = 30
+
+pub struct Runtime {
+  pods: coreclient.PodInterface,
+  claims: coreclient.PersistentVolumeClaimInterface,
+  auth: workerapi.Auth,
+  environments: config.EnvironmentConfig,
+  worker: config.WorkerConfig,
+  storage: config.StorageConfig,
+  datasets: config.DatasetConfig,
+  resources: core.ResourceRequirements,
+  checkpoint_size: resource.Quantity,
+  request_timeout: time.Duration,
+  poll_interval: time.Duration,
+}
+
+impl Runtime {
+  pub fn new(
+    ctx: context.Context,
+    kube: config.KubernetesConfig,
+    environments: config.EnvironmentConfig,
+    worker: config.WorkerConfig,
+    storage: config.StorageConfig,
+    datasets: config.DatasetConfig,
+    auth: workerapi.Auth,
+  ) -> Result<Runtime, error> {
+    let client = Client.new(ctx, kube)?
+    let resources = parse_resources(worker.resources)?
+    let checkpoint_size = resource.ParseQuantity(storage.checkpoint_size)?
+
+    Ok(
+      Runtime {
+        pods: client.core.Pods(client.namespace),
+        claims: client.core.PersistentVolumeClaims(client.namespace),
+        auth,
+        environments,
+        worker,
+        storage,
+        datasets,
+        resources,
+        checkpoint_size,
+        request_timeout: kube.request_timeout,
+        poll_interval: kube.readiness_poll_interval,
+      },
+    )
+  }
+
+  #[allow(let_and_return)]
+  fn find(self, ctx: context.Context, environment_id: string) -> Result<Option<env.RuntimeInfo>, env.RuntimeError> {
+    let pod_name = name_for_pod(environment_id)
+    let result = match self.pods.Get(ctx, pod_name, meta.GetOptions { .. }) {
+      Ok(pod) => Ok(Some(runtime_info(environment_id, pod)?)),
+      Err(err) if apierrors.IsNotFound(err) => Ok(None),
+      Err(err) => Err(map_api_error(err)),
+    }
+    result
+  }
+
+  fn start(self, ctx: context.Context, spec: env.RuntimeSpec) -> Result<env.RuntimeInfo, env.RuntimeError> {
+    let pod_name = name_for_pod(spec.environment_id)
+    let pod = Builder
+      .new(
+        self.worker,
+        self.environments,
+        self.storage,
+        self.datasets,
+        self.auth,
+        self.resources,
+        spec,
+        pod_name,
+      )
+      .build()
+    let created = self.pods
+      .Create(ctx, &pod, meta.CreateOptions { .. })
+      .map_err(map_api_error)?
+
+    runtime_info(spec.environment_id, created)
+  }
+
+  fn wait_until_ready(
+    self,
+    ctx: context.Context,
+    environment_id: string,
+    timeout: time.Duration,
+  ) -> Result<env.RuntimeInfo, env.RuntimeError> {
+    let deadline = time.Now().Add(timeout)
+
+    loop {
+      let Some(runtime) = self.find(ctx, environment_id)? else {
+        return Err(env.RuntimeError.NotFound)
+      }
+      match runtime.state {
+        env.RuntimeState.Ready => return Ok(runtime),
+        env.RuntimeState.Terminal => return Err(env.RuntimeError.Terminated(
+          runtime.message,
+        )),
+        env.RuntimeState.Pending => (),
+      }
+
+      if time.Now().After(deadline) { return Err(env.RuntimeError.TimedOut) }
+      // TODO: avoid polling
+      time.Sleep(self.poll_interval)
+    }
+  }
+
+  #[allow(let_and_return)]
+  fn stop(self, ctx: context.Context, environment_id: string) -> Result<(), env.RuntimeError> {
+    let pod_name = name_for_pod(environment_id)
+    let result = match self.pods.Delete(
+      ctx,
+      pod_name,
+      meta.DeleteOptions { .. },
+    ) {
+      Ok(()) => self.wait_for_pod_deletion(ctx, pod_name),
+      Err(err) if apierrors.IsNotFound(err) => Ok(()),
+      Err(err) => Err(map_api_error(err)),
+    }
+    result
+  }
+
+  #[allow(let_and_return)]
+  fn ensure_checkpoint(self, ctx: context.Context, spec: env.RuntimeSpec) -> Result<(), env.RuntimeError> {
+    let result = match self.claims.Get(
+      ctx,
+      spec.checkpoint_name,
+      meta.GetOptions { .. },
+    ) {
+      Ok(claim) => validate_checkpoint(claim, spec),
+      Err(err) if apierrors.IsNotFound(err) => self.create_checkpoint(ctx, spec),
+      Err(err) => Err(map_api_error(err)),
+    }
+    result
+  }
+
+  #[allow(let_and_return)]
+  fn delete_checkpoint(self, ctx: context.Context, environment_id: string) -> Result<(), env.RuntimeError> {
+    let checkpoint_name = name_for_checkpoint(environment_id)
+    let result = match self.claims.Delete(
+      ctx,
+      checkpoint_name,
+      meta.DeleteOptions { .. },
+    ) {
+      Ok(()) => self.wait_for_checkpoint_deletion(ctx, checkpoint_name),
+      Err(err) if apierrors.IsNotFound(err) => Ok(()),
+      Err(err) => Err(map_api_error(err)),
+    }
+    result
+  }
+
+  #[allow(let_and_return)]
+  fn create_checkpoint(self, ctx: context.Context, spec: env.RuntimeSpec) -> Result<(), env.RuntimeError> {
+    let mut annotations = Map.new()
+    annotations[ENVIRONMENT_ANNOTATION] = spec.environment_id
+    annotations[DATASET_ANNOTATION] = spec.dataset.name
+
+    let mut request_values = Map.new()
+    request_values[core.ResourceStorage] = self.checkpoint_size
+    let requests = core.ResourceList(request_values)
+
+    let claim = core.PersistentVolumeClaim {
+      ObjectMeta: meta.ObjectMeta {
+        Name: spec.checkpoint_name,
+        Annotations: annotations,
+        ..,
+      },
+      Spec: core.PersistentVolumeClaimSpec {
+        AccessModes: [core.ReadWriteOnce],
+        StorageClassName: Some(self.storage.checkpoint_storage_class),
+        Resources: core.VolumeResourceRequirements { Requests: requests, .. },
+        ..,
+      },
+      ..,
+    }
+
+    let result = match self.claims.Create(
+      ctx,
+      &claim,
+      meta.CreateOptions { .. },
+    ) {
+      Ok(_) => Ok(()),
+      Err(err) if apierrors.IsAlreadyExists(err) => {
+        let existing = self.claims
+          .Get(ctx, spec.checkpoint_name, meta.GetOptions { .. })
+          .map_err(map_api_error)?
+        validate_checkpoint(existing, spec)
+      },
+      Err(err) => Err(map_api_error(err)),
+    }
+    result
+  }
+
+  fn wait_for_pod_deletion(self, ctx: context.Context, pod_name: string) -> Result<(), env.RuntimeError> {
+    let grace_duration = time.Second *
+    TERMINATION_GRACE_SECONDS as time.Duration
+    let deadline = time.Now().Add(self.request_timeout + grace_duration)
+
+    loop {
+      match self.pods.Get(ctx, pod_name, meta.GetOptions { .. }) {
+        Ok(_) => (),
+        Err(err) if apierrors.IsNotFound(err) => return Ok(()),
+        Err(err) => return Err(map_api_error(err)),
+      }
+
+      if time.Now().After(deadline) { return Err(env.RuntimeError.TimedOut) }
+      time.Sleep(self.poll_interval)
+    }
+  }
+
+  fn wait_for_checkpoint_deletion(
+    self,
+    ctx: context.Context,
+    checkpoint_name: string,
+  ) -> Result<(), env.RuntimeError> {
+    let deadline = time.Now().Add(self.request_timeout)
+
+    loop {
+      match self.claims.Get(ctx, checkpoint_name, meta.GetOptions { .. }) {
+        Ok(_) => (),
+        Err(err) if apierrors.IsNotFound(err) => return Ok(()),
+        Err(err) => return Err(map_api_error(err)),
+      }
+
+      if time.Now().After(deadline) { return Err(env.RuntimeError.TimedOut) }
+      time.Sleep(self.poll_interval)
+    }
+  }
+}
+
+fn runtime_info(environment_id: string, pod: Ref<core.Pod>) -> Result<env.RuntimeInfo, env.RuntimeError> {
+  let dataset = match pod.ObjectMeta.Annotations.get(DATASET_ANNOTATION) {
+    Some(dataset) => dataset,
+    None => {
+      return Err(env.RuntimeError.Internal(
+        f"pod {pod.ObjectMeta.Name} is missing {DATASET_ANNOTATION}",
+      ))
+    },
+  }
+
+  let state = match pod.Status.Phase {
+    core.PodSucceeded | core.PodFailed => env.RuntimeState.Terminal,
+    _ if is_pod_ready(pod) => env.RuntimeState.Ready,
+    _ => env.RuntimeState.Pending,
+  }
+
+  let message = match pod.Status.Message {
+    "" => pod.Status.Reason,
+    _ => pod.Status.Message,
+  }
+
+  Ok(
+    env.RuntimeInfo {
+      environment_id,
+      pod_name: pod.ObjectMeta.Name,
+      pod_ip: pod.Status.PodIP,
+      dataset,
+      state,
+      message,
+    },
+  )
+}
+
+fn validate_checkpoint(
+  claim: Ref<core.PersistentVolumeClaim>,
+  spec: env.RuntimeSpec,
+) -> Result<(), env.RuntimeError> {
+  match claim.ObjectMeta.DeletionTimestamp {
+    None => (),
+    _ => return Err(env.RuntimeError.Conflict),
+  }
+
+  let environment_id = claim.ObjectMeta.Annotations.get(ENVIRONMENT_ANNOTATION)
+  match environment_id {
+    Some(id) if id == spec.environment_id => (),
+    _ => return Err(env.RuntimeError.Conflict),
+  }
+
+  let dataset = claim.ObjectMeta.Annotations.get(DATASET_ANNOTATION)
+  match dataset {
+    Some(name) if name == spec.dataset.name => (),
+    _ => return Err(env.RuntimeError.Conflict),
+  }
+
+  Ok(())
+}
+
+fn map_api_error(err: error) -> env.RuntimeError {
+  match err {
+    _ if apierrors.IsAlreadyExists(err) || apierrors.IsConflict(err) => env.RuntimeError.Conflict,
+    _ if apierrors.IsTooManyRequests(err) => env.RuntimeError.CapacityExceeded,
+    _ if apierrors.IsForbidden(err) &&
+    strings.Contains(err.Error(), "exceeded quota") => env.RuntimeError.CapacityExceeded,
+    _ if apierrors.IsTimeout(err) || apierrors.IsServerTimeout(err) ||
+    apierrors.IsServiceUnavailable(err) => env.RuntimeError.Unavailable(
+      err.Error(),
+    ),
+    _ => env.RuntimeError.Internal(err.Error()),
+  }
+}
+
+fn is_pod_ready(pod: Ref<core.Pod>) -> bool {
+  pod.Status.Conditions.any(
+    |condition| condition.Type == core.PodReady &&
+    condition.Status == core.ConditionTrue,
+  )
+}
+
+fn name_for_pod(environment_id: string) -> string {
+  f"python-env-{environment_id}"
+}
+
+fn name_for_checkpoint(environment_id: string) -> string {
+  f"state-{environment_id}"
+}
+
+fn parse_resources(cfg: config.WorkerResources) -> Result<core.ResourceRequirements, error> {
+  let cpu_request = resource.ParseQuantity(cfg.cpu_request)?
+  let cpu_limit = resource.ParseQuantity(cfg.cpu_limit)?
+  let memory_request = resource.ParseQuantity(cfg.memory_request)?
+  let memory_limit = resource.ParseQuantity(cfg.memory_limit)?
+  let ephemeral_limit = resource.ParseQuantity(cfg.ephemeral_storage_limit)?
+
+  let mut request_values = Map.new()
+  request_values[core.ResourceCPU] = cpu_request
+  request_values[core.ResourceMemory] = memory_request
+  let requests = core.ResourceList(request_values)
+
+  let mut limit_values = Map.new()
+  limit_values[core.ResourceCPU] = cpu_limit
+  limit_values[core.ResourceMemory] = memory_limit
+  limit_values[core.ResourceEphemeralStorage] = ephemeral_limit
+  let limits = core.ResourceList(limit_values)
+
+  Ok(core.ResourceRequirements { Requests: requests, Limits: limits, .. })
+}
