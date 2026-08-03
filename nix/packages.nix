@@ -24,8 +24,10 @@
     };
     uv2nix = {
       url = "github:pyproject-nix/uv2nix";
-      inputs.nixpkgs.follows = "nixpkgs";
-      inputs.pyproject-nix.follows = "pyproject-nix";
+      inputs = {
+        nixpkgs.follows = "nixpkgs";
+        pyproject-nix.follows = "pyproject-nix";
+      };
     };
   };
 
@@ -87,6 +89,39 @@
               "NODE_EXTRA_CA_CERTS=${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt"
               "SSL_CERT_FILE=${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt"
             ];
+          };
+        };
+
+        lis-python-server-image = inputs'.nix2container.packages.nix2container.buildImage {
+          name = "lis-python-server";
+          tag = "local";
+          copyToRoot = pkgs.buildEnv {
+            name = "lis-python-server-image-root";
+            paths = [ self'.packages.lis-python-server ];
+            pathsToLink = [ "/" ];
+          };
+          config = {
+            Cmd = [ "/bin/lis-python-server" ];
+            Env = [ "SSL_CERT_FILE=${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt" ];
+            User = "1000:1000";
+          };
+        };
+
+        lis-python-worker-image = inputs'.nix2container.packages.nix2container.buildImage {
+          name = "lis-python-worker";
+          tag = "local";
+          copyToRoot = pkgs.buildEnv {
+            name = "lis-python-worker-image-root";
+            paths = [ self'.packages.lis-python-worker ];
+            pathsToLink = [ "/" ];
+          };
+          config = {
+            Cmd = [ "/bin/datalk-worker" ];
+            Env = [
+              "PYTHONDONTWRITEBYTECODE=1"
+              "PYTHONUNBUFFERED=1"
+            ];
+            User = "1000:1000";
           };
         };
 
