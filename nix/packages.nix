@@ -10,6 +10,23 @@
       url = "github:nlewo/nix2container";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    pyproject-nix = {
+      url = "github:pyproject-nix/pyproject.nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+    pyproject-build-systems = {
+      url = "github:pyproject-nix/build-system-pkgs";
+      inputs = {
+        nixpkgs.follows = "nixpkgs";
+        pyproject-nix.follows = "pyproject-nix";
+        uv2nix.follows = "uv2nix";
+      };
+    };
+    uv2nix = {
+      url = "github:pyproject-nix/uv2nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+      inputs.pyproject-nix.follows = "pyproject-nix";
+    };
   };
 
   perSystem =
@@ -24,6 +41,7 @@
         ui = pkgs.callPackage ../ui inputs;
         python-server = pkgs.callPackage ../python-server inputs;
         lis-python-server = pkgs.callPackage ../lis-python-server inputs;
+        lis-python-worker = pkgs.callPackage ../lis-python-server/worker inputs;
 
         datalk-image = inputs'.nix2container.packages.nix2container.buildImage {
           name = "datalk";
