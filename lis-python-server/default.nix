@@ -42,10 +42,16 @@ let
     inherit (manifest.project) version;
     src = goDependencySource;
     proxyVendor = true;
-    vendorHash = "sha256-pWz2egnxBTvoeQSqTv87uviWuAFNT1KlWLcCDuWvwrM=";
+    vendorHash = "sha256-I91LRaUWV5EObPuHGxxT/zedG/O6ujXxqyUE6ZalKeg=";
 
     modPostBuild = /* sh */ ''
       go mod download all
+      go mod download \
+        cloud.google.com/go/compute/metadata@v0.7.0 \
+        github.com/go-logr/logr@v1.2.2 \
+        github.com/go-logr/logr@v1.4.3 \
+        github.com/golang/protobuf@v1.5.4 \
+        gonum.org/v1/gonum@v0.16.0
 
       mkdir "$TMPDIR/bindgen-dependencies"
       cp \
@@ -91,6 +97,10 @@ buildGoModule {
   src = generatedGo;
   proxyVendor = true;
   vendorHash = null;
+  ldflags = [
+    "-s"
+    "-w"
+  ];
 
   postConfigure = /* sh */ ''
     export GOPROXY="file://${goModuleProxy}"

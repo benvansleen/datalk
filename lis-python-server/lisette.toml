@@ -3,6 +3,10 @@ name = "lis-python-server"
 version = "0.1.0"
 
 [dependencies.go]
+"go.opentelemetry.io/otel" = "v1.38.0"
+"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp" = { version = "v1.38.0", via = ["go.opentelemetry.io/otel"] }
+"go.opentelemetry.io/otel/sdk" = { version = "v1.38.0", via = ["go.opentelemetry.io/otel"] }
+"go.opentelemetry.io/proto/otlp" = { version = "v1.7.1", via = ["go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"] }
 "k8s.io/api" = "v0.36.3"
 "github.com/NYTimes/gziphandler" = { version = "v1.1.1", via = ["k8s.io/kube-openapi"] }
 "github.com/davecgh/go-spew" = { version = "v1.1.2-0.20180830191138-d8f796af33cc", via = ["k8s.io/utils"] }

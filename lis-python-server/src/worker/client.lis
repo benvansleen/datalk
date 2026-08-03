@@ -9,6 +9,7 @@ import "go:net/http"
 import "go:time"
 
 import env "environments"
+import telemetryapi "telemetry"
 
 struct Client {
   http: Ref<http.Client>,
@@ -18,6 +19,7 @@ struct Client {
   execution_timeout: time.Duration,
   startup_timeout: time.Duration,
   max_response_bytes: int64,
+  telemetry: telemetryapi.Runtime,
 }
 
 impl Client {
@@ -27,19 +29,24 @@ impl Client {
     request_timeout: time.Duration,
     execution_timeout: time.Duration,
     startup_timeout: time.Duration,
+    telemetry: telemetryapi.Runtime,
   ) -> Client {
     Client {
-      http: &http.Client { Timeout: execution_timeout + 5 * time.Second, .. },
+      http: telemetry.http_client(execution_timeout + 5 * time.Second),
       auth,
       port,
       request_timeout,
       execution_timeout,
       startup_timeout,
       max_response_bytes: 1024 * 1024 as int64,
+      telemetry,
     }
   }
 
   fn metadata(self, ctx: context.Context, runtime: env.RuntimeInfo) -> Result<env.DataframeMetadata, env.WorkerError> {
+    let (ctx, span) = self.telemetry.start(ctx, "worker.metadata")
+    defer span.end()
+    span.attribute("environment.id", runtime.environment_id)
     let response = self.request(
       ctx,
       runtime,
@@ -51,6 +58,9 @@ impl Client {
     let mut body = MetadataResponse { .. }
     json
       .Unmarshal(response, &body)
+      .map_err(|err| env.WorkerError.InvalidResponse(err.Error()))?
+    self.telemetry
+      .record_worker_stages(ctx, runtime.environment_id, body.telemetry)
       .map_err(|err| env.WorkerError.InvalidResponse(err.Error()))?
 
     Ok(
@@ -64,6 +74,9 @@ impl Client {
     runtime: env.RuntimeInfo,
     execution: env.Execution,
   ) -> Result<env.ExecutionResult, env.WorkerError> {
+    let (ctx, span) = self.telemetry.start(ctx, "worker.execute")
+    defer span.end()
+    span.attribute("environment.id", runtime.environment_id)
     let language = match execution.language {
       env.Language.Python => "python",
       env.Language.Sql => "sql",
@@ -86,6 +99,9 @@ impl Client {
     let mut result = ExecuteResponse { .. }
     json
       .Unmarshal(response, &result)
+      .map_err(|err| env.WorkerError.InvalidResponse(err.Error()))?
+    self.telemetry
+      .record_worker_stages(ctx, runtime.environment_id, result.telemetry)
       .map_err(|err| env.WorkerError.InvalidResponse(err.Error()))?
 
     Ok(env.ExecutionResult { outputs: result.outputs })
@@ -121,6 +137,7 @@ impl Client {
     )
     request.Header.Set("Accept", "application/json")
     if body.is_some() { request.Header.Set("Content-Type", "application/json") }
+    self.telemetry.inject(ctx, request.Header)
 
     let response = match self.http.Do(request) {
       Ok(response) => response,
@@ -150,24 +167,43 @@ impl Client {
 
     match response.StatusCode {
       code if code >= 200 && code < 300 => Ok(data),
-      code => Err(decode_worker_error(code, data)),
+      code => Err(decode_worker_error(
+        self.telemetry,
+        ctx,
+        runtime.environment_id,
+        code,
+        data,
+      )),
     }
   }
 }
 
 #[json]
-struct MetadataResponse { available_dataframes: string }
+struct MetadataResponse {
+  available_dataframes: string,
+  telemetry: Slice<telemetryapi.Stage>,
+}
 
 #[json]
 struct ExecuteRequest { code: Slice<string>, language: string }
 
 #[json]
-struct ExecuteResponse { outputs: string }
+struct ExecuteResponse { outputs: string, telemetry: Slice<telemetryapi.Stage> }
 
 #[json]
-struct ErrorResponse { code: string, message: string }
+struct ErrorResponse {
+  code: string,
+  message: string,
+  telemetry: Slice<telemetryapi.Stage>,
+}
 
-fn decode_worker_error(status: int, data: Slice<byte>) -> env.WorkerError {
+fn decode_worker_error(
+  telemetry: telemetryapi.Runtime,
+  ctx: context.Context,
+  environment_id: string,
+  status: int,
+  data: Slice<byte>,
+) -> env.WorkerError {
   let mut response = ErrorResponse { .. }
   if let Err(_) = json.Unmarshal(data, &response) {
     return env.WorkerError.InvalidResponse(f"worker returned HTTP {status}")
@@ -177,6 +213,14 @@ fn decode_worker_error(status: int, data: Slice<byte>) -> env.WorkerError {
     return env.WorkerError.InvalidResponse(
       f"worker returned malformed error response with HTTP {status}",
     )
+  }
+
+  if let Err(err) = telemetry.record_worker_stages(
+    ctx,
+    environment_id,
+    response.telemetry,
+  ) {
+    return env.WorkerError.InvalidResponse(err.Error())
   }
 
   match response.code {

@@ -3,11 +3,14 @@ import "go:crypto/sha256"
 import "go:encoding/hex"
 import "go:time"
 
+import telemetryapi "telemetry"
+
 pub struct Service {
   runtime: Runtime,
   worker: Worker,
   catalog: DatasetCatalog,
   startup_timeout: time.Duration,
+  telemetry: telemetryapi.Runtime,
 }
 
 pub struct Environment {
@@ -45,8 +48,9 @@ impl Service {
     worker: Worker,
     catalog: DatasetCatalog,
     startup_timeout: time.Duration,
+    telemetry: telemetryapi.Runtime,
   ) -> Service {
-    Service { runtime, worker, catalog, startup_timeout }
+    Service { runtime, worker, catalog, startup_timeout, telemetry }
   }
 
   pub fn list_datasets(self) -> Slice<string> {
@@ -54,7 +58,10 @@ impl Service {
   }
 
   pub fn exists(self, ctx: context.Context, chat_id: string) -> Result<bool, EnvironmentError> {
+    let (ctx, span) = self.telemetry.start(ctx, "environment.exists")
+    defer span.end()
     let environment_id = environment_id(chat_id)
+    span.attribute("environment.id", environment_id)
     match self.runtime
       .find(ctx, environment_id)
       .map_err(EnvironmentError.Runtime)? {
@@ -72,11 +79,15 @@ impl Service {
     chat_id: string,
     dataset_name: string,
   ) -> Result<Environment, EnvironmentError> {
+    let (ctx, span) = self.telemetry.start(ctx, "environment.create")
+    defer span.end()
     let Some(dataset) = self.catalog.find(dataset_name) else {
       return Err(EnvironmentError.UnknownDataset(dataset_name))
     }
 
     let environment_id = environment_id(chat_id)
+    span.attribute("environment.id", environment_id)
+    span.attribute("dataset.name", dataset_name)
     let spec = RuntimeSpec {
       environment_id,
       dataset,
@@ -88,7 +99,10 @@ impl Service {
   }
 
   pub fn destroy(self, ctx: context.Context, chat_id: string) -> Result<(), EnvironmentError> {
+    let (ctx, span) = self.telemetry.start(ctx, "environment.destroy")
+    defer span.end()
     let environment_id = environment_id(chat_id)
+    span.attribute("environment.id", environment_id)
     self.runtime.stop(ctx, environment_id).map_err(EnvironmentError.Runtime)?
     self.runtime
       .delete_checkpoint(ctx, environment_id)
@@ -103,7 +117,15 @@ impl Service {
     chat_id: string,
     execution: Execution,
   ) -> Result<ExecutionResult, EnvironmentError> {
+    let (ctx, span) = self.telemetry.start(ctx, "environment.execute")
+    defer span.end()
     let environment_id = environment_id(chat_id)
+    span.attribute("environment.id", environment_id)
+    let language = match execution.language {
+      Language.Python => "python",
+      Language.Sql => "sql",
+    }
+    span.attribute("execution.language", language)
     let found_runtime = match self.runtime
       .find(ctx, environment_id)
       .map_err(EnvironmentError.Runtime)? {

@@ -1,3 +1,6 @@
+import { Tracer as OtelTracer } from '@effect/opentelemetry';
+import { context, trace } from '@opentelemetry/api';
+import { W3CTraceContextPropagator } from '@opentelemetry/core';
 import { Effect, Schema } from 'effect';
 import { Config } from './Config';
 import { PythonServerError } from '../errors';
@@ -28,6 +31,8 @@ export const EnvironmentCreateResponse = Schema.Struct({
 });
 export type EnvironmentCreateResponse = typeof EnvironmentCreateResponse.Type;
 
+const traceContextPropagator = new W3CTraceContextPropagator();
+
 // ============================================================================
 // Service
 // ============================================================================
@@ -39,27 +44,60 @@ export class PythonServer extends Effect.Service<PythonServer>()('app/PythonServ
 
     yield* Effect.logInfo(`PythonServer service initialized with URL: ${baseUrl}`);
 
-    // Helper for making fetch requests with proper error handling
+    const fetchResponse = (
+      path: string,
+      options: RequestInit,
+      connectionError: (error: unknown) => PythonServerError,
+    ): Effect.Effect<Response, PythonServerError> => {
+      const method = options.method ?? 'GET';
+      const url = `${baseUrl}${path}`;
+
+      return Effect.gen(function* () {
+        const otelSpan = yield* OtelTracer.currentOtelSpan.pipe(Effect.orDie);
+        const headers = new Headers(options.headers);
+        traceContextPropagator.inject(trace.setSpan(context.active(), otelSpan), headers, {
+          set: (carrier, key, value) => carrier.set(key, value),
+        });
+
+        const response = yield* Effect.tryPromise({
+          try: () => fetch(url, { ...options, headers }),
+          catch: connectionError,
+        });
+        yield* Effect.annotateCurrentSpan('http.response.status_code', response.status);
+        return response;
+      }).pipe(
+        Effect.withSpan(`HTTP ${method} ${path.split('?')[0]}`, {
+          kind: 'client',
+          attributes: {
+            'http.request.method': method,
+            'http.route': path.split('?')[0],
+            'url.full': url,
+          },
+        }),
+      );
+    };
+
+    // Helper for JSON requests with status and schema validation.
     const fetchJson = <T>(
       path: string,
       options: RequestInit,
       schema: Schema.Schema<T>,
     ): Effect.Effect<T, PythonServerError> =>
       Effect.gen(function* () {
-        const response = yield* Effect.tryPromise({
-          try: () =>
-            fetch(`${baseUrl}${path}`, {
-              ...options,
-              headers: {
-                'Content-Type': 'application/json',
-                ...options.headers,
-              },
+        const response = yield* fetchResponse(
+          path,
+          {
+            ...options,
+            headers: new Headers({
+              'Content-Type': 'application/json',
+              ...Object.fromEntries(new Headers(options.headers)),
             }),
-          catch: (error) =>
+          },
+          (error) =>
             new PythonServerError({
               message: `Failed to connect to Python server: ${error instanceof Error ? error.message : String(error)}`,
             }),
-        });
+        );
 
         if (!response.ok) {
           const errorText = yield* Effect.tryPromise({
@@ -94,20 +132,23 @@ export class PythonServer extends Effect.Service<PythonServer>()('app/PythonServ
     /**
      * List available datasets
      */
-    const listDatasets = Effect.tryPromise({
-      try: () => fetch(`${baseUrl}/dataset/list`).then((res) => res.json() as Promise<string[]>),
-      catch: (error) =>
+    const listDatasets = fetchResponse(
+      '/dataset/list',
+      {},
+      (error) =>
         new PythonServerError({
           message: `Failed to list datasets: ${error instanceof Error ? error.message : String(error)}`,
         }),
-    }).pipe(
-      Effect.withSpan('HTTP GET /dataset/list', {
-        attributes: {
-          'http.method': 'GET',
-          'http.url': `${baseUrl}/dataset/list`,
-          'http.route': '/dataset/list',
-        },
-      }),
+    ).pipe(
+      Effect.flatMap((response) =>
+        Effect.tryPromise({
+          try: () => response.json() as Promise<string[]>,
+          catch: (error) =>
+            new PythonServerError({
+              message: `Failed to list datasets: ${error instanceof Error ? error.message : String(error)}`,
+            }),
+        }),
+      ),
     );
 
     /**
@@ -121,16 +162,6 @@ export class PythonServer extends Effect.Service<PythonServer>()('app/PythonServ
           body: JSON.stringify({ chat_id: chatId, dataset }),
         },
         EnvironmentCreateResponse,
-      ).pipe(
-        Effect.withSpan('HTTP POST /environment/create', {
-          attributes: {
-            'http.method': 'POST',
-            'http.url': `${baseUrl}/environment/create`,
-            'http.route': '/environment/create',
-            'chat.id': chatId,
-            'dataset.name': dataset,
-          },
-        }),
       );
 
     /**
@@ -144,68 +175,46 @@ export class PythonServer extends Effect.Service<PythonServer>()('app/PythonServ
           body: JSON.stringify({ chat_id: chatId, code, language }),
         },
         ExecuteResult,
-      ).pipe(
-        Effect.withSpan('HTTP POST /execute', {
-          attributes: {
-            'http.method': 'POST',
-            'http.url': `${baseUrl}/execute`,
-            'http.route': '/execute',
-            'chat.id': chatId,
-            'code.language': language,
-            'code.lines': code.length,
-          },
-        }),
       );
 
     /**
      * Destroy an execution environment
      */
     const destroyEnvironment = (chatId: string) =>
-      Effect.tryPromise({
-        try: () =>
-          fetch(`${baseUrl}/environment/destroy`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ chat_id: chatId }),
-          }),
-        catch: (error) =>
+      fetchResponse(
+        '/environment/destroy',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ chat_id: chatId }),
+        },
+        (error) =>
           new PythonServerError({
             message: `Failed to destroy environment: ${error instanceof Error ? error.message : String(error)}`,
           }),
-      }).pipe(
-        Effect.asVoid,
-        Effect.withSpan('HTTP POST /environment/destroy', {
-          attributes: {
-            'http.method': 'POST',
-            'http.url': `${baseUrl}/environment/destroy`,
-            'http.route': '/environment/destroy',
-            'chat.id': chatId,
-          },
-        }),
-      );
+      ).pipe(Effect.asVoid);
 
     /**
      * Check if an environment exists for a chat
      */
     const environmentExists = (chatId: string) =>
-      Effect.tryPromise({
-        try: () =>
-          fetch(`${baseUrl}/environment/exists?chat_id=${encodeURIComponent(chatId)}`).then(
-            (res) => res.json() as Promise<boolean>,
-          ),
-        catch: (error) =>
+      fetchResponse(
+        `/environment/exists?chat_id=${encodeURIComponent(chatId)}`,
+        {},
+        (error) =>
           new PythonServerError({
             message: `Failed to check environment: ${error instanceof Error ? error.message : String(error)}`,
           }),
-      }).pipe(
-        Effect.withSpan('HTTP GET /environment/exists', {
-          attributes: {
-            'http.method': 'GET',
-            'http.url': `${baseUrl}/environment/exists?chat_id=${encodeURIComponent(chatId)}`,
-            'http.route': '/environment/exists',
-            'chat.id': chatId,
-          },
-        }),
+      ).pipe(
+        Effect.flatMap((response) =>
+          Effect.tryPromise({
+            try: () => response.json() as Promise<boolean>,
+            catch: (error) =>
+              new PythonServerError({
+                message: `Failed to check environment: ${error instanceof Error ? error.message : String(error)}`,
+              }),
+          }),
+        ),
       );
 
     return {

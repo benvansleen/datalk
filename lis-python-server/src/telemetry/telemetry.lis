@@ -1,0 +1,334 @@
+import "go:context"
+import "go:errors"
+import "go:go.opentelemetry.io/otel/attribute"
+import "go:go.opentelemetry.io/otel/codes"
+import "go:go.opentelemetry.io/otel/propagation"
+import "go:net/http"
+import "go:os"
+import oteltrace "go:go.opentelemetry.io/otel/trace"
+import otlptracehttp "go:go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
+import resource "go:go.opentelemetry.io/otel/sdk/resource"
+import sdktrace "go:go.opentelemetry.io/otel/sdk/trace"
+import semconv "go:go.opentelemetry.io/otel/semconv/v1.37.0"
+import signal "go:os/signal"
+import "go:strings"
+import "go:syscall"
+import "go:time"
+
+const INSTRUMENTATION_NAME = "datalk.dev/lis-python-server"
+
+const MAX_TELEMETRY_STAGES = 5
+
+const MAX_STAGE_DURATION = 10 * time.Minute
+
+pub struct Runtime {
+  controller_provider: Ref<sdktrace.TracerProvider>,
+  worker_provider: Ref<sdktrace.TracerProvider>,
+  controller_tracer: oteltrace.Tracer,
+  worker_tracer: oteltrace.Tracer,
+  propagator: propagation.TextMapPropagator,
+}
+
+pub struct Span { raw: oteltrace.Span }
+
+pub struct Handler { inner: http.Handler, telemetry: Runtime }
+
+#[json]
+pub struct Stage {
+  pub stage: string,
+  pub start_unix_nano: int64,
+  pub duration_nano: int64,
+  pub status: string,
+  pub error_type: Option<string>,
+}
+
+impl Runtime {
+  pub fn new(ctx: context.Context) -> Result<Runtime, error> {
+    let controller_provider = new_provider(
+      ctx,
+      service_name("lis-python-server"),
+    )?
+    let worker_provider = match new_provider(ctx, "lis-python-worker") {
+      Ok(provider) => provider,
+      Err(err) => {
+        let _ = controller_provider.Shutdown(ctx)
+        return Err(err)
+      },
+    }
+    let Some(controller_tracer) = controller_provider.Tracer(
+      INSTRUMENTATION_NAME,
+    ) else {
+      let _ = worker_provider.Shutdown(ctx)
+      let _ = controller_provider.Shutdown(ctx)
+      return Err(errors.New("OpenTelemetry controller tracer is unavailable"))
+    }
+    let Some(worker_tracer) = worker_provider.Tracer(
+      f"{INSTRUMENTATION_NAME}/worker",
+    ) else {
+      let _ = worker_provider.Shutdown(ctx)
+      let _ = controller_provider.Shutdown(ctx)
+      return Err(errors.New("OpenTelemetry worker tracer is unavailable"))
+    }
+
+    let propagator = propagation.NewCompositeTextMapPropagator(
+      propagation.TraceContext { .. },
+      propagation.Baggage { .. },
+    )
+
+    Ok(
+      Runtime {
+        controller_tracer,
+        worker_tracer,
+        propagator,
+        controller_provider,
+        worker_provider,
+      },
+    )
+  }
+
+  pub fn handler(self, handler: http.Handler) -> http.Handler {
+    Handler { inner: handler, telemetry: self }
+  }
+
+  pub fn http_client(self, timeout: time.Duration) -> Ref<http.Client> {
+    &http.Client { Timeout: timeout, .. }
+  }
+
+  pub fn inject(self, ctx: context.Context, headers: http.Header) {
+    self.propagator.Inject(ctx, propagation.HeaderCarrier(headers))
+  }
+
+  pub fn start(self, ctx: context.Context, name: string) -> (context.Context, Span) {
+    let (ctx, span) = self.controller_tracer.Start(ctx, name)
+    (ctx, Span { raw: span })
+  }
+
+  pub fn record_worker_stages(
+    self,
+    ctx: context.Context,
+    environment_id: string,
+    stages: Slice<Stage>,
+  ) -> Result<(), error> {
+    if stages.length() > MAX_TELEMETRY_STAGES {
+      return Err(errors.New("worker telemetry has too many stages"))
+    }
+
+    for stage in stages {
+      let name = worker_stage_name(stage.stage)?
+      if stage.start_unix_nano < 0 || stage.duration_nano < 0 ||
+      stage.duration_nano > MAX_STAGE_DURATION as int64 {
+        return Err(errors.New("worker telemetry has invalid timing"))
+      }
+      if stage.status != "ok" && stage.status != "error" &&
+      stage.status != "timeout" {
+        return Err(errors.New("worker telemetry has invalid status"))
+      }
+      let error_type = match stage.error_type {
+        Some(error_type) => {
+          validate_worker_error_type(error_type)?
+          error_type
+        },
+        None if stage.status != "ok" => {
+          return Err(errors.New(
+            "failed worker telemetry stage has no error type",
+          ))
+        },
+        None => "",
+      }
+      if stage.status == "ok" && error_type != "" {
+        return Err(errors.New(
+          "successful worker telemetry stage has an error type",
+        ))
+      }
+
+      let start = time.Unix(0, stage.start_unix_nano)
+      let (_, span) = self.worker_tracer.Start(
+        ctx,
+        name,
+        oteltrace.WithTimestamp(start),
+        oteltrace.WithAttributes(
+          attribute.String("environment.id", environment_id),
+          attribute.String("telemetry.source", "controller_reported"),
+          attribute.String("worker.stage.status", stage.status),
+        ),
+      )
+      if error_type != "" {
+        span.SetAttributes(attribute.String("error.type", error_type))
+        span.SetStatus(codes.Error, error_type)
+      }
+      span.End(oteltrace.WithTimestamp(start.Add(
+        stage.duration_nano as time.Duration,
+      )))
+    }
+
+    Ok(())
+  }
+
+  pub fn serve(
+    self,
+    address: string,
+    handler: http.Handler,
+    shutdown_timeout: time.Duration,
+  ) -> Result<(), error> {
+    let server = &http.Server {
+      Addr: address,
+      Handler: handler,
+      ReadHeaderTimeout: 5 * time.Second,
+      ..,
+    }
+    let server_errors = Channel.buffered<error>(1)
+    task {
+      if let Err(err) = server.ListenAndServe() {
+        let _ = server_errors.send(err)
+      }
+    }
+
+    let (signal_ctx, stop) = signal.NotifyContext(
+      context.Background(),
+      os.Interrupt,
+      syscall.SIGTERM,
+    )
+    defer stop()
+
+    let mut serve_error: Option<error> = None
+    loop {
+      let received = select {
+        let Some(err) = server_errors.receive() => Some(err),
+        _ => None,
+      }
+      if received.is_some() {
+        serve_error = received
+        break
+      }
+      if signal_ctx.Err().is_some() {
+        let (shutdown_ctx, cancel) = context.WithTimeout(
+          context.Background(),
+          shutdown_timeout,
+        )
+        if let Err(err) = server.Shutdown(shutdown_ctx) {
+          serve_error = Some(err)
+        }
+        cancel()
+        break
+      }
+      time.Sleep(25 * time.Millisecond)
+    }
+
+    let (shutdown_ctx, cancel) = context.WithTimeout(
+      context.Background(),
+      shutdown_timeout,
+    )
+    let telemetry_error = self.shutdown(shutdown_ctx)
+    cancel()
+
+    match (serve_error, telemetry_error) {
+      (Some(err), _) if !errors.Is(err, http.ErrServerClosed) => Err(err),
+      (_, Err(err)) => Err(err),
+      _ => Ok(()),
+    }
+  }
+
+  fn shutdown(self, ctx: context.Context) -> Result<(), error> {
+    self.controller_provider.Shutdown(ctx)?
+    self.worker_provider.Shutdown(ctx)?
+    Ok(())
+  }
+}
+
+impl Handler {
+  pub fn ServeHTTP(
+    self,
+    writer: http.ResponseWriter,
+    request: Ref<http.Request>,
+  ) {
+    let parent_ctx = self.telemetry.propagator.Extract(
+      request.Context(),
+      propagation.HeaderCarrier(request.Header),
+    )
+    let Some(url) = request.URL else {
+      self.inner.ServeHTTP(writer, request)
+      return
+    }
+    let (ctx, span) = self.telemetry.start(
+      parent_ctx,
+      f"{request.Method} {url.Path}",
+    )
+    defer span.end()
+    self.inner.ServeHTTP(writer, request.WithContext(ctx))
+  }
+}
+
+impl Span {
+  pub fn end(self) {
+    self.raw.End()
+  }
+
+  pub fn attribute(self, key: string, value: string) {
+    self.raw.SetAttributes(attribute.String(key, value))
+  }
+
+  pub fn error(self, message: string) {
+    self.raw.SetStatus(codes.Error, message)
+  }
+}
+
+fn new_provider(ctx: context.Context, service_name: string) -> Result<Ref<sdktrace.TracerProvider>, error> {
+  let exporter = otlptracehttp.New(ctx)?
+  let resources = resource.New(
+    ctx,
+    resource.WithFromEnv(),
+    resource.WithTelemetrySDK(),
+    resource.WithAttributes(
+      semconv.ServiceName(service_name),
+      semconv.ServiceVersion("0.1.0"),
+    ),
+  )?
+  Ok(sdktrace.NewTracerProvider(
+    sdktrace.WithResource(resources),
+    sdktrace.WithBatcher(exporter),
+  ))
+}
+
+fn service_name(fallback: string) -> string {
+  match os.LookupEnv("OTEL_SERVICE_NAME") {
+    Some(name) if strings.TrimSpace(name) != "" => strings.TrimSpace(name),
+    _ => fallback,
+  }
+}
+
+fn worker_stage_name(stage: string) -> Result<string, error> {
+  match stage {
+    "lock_wait" => Ok("worker.lock.wait"),
+    "jupyter_user_execution" => Ok("jupyter.execute"),
+    "jupyter_metadata_execution" => Ok("jupyter.metadata"),
+    "checkpoint_write" => Ok("checkpoint.write"),
+    "timeout_kernel_restart" => Ok("kernel.restart"),
+    _ => Err(errors.New("unknown worker telemetry stage")),
+  }
+}
+
+fn validate_worker_error_type(error_type: string) -> Result<(), error> {
+  match error_type {
+    "user_code_error" |
+    "syntax_error" |
+    "name_error" |
+    "type_error" |
+    "value_error" |
+    "key_error" |
+    "index_error" |
+    "attribute_error" |
+    "import_error" |
+    "module_not_found_error" |
+    "zero_division_error" |
+    "parser_error" |
+    "binder_error" |
+    "catalog_error" |
+    "conversion_error" |
+    "constraint_error" |
+    "io_error" |
+    "execution_timeout" |
+    "kernel_restart_failed" |
+    "checkpoint_failed" => Ok(()),
+    _ => Err(errors.New("worker telemetry has invalid error type")),
+  }
+}

@@ -7,10 +7,18 @@ import "api"
 import "config"
 import "environments"
 import "kubernetes"
+import telemetryapi "telemetry"
 import workerapi "worker"
 
 fn main() {
   let ctx = context.Background()
+
+  let telemetry = telemetryapi.Runtime
+    .new(ctx)
+    .unwrap_or_else(|err| {
+      fmt.Println(f"telemetry init error: {err}")
+      os.Exit(1)
+    })
 
   let cfg = config
     .load()
@@ -46,6 +54,7 @@ fn main() {
     cfg.environments,
     cfg.kubernetes,
     auth,
+    telemetry,
   )
 
   let catalog = environments.FileDatasetCatalog
@@ -60,10 +69,16 @@ fn main() {
     worker,
     catalog,
     cfg.environments.startup_timeout,
+    telemetry,
   )
   let mux = http.NewServeMux()
   api.register(mux, &service, cfg.server.max_request_bytes)
-  if let Err(err) = http.ListenAndServe(cfg.server.address, mux) {
+  let handler = telemetry.handler(mux)
+  if let Err(err) = telemetry.serve(
+    cfg.server.address,
+    handler,
+    cfg.server.shutdown_timeout,
+  ) {
     fmt.Println(f"server stopped: {err}")
     os.Exit(1)
   }

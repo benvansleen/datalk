@@ -71,6 +71,7 @@
           cloudnative-pg
           datalk
           lis-python-server
+          observability
           valkey
         ];
         nixidy = {
@@ -82,6 +83,7 @@
         };
         modules = {
           cloudnative-pg.enable = true;
+          observability.enable = true;
           datalk = {
             enable = true;
             dev.enable = hotReload;

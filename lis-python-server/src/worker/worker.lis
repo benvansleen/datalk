@@ -2,6 +2,7 @@ import "go:context"
 
 import "config"
 import env "environments"
+import telemetryapi "telemetry"
 
 pub struct Worker { client: Client }
 
@@ -11,6 +12,7 @@ impl Worker {
     environments: config.EnvironmentConfig,
     kubernetes: config.KubernetesConfig,
     auth: Auth,
+    telemetry: telemetryapi.Runtime,
   ) -> Worker {
     Worker {
       client: Client.new(
@@ -19,6 +21,7 @@ impl Worker {
         kubernetes.request_timeout,
         environments.execution_timeout,
         environments.startup_timeout,
+        telemetry,
       ),
     }
   }

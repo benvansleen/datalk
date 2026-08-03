@@ -31,6 +31,8 @@
     "@fontsource/iosevka-aile": "^5.2.5",
     "@fontsource/victor-mono": "^5.2.8",
     "@lucide/svelte": "^0.544.0",
+    "@opentelemetry/api": "^1.9.0",
+    "@opentelemetry/core": "^2.2.0",
     "@opentelemetry/exporter-trace-otlp-proto": "^0.208.0",
     "@opentelemetry/sdk-metrics": "^2.2.0",
     "@opentelemetry/sdk-trace-node": "^2.2.0",

@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING
 from jupyter_client import AsyncKernelClient
 
 from .interface import ExecutionRequest
+from .telemetry import StageErrorType
 
 if TYPE_CHECKING:
     from .state import WorkerState
@@ -13,6 +14,33 @@ if TYPE_CHECKING:
 class KernelResult:
     output: str
     succeeded: bool
+    error_type: StageErrorType | None = None
+
+
+KERNEL_ERROR_TYPES = {
+    "SyntaxError": StageErrorType.SYNTAX_ERROR,
+    "NameError": StageErrorType.NAME_ERROR,
+    "TypeError": StageErrorType.TYPE_ERROR,
+    "ValueError": StageErrorType.VALUE_ERROR,
+    "KeyError": StageErrorType.KEY_ERROR,
+    "IndexError": StageErrorType.INDEX_ERROR,
+    "AttributeError": StageErrorType.ATTRIBUTE_ERROR,
+    "ImportError": StageErrorType.IMPORT_ERROR,
+    "ModuleNotFoundError": StageErrorType.MODULE_NOT_FOUND_ERROR,
+    "ZeroDivisionError": StageErrorType.ZERO_DIVISION_ERROR,
+    "ParserException": StageErrorType.PARSER_ERROR,
+    "BinderException": StageErrorType.BINDER_ERROR,
+    "CatalogException": StageErrorType.CATALOG_ERROR,
+    "ConversionException": StageErrorType.CONVERSION_ERROR,
+    "ConstraintException": StageErrorType.CONSTRAINT_ERROR,
+    "IOException": StageErrorType.IO_ERROR,
+}
+
+
+def classify_kernel_error(error_name: object) -> StageErrorType:
+    if not isinstance(error_name, str):
+        return StageErrorType.USER_CODE_ERROR
+    return KERNEL_ERROR_TYPES.get(error_name, StageErrorType.USER_CODE_ERROR)
 
 
 def require_client(state: "WorkerState") -> AsyncKernelClient:
@@ -29,6 +57,7 @@ async def execute_kernel_code(
     message_id = client.execute(code, allow_stdin=False)
     output = []
     kernel_error: str | None = None
+    kernel_error_type: StageErrorType | None = None
 
     while True:
         message = await client.get_iopub_msg()
@@ -44,11 +73,13 @@ async def execute_kernel_code(
                 output.append(content["text"])
             case "error":
                 kernel_error = f"Error executing code: {content['evalue']}"
+                kernel_error_type = classify_kernel_error(content.get("ename"))
             case "status" if content["execution_state"] == "idle":
                 if kernel_error is not None:
                     return KernelResult(
                         output=kernel_error,
                         succeeded=False,
+                        error_type=kernel_error_type,
                     )
                 return KernelResult(
                     output="".join(output),
