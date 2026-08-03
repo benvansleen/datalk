@@ -36,7 +36,7 @@ fn missing_body_field(
         ValidationError {
           kind: "missing",
           loc: ["body", field],
-          msg: "Field Required",
+          msg: "Field required",
           input: some_unknown(input),
           context: None,
         },

@@ -70,7 +70,7 @@
         imports = with self.modules.kubernetes; [
           cloudnative-pg
           datalk
-          python-server
+          lis-python-server
           valkey
         ];
         nixidy = {
@@ -96,7 +96,9 @@
           };
           python-server = {
             enable = true;
-            image = self.local-image-uri self.packages.x86_64-linux.python-server-image;
+            image = self.local-image-uri self.packages.x86_64-linux.lis-python-server-image;
+            workerImage = self.local-image-uri self.packages.x86_64-linux.lis-python-worker-image;
+            datasetHostPath = "/workspace/datalk/python-server/datasets";
           };
           valkey.enable = true;
         };

@@ -35,11 +35,11 @@ const availableDataframes = `[('cfbd_2025_games', Index(['id', 'season', 'week',
        'awayClassification', 'awayConference', 'awayPoints', 'awayLineScores',
        'awayPostgameWinProbability', 'awayPregameElo', 'awayPostgameElo',
        'excitementIndex', 'highlights', 'notes'],
-      dtype='object'), (3736, 33)), ('cfbd_2025_lines', Index(['id', 'season', 'seasonType', 'week', 'startDate', 'homeTeamId',
+      dtype='str'), (3736, 33)), ('cfbd_2025_lines', Index(['id', 'season', 'seasonType', 'week', 'startDate', 'homeTeamId',
        'homeTeam', 'homeConference', 'homeClassification', 'homeScore',
        'awayTeamId', 'awayTeam', 'awayConference', 'awayClassification',
        'awayScore', 'lines'],
-      dtype='object'), (1524, 16))]
+      dtype='str'), (1524, 16))]
 `;
 
 const jsonHeaders = { 'Content-Type': 'application/json' };
@@ -289,22 +289,15 @@ describe('Datalk execution server HTTP contract', () => {
       }),
     ));
 
-  it('characterizes the partially-created environment left by an unknown dataset', () =>
+  it('rejects an unknown dataset without creating an environment', () =>
     Effect.runPromise(
       Effect.gen(function* () {
         const chatId = newChatId('unknown-dataset');
 
-        const failedCreate = yield* createEnvironment(chatId, 'missing-dataset');
-        assert.deepEqual(failedCreate, {
-          status: 500,
-          contentType: 'text/plain; charset=utf-8',
-          allow: null,
-          body: 'Internal Server Error',
+        assertJsonResponse(yield* createEnvironment(chatId, 'missing-dataset'), 404, {
+          detail: 'Unknown dataset: missing-dataset',
         });
-        assertJsonResponse(yield* environmentExists(chatId), 200, true);
-        assertJsonResponse(yield* createEnvironment(chatId, 'missing-dataset'), 200, {
-          available_dataframes: "Error executing code: name 'pd' is not defined",
-        });
+        assertJsonResponse(yield* environmentExists(chatId), 200, false);
         assertJsonResponse(yield* destroyEnvironment(chatId), 200, null);
       }),
     ));
@@ -361,10 +354,15 @@ describe('Datalk execution server HTTP contract', () => {
           200,
           { outputs: '3736\n' },
         );
-        assertJsonResponse(yield* execute(chatId, ['SELEC 1'], 'sql'), 200, {
-          outputs:
-            'Error executing code: Parser Error: syntax error at or near "SELEC"\n\nLINE 1:  SELEC 1 \n         ^',
-        });
+        const invalidSql = yield* execute(chatId, ['SELEC 1'], 'sql');
+        assert.equal(invalidSql.status, 200);
+        assert.equal(invalidSql.contentType, 'application/json');
+        const invalidSqlOutput: unknown = JSON.parse(invalidSql.body).outputs;
+        assert.ok(typeof invalidSqlOutput === 'string');
+        assert.equal(
+          invalidSqlOutput.replace(/\s+/g, ' ').trim(),
+          'Error executing code: Parser Error: syntax error at or near "SELEC" LINE 1: SELEC 1 ^',
+        );
 
         const multilineSql = yield* execute(
           chatId,
@@ -374,13 +372,7 @@ describe('Datalk execution server HTTP contract', () => {
         assert.equal(multilineSql.status, 200);
         assert.equal(multilineSql.contentType, 'application/json');
         const multilineSqlOutput: unknown = JSON.parse(multilineSql.body).outputs;
-        assert.ok(typeof multilineSqlOutput === 'string');
-        assert.ok(
-          multilineSqlOutput === '' ||
-            /^Error executing code: unexpected indent \(\d+\.py, line 1\)$/.test(
-              multilineSqlOutput,
-            ),
-        );
+        assert.equal(multilineSqlOutput, '   game_count\n0        3736\n');
 
         assertJsonResponse(yield* createEnvironment(isolatedChatId), 200, {
           available_dataframes: availableDataframes,

@@ -67,7 +67,8 @@
             kubectl_context="${context}"
             skip_nixidy_diff=0
 
-            if ! ${kubectl} config get-contexts "$kubectl_context" >/dev/null 2>&1; then
+            if ! ${kubectl} config get-contexts "$kubectl_context" >/dev/null 2>&1 \
+              || ! ${kubectl} --context "$kubectl_context" cluster-info >/dev/null 2>&1; then
               ${
                 if skipIfUnavailable then
                   /* sh */ ''
