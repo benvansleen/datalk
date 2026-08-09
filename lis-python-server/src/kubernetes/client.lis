@@ -1,0 +1,41 @@
+import apierrors "go:k8s.io/apimachinery/pkg/api/errors"
+import "go:context"
+import core "go:k8s.io/api/core/v1"
+import coreclient "go:k8s.io/client-go/kubernetes/typed/core/v1"
+import "go:k8s.io/client-go/rest"
+import meta "go:k8s.io/apimachinery/pkg/apis/meta/v1"
+
+import "config"
+
+const WORKER_SERVICE_ACCOUNT = "datalk-worker"
+
+struct Client { core: Ref<coreclient.CoreV1Client>, namespace: string }
+
+impl Client {
+  fn new(ctx: context.Context, cfg: config.KubernetesConfig) -> Result<Client, error> {
+    let rest_config = rest.InClusterConfig()?
+    let kubeclient = coreclient.NewForConfig(rest_config)?
+    let client = Client { core: kubeclient, namespace: cfg.execution_namespace }
+    client.ensure_worker_service_account(ctx)?
+
+    Ok(client)
+  }
+
+  #[allow(let_and_return)]
+  fn ensure_worker_service_account(self, ctx: context.Context) -> Result<(), error> {
+    let accounts = self.core.ServiceAccounts(self.namespace)
+    let account = core.ServiceAccount {
+      ObjectMeta: meta.ObjectMeta { Name: WORKER_SERVICE_ACCOUNT, .. },
+      AutomountServiceAccountToken: Some(false),
+      ..,
+    }
+
+    let result = match accounts.Create(ctx, &account, meta.CreateOptions { .. }) {
+      Ok(_) => Ok(()),
+      Err(err) if apierrors.IsAlreadyExists(err) => Ok(()),
+      Err(err) => Err(err),
+    }
+
+    result
+  }
+}

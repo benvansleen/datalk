@@ -1,0 +1,36 @@
+import "go:io"
+import "go:mime"
+import "go:net/http"
+
+enum BodyError {
+  Missing,
+  TooLarge,
+  InvalidJson(string),
+}
+
+fn read_body(request: Ref<http.Request>, max_request_bytes: int64) -> Result<Slice<byte>, BodyError> {
+  let Some(body) = request.Body else {
+    return Err(BodyError.Missing)
+  }
+
+  let limited = io.LimitReader(body, max_request_bytes + 1)
+  let data = match io.ReadAll(limited) {
+    Partial.Ok(data) => data,
+    Partial.Err(err) | Partial.Both(_, err) => {
+      return Err(BodyError.InvalidJson(err.Error()))
+    },
+  }
+  if data.length() > max_request_bytes as int { return Err(BodyError.TooLarge) }
+  if data.is_empty() { return Err(BodyError.Missing) }
+
+  Ok(data)
+}
+
+fn require_json_content_type(request: Ref<http.Request>) -> bool {
+  let content_type = request.Header.Get("Content-type")
+  let parsed = mime.ParseMediaType(content_type)
+  match parsed {
+    Ok((media_type, _)) => media_type == "application/json",
+    _ => false,
+  }
+}

@@ -1,0 +1,118 @@
+import "go:net/http"
+
+import env "environments"
+
+fn write_environment_error(
+  writer: http.ResponseWriter,
+  err: env.EnvironmentError,
+) {
+  match err {
+    env.EnvironmentError.NotCreated(chat_id) => write_detail(
+      writer,
+      http.StatusBadRequest,
+      f"Execution environment not yet created for {chat_id}",
+    ),
+    env.EnvironmentError.UnknownDataset(name) => write_detail(
+      writer,
+      http.StatusNotFound,
+      f"Unknown dataset: {name}",
+    ),
+    env.EnvironmentError.DatasetMismatch { expected, actual } => write_detail(
+      writer,
+      http.StatusConflict,
+      f"Execution environment uses dataset {expected}, not {actual}",
+    ),
+    env.EnvironmentError.NotReady(_) => write_detail(
+      writer,
+      http.StatusServiceUnavailable,
+      "Execution environment is not ready",
+    ),
+    env.EnvironmentError.StartupTimedOut => write_detail(
+      writer,
+      http.StatusGatewayTimeout,
+      "Execution environment startup timed out",
+    ),
+    env.EnvironmentError.Runtime(err) => write_runtime_error(writer, err),
+    env.EnvironmentError.Worker(err) => write_worker_error(writer, err),
+  }
+}
+
+fn write_runtime_error(writer: http.ResponseWriter, err: env.RuntimeError) {
+  match err {
+    env.RuntimeError.CapacityExceeded => write_detail(
+      writer,
+      http.StatusServiceUnavailable,
+      "Execution capacity exceeded",
+    ),
+    env.RuntimeError.Conflict => write_detail(
+      writer,
+      http.StatusConflict,
+      "Execution environment conflict",
+    ),
+    env.RuntimeError.NotFound => write_detail(
+      writer,
+      http.StatusNotFound,
+      "Execution environment not found",
+    ),
+    env.RuntimeError.Terminated(_) => write_detail(
+      writer,
+      http.StatusServiceUnavailable,
+      "Execution environment terminated",
+    ),
+    env.RuntimeError.TimedOut => write_detail(
+      writer,
+      http.StatusGatewayTimeout,
+      "Execution runtime operation timed out",
+    ),
+    env.RuntimeError.Unavailable(_) => write_detail(
+      writer,
+      http.StatusServiceUnavailable,
+      "Execution runtime unavailable",
+    ),
+    env.RuntimeError.Internal(_) => write_detail(
+      writer,
+      http.StatusInternalServerError,
+      "Internal Server Error",
+    ),
+  }
+}
+
+fn write_worker_error(writer: http.ResponseWriter, err: env.WorkerError) {
+  match err {
+    env.WorkerError.TimedOut => write_detail(
+      writer,
+      http.StatusBadRequest,
+      "Code execution timed out",
+    ),
+    env.WorkerError.Unavailable(_) => write_detail(
+      writer,
+      http.StatusServiceUnavailable,
+      "Execution worker unavailable",
+    ),
+    env.WorkerError.Authentication => write_detail(
+      writer,
+      http.StatusBadGateway,
+      "Execution worker unavailable",
+    ),
+    env.WorkerError.InvalidRequest(_) => write_detail(
+      writer,
+      http.StatusBadGateway,
+      "Execution worker rejected request",
+    ),
+    env.WorkerError.InvalidResponse(_) => write_detail(
+      writer,
+      http.StatusBadGateway,
+      "Invalid response from execution worker",
+    ),
+    env.WorkerError.CheckpointFailed(_) => write_detail(
+      writer,
+      http.StatusInternalServerError,
+      "Failed to persist execution state",
+    ),
+    env.WorkerError.Internal(_) => write_detail(
+      writer,
+      http.StatusBadGateway,
+      "Execution worker failed",
+    ),
+  }
+}

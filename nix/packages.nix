@@ -10,6 +10,25 @@
       url = "github:nlewo/nix2container";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    pyproject-nix = {
+      url = "github:pyproject-nix/pyproject.nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+    pyproject-build-systems = {
+      url = "github:pyproject-nix/build-system-pkgs";
+      inputs = {
+        nixpkgs.follows = "nixpkgs";
+        pyproject-nix.follows = "pyproject-nix";
+        uv2nix.follows = "uv2nix";
+      };
+    };
+    uv2nix = {
+      url = "github:pyproject-nix/uv2nix";
+      inputs = {
+        nixpkgs.follows = "nixpkgs";
+        pyproject-nix.follows = "pyproject-nix";
+      };
+    };
   };
 
   perSystem =
@@ -22,7 +41,8 @@
     {
       packages = {
         ui = pkgs.callPackage ../ui inputs;
-        python-server = pkgs.callPackage ../python-server inputs;
+        lis-python-server = pkgs.callPackage ../lis-python-server inputs;
+        lis-python-worker = pkgs.callPackage ../lis-python-server/worker inputs;
 
         datalk-image = inputs'.nix2container.packages.nix2container.buildImage {
           name = "datalk";
@@ -71,17 +91,37 @@
           };
         };
 
-        python-server-image = inputs'.nix2container.packages.nix2container.buildImage {
-          name = "python-server";
+        lis-python-server-image = inputs'.nix2container.packages.nix2container.buildImage {
+          name = "lis-python-server";
           tag = "local";
           copyToRoot = pkgs.buildEnv {
-            name = "python-server-image-root";
-            paths = with self'.packages; [
-              python-server
-              pkgs.gnutar
-            ];
+            name = "lis-python-server-image-root";
+            paths = [ self'.packages.lis-python-server ];
+            pathsToLink = [ "/" ];
           };
-          config.Cmd = [ "/bin/server" ];
+          config = {
+            Cmd = [ "/bin/lis-python-server" ];
+            Env = [ "SSL_CERT_FILE=${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt" ];
+            User = "1000:1000";
+          };
+        };
+
+        lis-python-worker-image = inputs'.nix2container.packages.nix2container.buildImage {
+          name = "lis-python-worker";
+          tag = "local";
+          copyToRoot = pkgs.buildEnv {
+            name = "lis-python-worker-image-root";
+            paths = [ self'.packages.lis-python-worker ];
+            pathsToLink = [ "/" ];
+          };
+          config = {
+            Cmd = [ "/bin/datalk-worker" ];
+            Env = [
+              "PYTHONDONTWRITEBYTECODE=1"
+              "PYTHONUNBUFFERED=1"
+            ];
+            User = "1000:1000";
+          };
         };
       };
     };

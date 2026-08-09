@@ -1,0 +1,25 @@
+import "go:crypto/hmac"
+import "go:crypto/sha256"
+import "go:encoding/hex"
+import "go:errors"
+import "go:os"
+
+pub struct Auth { key: Slice<byte> }
+
+impl Auth {
+  pub fn new(path: string) -> Result<Auth, error> {
+    let key = os.ReadFile(path)?
+    if key.length() < 32 {
+      Err(errors.New("worker authentication key must contain at least 32 bytes"))
+    } else {
+      Ok(Auth { key })
+    }
+  }
+
+  pub fn token(self, environment_id: string) -> string {
+    let mac = hmac.New(sha256.New, self.key)
+    let _ = mac.Write(f"datalk-worker-v1\x00{environment_id}" as Slice<byte>)
+
+    hex.EncodeToString(mac.Sum([]))
+  }
+}

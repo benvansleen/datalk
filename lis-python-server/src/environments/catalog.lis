@@ -1,0 +1,116 @@
+import "go:encoding/json"
+import "go:os"
+import "go:path/filepath"
+import "go:strings"
+
+pub struct FileDatasetCatalog {
+  datasets: Map<string, Dataset>,
+  dataset_names: Slice<string>,
+}
+
+#[display]
+pub enum DataCatalogError {
+  UnreadableFile { path: string, error: string },
+  InvalidJson(string),
+  Empty,
+  Missing { field: string },
+  Invalid { field: string, error: string },
+  DuplicateName(string),
+  DuplicatePath(string),
+}
+
+impl FileDatasetCatalog {
+  fn find(self, name: string) -> Option<Dataset> {
+    self.datasets.get(name)
+  }
+
+  fn names(self) -> Slice<string> {
+    self.dataset_names.clone()
+  }
+
+  pub fn load(path: string) -> Result<FileDatasetCatalog, DataCatalogError> {
+    let data = os
+      .ReadFile(path)
+      .map_err(|err| DataCatalogError.UnreadableFile {
+        path,
+        error: err.Error(),
+      })?
+    let mut raw: Slice<RawDataset> = []
+    json
+      .Unmarshal(data, &raw)
+      .map_err(|err| DataCatalogError.InvalidJson(err.Error()))?
+    if raw.is_empty() { return Err(DataCatalogError.Empty) }
+
+    let mut datasets = Map.new()
+    let mut paths = Map.new()
+    let mut dataset_names = Slice.new<string>().reserve(raw.length())
+
+    for (index, entry) in raw.enumerate() {
+      let name_field = f"datasets[{index}].name"
+      let path_field = f"datasets[{index}].relative_path"
+
+      let name = entry.name.ok_or(
+        DataCatalogError.Missing { field: name_field },
+      )?
+
+      match strings.TrimSpace(name) {
+        "" => return Err(
+          DataCatalogError.Invalid {
+            field: name_field,
+            error: "must not be empty",
+          },
+        ),
+        trimmed if trimmed != name => return Err(
+          DataCatalogError.Invalid {
+            field: name_field,
+            error: "must not have leading or trailing whitespace",
+          },
+        ),
+        trimmed if datasets.get(trimmed).is_some() => return Err(
+          DataCatalogError.DuplicateName(trimmed),
+        ),
+        _ => (),
+      }
+
+      let relative_path = entry.relative_path.ok_or(
+        DataCatalogError.Missing { field: path_field },
+      )?
+      match filepath.Clean(relative_path) {
+        "." => return Err(
+          DataCatalogError.Invalid {
+            field: path_field,
+            error: "must not be empty",
+          },
+        ),
+        cleaned if cleaned != relative_path => return Err(
+          DataCatalogError.Invalid {
+            field: path_field,
+            error: "must be a canonical relative path",
+          },
+        ),
+        cleaned if !filepath.IsLocal(cleaned) => return Err(
+          DataCatalogError.Invalid {
+            field: path_field,
+            error: "must be a local relative path",
+          },
+        ),
+        cleaned if paths.get(cleaned).is_some() => return Err(
+          DataCatalogError.DuplicatePath(cleaned),
+        ),
+        _ => (),
+      }
+
+      datasets[name] = Dataset { name, relative_path }
+      paths[relative_path] = true
+      dataset_names = dataset_names.append(name)
+    }
+
+    Ok(FileDatasetCatalog { datasets, dataset_names })
+  }
+}
+
+#[json]
+struct RawDataset {
+  pub name: Option<string>,
+  pub relative_path: Option<string>,
+}

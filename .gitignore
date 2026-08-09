@@ -18,3 +18,7 @@ certs/
 *.pyc
 .ipynb_checkpoints/
 *.csv
+
+*/target/
+
+**/*.egg-info/

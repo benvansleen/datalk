@@ -6,6 +6,10 @@
       inherit (self.gcloud) name;
     in
     {
+      data.google_compute_network.default = {
+        inherit (self.gcloud) project;
+        name = "default";
+      };
       resource = {
         google_project_service = {
           artifactregistry = {
@@ -25,6 +29,19 @@
         google_service_account.gke_nodes = {
           inherit (self.gcloud) project;
           account_id = "${name}-gke-nodes";
+        };
+
+        google_compute_subnetwork.datalk = {
+          inherit (self.gcloud) project;
+          name = "datalk";
+          region = self.gcloud.region;
+          network = /* terraform */ "\${data.google_compute_network.default.self_link}";
+          ip_cidr_range = "10.0.0.0/20";
+          private_ip_google_access = true;
+
+          depends_on = [
+            "google_project_service.compute"
+          ];
         };
 
         google_artifact_registry_repository.${name} = {
@@ -55,6 +72,9 @@
           deletion_protection = false;
 
           networking_mode = "VPC_NATIVE";
+          subnetwork = /* terraform */ "\${google_compute_subnetwork.datalk.name}";
+
+          addons_config.gcs_fuse_csi_driver_config.enabled = true;
 
           release_channel.channel = "REGULAR";
 
@@ -63,6 +83,7 @@
           depends_on = [
             "google_project_service.compute"
             "google_project_service.container"
+            "google_compute_subnetwork.datalk"
           ];
         };
 

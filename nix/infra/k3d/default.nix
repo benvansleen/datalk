@@ -28,7 +28,8 @@
         imgs = with self.packages.${system}; [
           datalk-image
           datalk-dev-image
-          python-server-image
+          lis-python-server-image
+          lis-python-worker-image
         ];
         imageKey = img: lib.replaceStrings [ "-" ] [ "_" ] img.imageName;
         pushImage = img: {

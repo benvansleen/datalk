@@ -1,0 +1,230 @@
+import "go:context"
+import "go:crypto/sha256"
+import "go:encoding/hex"
+import "go:time"
+
+import telemetryapi "telemetry"
+
+pub struct Service {
+  runtime: Runtime,
+  worker: Worker,
+  catalog: DatasetCatalog,
+  startup_timeout: time.Duration,
+  telemetry: telemetryapi.Runtime,
+}
+
+pub struct Environment {
+  pub available_dataframes: string,
+}
+
+pub enum Language {
+  Python,
+  Sql,
+}
+
+pub struct Execution {
+  pub code: Slice<string>,
+  pub language: Language,
+}
+
+pub struct ExecutionResult {
+  pub outputs: string,
+}
+
+#[display]
+pub enum EnvironmentError {
+  DatasetMismatch { expected: string, actual: string },
+  NotCreated(string),
+  NotReady(string),
+  Runtime(RuntimeError),
+  StartupTimedOut,
+  UnknownDataset(string),
+  Worker(WorkerError),
+}
+
+impl Service {
+  pub fn new(
+    runtime: Runtime,
+    worker: Worker,
+    catalog: DatasetCatalog,
+    startup_timeout: time.Duration,
+    telemetry: telemetryapi.Runtime,
+  ) -> Service {
+    Service { runtime, worker, catalog, startup_timeout, telemetry }
+  }
+
+  pub fn list_datasets(self) -> Slice<string> {
+    self.catalog.names()
+  }
+
+  pub fn exists(self, ctx: context.Context, chat_id: string) -> Result<bool, EnvironmentError> {
+    let (ctx, span) = self.telemetry.start(ctx, "environment.exists")
+    defer span.end()
+    let environment_id = environment_id(chat_id)
+    span.attribute("environment.id", environment_id)
+    match self.runtime
+      .find(ctx, environment_id)
+      .map_err(EnvironmentError.Runtime)? {
+      Some(runtime) => Ok(
+        runtime.state == RuntimeState.Ready ||
+        runtime.state == RuntimeState.Pending,
+      ),
+      None => Ok(false),
+    }
+  }
+
+  pub fn create(
+    self,
+    ctx: context.Context,
+    chat_id: string,
+    dataset_name: string,
+  ) -> Result<Environment, EnvironmentError> {
+    let (ctx, span) = self.telemetry.start(ctx, "environment.create")
+    defer span.end()
+    let Some(dataset) = self.catalog.find(dataset_name) else {
+      return Err(EnvironmentError.UnknownDataset(dataset_name))
+    }
+
+    let environment_id = environment_id(chat_id)
+    span.attribute("environment.id", environment_id)
+    span.attribute("dataset.name", dataset_name)
+    let spec = RuntimeSpec {
+      environment_id,
+      dataset,
+      checkpoint_name: f"state-{environment_id}",
+    }
+    let runtime = self.find_or_start(ctx, spec)?
+
+    self.describe(ctx, self.wait_until_ready(ctx, runtime)?)
+  }
+
+  pub fn destroy(self, ctx: context.Context, chat_id: string) -> Result<(), EnvironmentError> {
+    let (ctx, span) = self.telemetry.start(ctx, "environment.destroy")
+    defer span.end()
+    let environment_id = environment_id(chat_id)
+    span.attribute("environment.id", environment_id)
+    self.runtime.stop(ctx, environment_id).map_err(EnvironmentError.Runtime)?
+    self.runtime
+      .delete_checkpoint(ctx, environment_id)
+      .map_err(EnvironmentError.Runtime)?
+
+    Ok(())
+  }
+
+  pub fn execute(
+    self,
+    ctx: context.Context,
+    chat_id: string,
+    execution: Execution,
+  ) -> Result<ExecutionResult, EnvironmentError> {
+    let (ctx, span) = self.telemetry.start(ctx, "environment.execute")
+    defer span.end()
+    let environment_id = environment_id(chat_id)
+    span.attribute("environment.id", environment_id)
+    let language = match execution.language {
+      Language.Python => "python",
+      Language.Sql => "sql",
+    }
+    span.attribute("execution.language", language)
+    let found_runtime = match self.runtime
+      .find(ctx, environment_id)
+      .map_err(EnvironmentError.Runtime)? {
+      Some(runtime) => runtime,
+      None => return Err(EnvironmentError.NotCreated(chat_id)),
+    }
+
+    let ready_runtime = match found_runtime.state {
+      RuntimeState.Ready => found_runtime,
+      RuntimeState.Pending => self.wait_until_ready(ctx, found_runtime)?,
+      RuntimeState.Terminal => {
+        return Err(EnvironmentError.NotCreated(chat_id))
+      },
+    }
+
+    self.worker
+      .execute(ctx, ready_runtime, execution)
+      .map_err(EnvironmentError.Worker)
+  }
+
+  fn find_or_start(self, ctx: context.Context, spec: RuntimeSpec) -> Result<RuntimeInfo, EnvironmentError> {
+    match self.runtime
+      .find(ctx, spec.environment_id)
+      .map_err(EnvironmentError.Runtime)? {
+      Some(runtime) => self.reuse_or_replace(ctx, runtime, spec),
+      None => self.start(ctx, spec),
+    }
+  }
+
+  fn reuse_or_replace(
+    self,
+    ctx: context.Context,
+    runtime: RuntimeInfo,
+    spec: RuntimeSpec,
+  ) -> Result<RuntimeInfo, EnvironmentError> {
+    if runtime.dataset != spec.dataset.name {
+      return Err(
+        EnvironmentError.DatasetMismatch {
+          expected: runtime.dataset,
+          actual: spec.dataset.name,
+        },
+      )
+    }
+
+    match runtime.state {
+      RuntimeState.Pending | RuntimeState.Ready => Ok(runtime),
+      RuntimeState.Terminal => {
+        self.runtime
+          .stop(ctx, spec.environment_id)
+          .map_err(EnvironmentError.Runtime)?
+        self.start(ctx, spec)
+      },
+    }
+  }
+
+  fn start(self, ctx: context.Context, spec: RuntimeSpec) -> Result<RuntimeInfo, EnvironmentError> {
+    self.runtime.ensure_checkpoint(ctx, spec).map_err(EnvironmentError.Runtime)?
+    match self.runtime.start(ctx, spec) {
+      Ok(runtime) => Ok(runtime),
+      Err(RuntimeError.Conflict) => {
+        let runtime = self.runtime
+            .find(ctx, spec.environment_id)
+            .map_err(EnvironmentError.Runtime)?.ok_or(
+          EnvironmentError.Runtime(RuntimeError.Conflict),
+        )?
+        self.reuse_or_replace(ctx, runtime, spec)
+      },
+      Err(err) => Err(EnvironmentError.Runtime(err)),
+    }
+  }
+
+  fn wait_until_ready(self, ctx: context.Context, runtime: RuntimeInfo) -> Result<RuntimeInfo, EnvironmentError> {
+    match runtime.state {
+      RuntimeState.Ready => Ok(runtime),
+      RuntimeState.Pending => {
+        self.runtime
+          .wait_until_ready(ctx, runtime.environment_id, self.startup_timeout)
+          .map_err(|err| match err {
+            RuntimeError.TimedOut => EnvironmentError.StartupTimedOut,
+            _ => EnvironmentError.Runtime(err),
+          })
+      },
+      _ => Err(EnvironmentError.Runtime(RuntimeError.Terminated(
+        runtime.environment_id,
+      ))),
+    }
+  }
+
+  fn describe(self, ctx: context.Context, runtime: RuntimeInfo) -> Result<Environment, EnvironmentError> {
+    let metadata = self.worker
+      .metadata(ctx, runtime)
+      .map_err(EnvironmentError.Worker)?
+
+    Ok(Environment { available_dataframes: metadata.available_dataframes })
+  }
+}
+
+fn environment_id(chat_id: string) -> string {
+  let hasher = sha256.New()
+  let _ = hasher.Write(chat_id as Slice<byte>)
+  hex.EncodeToString(hasher.Sum([])).substring(0..52)
+}

@@ -45,7 +45,7 @@ export const POST: RequestHandler = async ({ request, params, locals, url }) => 
   return Exit.match(
     await runEffectExit(
       Effect.gen(function* () {
-        yield* Effect.annotateCurrentSpan({ userId: user.id, chatId, content });
+        yield* Effect.annotateCurrentSpan({ userId: user.id, chatId });
 
         yield* requireChatOwnership(user.id, chatId);
 

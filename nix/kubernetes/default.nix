@@ -20,7 +20,7 @@
           cloudnative-pg
           datalk
           external-secrets
-          python-server
+          lis-python-server
           tailscale-operator
           valkey
         ];
@@ -55,7 +55,10 @@
           external-secrets.enable = true;
           python-server = {
             enable = true;
-            image = self.image-uri self.packages.x86_64-linux.python-server-image;
+            image = self.image-uri self.packages.x86_64-linux.lis-python-server-image;
+            workerImage = self.image-uri self.packages.x86_64-linux.lis-python-worker-image;
+            datasetGcsBucket = "datalk-datasets";
+            checkpointStorageClass = "standard";
           };
           tailscale-operator.enable = true;
           valkey.enable = true;
@@ -70,7 +73,8 @@
         imports = with self.modules.kubernetes; [
           cloudnative-pg
           datalk
-          python-server
+          lis-python-server
+          observability
           valkey
         ];
         nixidy = {
@@ -82,6 +86,7 @@
         };
         modules = {
           cloudnative-pg.enable = true;
+          observability.enable = true;
           datalk = {
             enable = true;
             dev.enable = hotReload;
@@ -96,7 +101,9 @@
           };
           python-server = {
             enable = true;
-            image = self.local-image-uri self.packages.x86_64-linux.python-server-image;
+            image = self.local-image-uri self.packages.x86_64-linux.lis-python-server-image;
+            workerImage = self.local-image-uri self.packages.x86_64-linux.lis-python-worker-image;
+            datasetHostPath = "/workspace/datalk/datasets";
           };
           valkey.enable = true;
         };
@@ -162,7 +169,7 @@
           {
             type = "app";
             program =
-              (pkgs.writeShellScript "generate-crds" /* bash */ ''
+              (pkgs.writeShellScript "generate-crds" /* sh */ ''
                 set -eo pipefail
 
                 mkdir -p "${generatedOutputDir}"

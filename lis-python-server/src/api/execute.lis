@@ -1,0 +1,101 @@
+import "go:encoding/json"
+import "go:net/http"
+
+import "environments"
+
+fn execute(
+  writer: http.ResponseWriter,
+  request: Ref<http.Request>,
+  service: Ref<environments.Service>,
+  max_request_bytes: int64,
+) {
+  if !require_json_content_type(request) {
+    write_detail(
+      writer,
+      http.StatusUnsupportedMediaType,
+      "Unsupported Media Type",
+    )
+    return
+  }
+
+  let data = match read_body(request, max_request_bytes) {
+    Ok(data) => data,
+    Err(BodyError.Missing) => {
+      missing_body(writer)
+      return
+    },
+    Err(BodyError.TooLarge) => {
+      write_detail(
+        writer,
+        http.StatusRequestEntityTooLarge,
+        "Request body too large",
+      )
+      return
+    },
+    Err(BodyError.InvalidJson(_)) => {
+      invalid_json(writer)
+      return
+    },
+  }
+
+  let mut input = Map.new<string, Unknown>()
+  if let Err(_) = json.Unmarshal(data, &input) {
+    invalid_json(writer)
+    return
+  }
+
+  let mut payload = RawExecuteRequest { .. }
+  if let Err(_) = json.Unmarshal(data, &payload) {
+    invalid_json(writer)
+    return
+  }
+
+  let Some(raw_chat_id) = payload.chat_id else {
+    missing_body_field(writer, "chat_id", data)
+    return
+  }
+  let mut chat_id = ""
+  if let Err(_) = json.Unmarshal(raw_chat_id, &chat_id) {
+    invalid_string_type(writer, "chat_id", raw_chat_id)
+    return
+  }
+
+  let Some(raw_code) = payload.code else {
+    missing_body_field(writer, "code", data)
+    return
+  }
+  let mut code: Slice<string> = []
+  if let Err(_) = json.Unmarshal(raw_code, &code) {
+    invalid_code_type(writer, raw_code)
+    return
+  }
+
+  let Some(raw_language) = payload.language else {
+    missing_body_field(writer, "language", data)
+    return
+  }
+  let mut language_name = ""
+  if let Err(_) = json.Unmarshal(raw_language, &language_name) {
+    invalid_string_type(writer, "language", raw_language)
+    return
+  }
+
+  let language = match language_name {
+    "python" => environments.Language.Python,
+    "sql" => environments.Language.Sql,
+    _ => {
+      invalid_language(writer, language_name)
+      return
+    },
+  }
+
+  let execution = environments.Execution { code, language }
+  match service.execute(request.Context(), chat_id, execution) {
+    Ok(result) => write_json(
+      writer,
+      http.StatusOK,
+      ExecutionResponse { outputs: result.outputs },
+    ),
+    Err(err) => write_environment_error(writer, err),
+  }
+}

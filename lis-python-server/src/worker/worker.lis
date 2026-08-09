@@ -1,0 +1,41 @@
+import "go:context"
+
+import "config"
+import env "environments"
+import telemetryapi "telemetry"
+
+pub struct Worker { client: Client }
+
+impl Worker {
+  pub fn new(
+    worker: config.WorkerConfig,
+    environments: config.EnvironmentConfig,
+    kubernetes: config.KubernetesConfig,
+    auth: Auth,
+    telemetry: telemetryapi.Runtime,
+  ) -> Worker {
+    Worker {
+      client: Client.new(
+        auth,
+        worker.port,
+        kubernetes.request_timeout,
+        environments.execution_timeout,
+        environments.startup_timeout,
+        telemetry,
+      ),
+    }
+  }
+
+  fn metadata(self, ctx: context.Context, runtime: env.RuntimeInfo) -> Result<env.DataframeMetadata, env.WorkerError> {
+    self.client.metadata(ctx, runtime)
+  }
+
+  fn execute(
+    self,
+    ctx: context.Context,
+    runtime: env.RuntimeInfo,
+    request: env.Execution,
+  ) -> Result<env.ExecutionResult, env.WorkerError> {
+    self.client.execute(ctx, runtime, request)
+  }
+}

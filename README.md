@@ -6,7 +6,7 @@
 - `nix run .#tf-[apply|destroy]`: deploy/destroy `terranix` configuration
 - `nix run .#containers -- create --start`: spin up `docker compose`-like development containers (eg for db, redis)
 - `nix run .#ui`: build & launch the SvelteKit application
-- `nix run .#python-server`: build & launch the remote-execution python server
+- `nix run .#lis-python-server`: build & launch the remote-execution python server
   - *NB: This is explicitly remote code execution over http! Must sandbox!*
 - `nix run .#push-images-local`: build & push the production-style & development local k3d images
 - `nixosConfigurations.ui`: main NixOS system serving the SvelteKit application

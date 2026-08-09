@@ -9,7 +9,6 @@
 
   perSystem =
     {
-      self',
       pkgs,
       lib,
       ...
@@ -124,9 +123,6 @@
             postgres.command = "${lib.getExe postgresScript}";
             redis.command = "${lib.getExe redisScript}";
             jaeger.command = "${lib.getExe jaegerScript}";
-            python-server = {
-              command = "cd ./python-server && ${lib.getExe self'.packages.python-server}";
-            };
           };
         };
       };

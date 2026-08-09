@@ -17,19 +17,26 @@
     {
       projectRootFile = "flake.nix";
       settings = {
-        formatter.oxfmt = {
-          command = lib.getExe (
-            pkgs.callPackage ./_oxfmt.nix {
-              inherit (lib) removePrefix;
-              inherit (inputs.gitignore.lib) gitignoreSource;
-            }
-          );
-          includes = [
-            "**/*.css"
-            "**/*.js"
-            "**/*.ts"
-            "**/*.svelte"
-          ];
+        formatter = {
+          lisfmt = {
+            command = lib.getExe pkgs.lisette;
+            options = [ "format" ];
+            includes = [ "**/*.lis" ];
+          };
+          oxfmt = {
+            command = lib.getExe (
+              pkgs.callPackage ./_oxfmt.nix {
+                inherit (lib) removePrefix;
+                inherit (inputs.gitignore.lib) gitignoreSource;
+              }
+            );
+            includes = [
+              "**/*.css"
+              "**/*.js"
+              "**/*.ts"
+              "**/*.svelte"
+            ];
+          };
         };
         global.excludes = [
           ".envrc"

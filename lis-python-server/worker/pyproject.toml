@@ -1,0 +1,24 @@
+[project]
+name = "worker"
+version = "0.1.0"
+requires-python = ">=3.13"
+dependencies = [
+    "cloudpickle>=3.1.2",
+    "duckdb>=1.5.5",
+    "fastapi>=0.141.1",
+    "ipykernel>=7.3.0",
+    "jupyter-client>=8.9.1",
+    "pandas>=3.0.5",
+    "pydantic>=2.13.4",
+    "uvicorn>=0.52.1",
+]
+
+[project.scripts]
+datalk-worker = "worker.__main__:main"
+
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]

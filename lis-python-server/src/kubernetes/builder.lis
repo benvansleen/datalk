@@ -1,0 +1,291 @@
+import core "go:k8s.io/api/core/v1"
+import "go:fmt"
+import intstr "go:k8s.io/apimachinery/pkg/util/intstr"
+import meta "go:k8s.io/apimachinery/pkg/apis/meta/v1"
+import "go:time"
+
+import "config"
+import env "environments"
+import workerapi "worker"
+
+const WORKER_CONTAINER_NAME = "python"
+
+const DATASET_VOLUME_NAME = "dataset"
+
+const CHECKPOINT_VOLUME_NAME = "checkpoint"
+
+const TMP_VOLUME_NAME = "tmp"
+
+const CHECKPOINT_MOUNT_PATH = "/state"
+
+const CHECKPOINT_FILE_PATH = "/state/checkpoint.pkl"
+
+const TMP_MOUNT_PATH = "/tmp"
+
+const WORKER_UID: int64 = 1000
+
+const WORKER_GID: int64 = 1000
+
+struct Builder {
+  worker: config.WorkerConfig,
+  environments: config.EnvironmentConfig,
+  storage: config.StorageConfig,
+  datasets: config.DatasetConfig,
+  auth: workerapi.Auth,
+  resources: core.ResourceRequirements,
+  spec: env.RuntimeSpec,
+  pod_name: string,
+}
+
+impl Builder {
+  fn new(
+    worker: config.WorkerConfig,
+    environments: config.EnvironmentConfig,
+    storage: config.StorageConfig,
+    datasets: config.DatasetConfig,
+    auth: workerapi.Auth,
+    resources: core.ResourceRequirements,
+    spec: env.RuntimeSpec,
+    pod_name: string,
+  ) -> Builder {
+    Builder {
+      worker,
+      environments,
+      storage,
+      datasets,
+      auth,
+      resources,
+      spec,
+      pod_name,
+    }
+  }
+
+  fn build(self) -> core.Pod {
+    let mut labels = Map.new()
+    labels["app.kubernetes.io/name"] = "datalk-python-worker"
+    labels["app.kubernetes.io/component"] = "execution-environment"
+    labels[ENVIRONMENT_ANNOTATION] = self.spec.environment_id
+
+    let mut annotations = Map.new()
+    annotations[ENVIRONMENT_ANNOTATION] = self.spec.environment_id
+    annotations[DATASET_ANNOTATION] = self.spec.dataset.name
+    annotations[CHECKPOINT_ANNOTATION] = self.spec.checkpoint_name
+
+    if self.storage.use_gcs_fuse {
+      annotations["gke-gcsfuse/volumes"] = "true"
+      // TODO: lift to service configmap
+      annotations["gke-gcsfuse/ephemeral-storage-request"] = "256Mi"
+      annotations["gke-gcsfuse/ephemeral-storage-limit"] = "0"
+    }
+
+    let pod_security = pod_security_context()
+    let container = self.build_container()
+
+    core.Pod {
+      ObjectMeta: meta.ObjectMeta {
+        Name: self.pod_name,
+        Labels: labels,
+        Annotations: annotations,
+        ..,
+      },
+      Spec: core.PodSpec {
+        Volumes: self.build_volumes(),
+        Containers: [container],
+        RestartPolicy: core.RestartPolicyNever,
+        TerminationGracePeriodSeconds: Some(TERMINATION_GRACE_SECONDS),
+        ServiceAccountName: WORKER_SERVICE_ACCOUNT,
+        AutomountServiceAccountToken: Some(false),
+        EnableServiceLinks: Some(false),
+        RuntimeClassName: self.worker.runtime_class,
+        SecurityContext: Some(&pod_security),
+        ..,
+      },
+      ..,
+    }
+  }
+
+  fn build_container(self) -> core.Container {
+    let startup_probe = http_probe(
+      "/readyz",
+      2,
+      1,
+      startup_failure_threshold(self.environments.startup_timeout),
+    )
+
+    let readiness_probe = http_probe("/readyz", 2, 1, 2)
+
+    let liveness_probe = http_probe("/livez", 10, 2, 3)
+
+    let security = container_security_context()
+
+    core.Container {
+      Name: WORKER_CONTAINER_NAME,
+      Image: self.worker.image,
+      ImagePullPolicy: core.PullIfNotPresent,
+      Ports: [
+        core.ContainerPort {
+          Name: "http",
+          ContainerPort: self.worker.port as int32,
+          Protocol: core.ProtocolTCP,
+          ..,
+        },
+      ],
+      Env: self.build_environment(),
+      VolumeMounts: self.build_volume_mounts(),
+      Resources: self.resources,
+      StartupProbe: Some(&startup_probe),
+      ReadinessProbe: Some(&readiness_probe),
+      LivenessProbe: Some(&liveness_probe),
+      SecurityContext: Some(&security),
+      ..,
+    }
+  }
+
+  fn build_environment(self) -> Slice<core.EnvVar> {
+    [
+      env_var("DATALK_WORKER_TOKEN", self.auth.token(self.spec.environment_id)),
+      env_var("DATALK_ENVIRONMENT_ID", self.spec.environment_id),
+      env_var("DATALK_DATASET_PATH", self.datasets.mount_path),
+      env_var("DATALK_CHECKPOINT_PATH", CHECKPOINT_FILE_PATH),
+      env_var(
+        "DATALK_EXECUTION_TIMEOUT_SECONDS",
+        fmt.Sprint(self.environments.execution_timeout.Seconds()),
+      ),
+      env_var(
+        "DATALK_IDLE_TIMEOUT_SECONDS",
+        fmt.Sprint(self.environments.idle_timeout.Seconds()),
+      ),
+      env_var("DATALK_PORT", fmt.Sprint(self.worker.port)),
+      env_var("HOME", "/tmp/home"),
+      env_var("JUPYTER_RUNTIME_DIR", "/tmp/jupyter/runtime"),
+      env_var("MPLCONFIGDIR", "/tmp/matplotlib"),
+      env_var("PYTHONDONTWRITEBYTECODE", "1"),
+      env_var("PYTHONUNBUFFERED", "1"),
+    ]
+  }
+
+  fn build_volumes(self) -> Slice<core.Volume> {
+    [
+      core.Volume {
+        Name: DATASET_VOLUME_NAME,
+        VolumeSource: core.VolumeSource {
+          PersistentVolumeClaim: Some(
+            &core.PersistentVolumeClaimVolumeSource {
+              ClaimName: self.storage.dataset_claim,
+              ReadOnly: true,
+            },
+          ),
+          ..,
+        },
+        ..,
+      },
+      core.Volume {
+        Name: CHECKPOINT_VOLUME_NAME,
+        VolumeSource: core.VolumeSource {
+          PersistentVolumeClaim: Some(
+            &core.PersistentVolumeClaimVolumeSource {
+              ClaimName: self.spec.checkpoint_name,
+              ReadOnly: false,
+            },
+          ),
+          ..,
+        },
+        ..,
+      },
+      core.Volume {
+        Name: TMP_VOLUME_NAME,
+        VolumeSource: core.VolumeSource {
+          EmptyDir: Some(&core.EmptyDirVolumeSource { .. }),
+          ..,
+        },
+        ..,
+      },
+    ]
+  }
+
+  fn build_volume_mounts(self) -> Slice<core.VolumeMount> {
+    [
+      core.VolumeMount {
+        Name: DATASET_VOLUME_NAME,
+        MountPath: self.datasets.mount_path,
+        SubPath: self.spec.dataset.relative_path,
+        ReadOnly: true,
+        ..,
+      },
+      core.VolumeMount {
+        Name: CHECKPOINT_VOLUME_NAME,
+        MountPath: CHECKPOINT_MOUNT_PATH,
+        ReadOnly: false,
+        ..,
+      },
+      core.VolumeMount {
+        Name: TMP_VOLUME_NAME,
+        MountPath: TMP_MOUNT_PATH,
+        ReadOnly: false,
+        ..,
+      },
+    ]
+  }
+}
+
+fn pod_security_context() -> core.PodSecurityContext {
+  core.PodSecurityContext {
+    RunAsUser: Some(WORKER_UID),
+    RunAsGroup: Some(WORKER_GID),
+    RunAsNonRoot: Some(true),
+    FSGroup: Some(WORKER_GID),
+    FSGroupChangePolicy: Some(core.FSGroupChangeOnRootMismatch),
+    SeccompProfile: Some(
+      &core.SeccompProfile { Type: core.SeccompProfileTypeRuntimeDefault, .. },
+    ),
+    ..,
+  }
+}
+
+fn container_security_context() -> core.SecurityContext {
+  core.SecurityContext {
+    Capabilities: Some(&core.Capabilities { Drop: ["ALL"], .. }),
+    Privileged: Some(false),
+    RunAsUser: Some(WORKER_UID),
+    RunAsGroup: Some(WORKER_GID),
+    RunAsNonRoot: Some(true),
+    ReadOnlyRootFilesystem: Some(true),
+    AllowPrivilegeEscalation: Some(false),
+    ..,
+  }
+}
+
+fn http_probe(
+  path: string,
+  period_seconds: int32,
+  timeout_seconds: int32,
+  failure_threshold: int32,
+) -> core.Probe {
+  let action = core.HTTPGetAction {
+    Path: path,
+    Port: intstr.FromString("http"),
+    Scheme: core.URISchemeHTTP,
+    ..,
+  }
+
+  core.Probe {
+    ProbeHandler: core.ProbeHandler { HTTPGet: Some(&action), .. },
+    InitialDelaySeconds: 0,
+    PeriodSeconds: period_seconds,
+    TimeoutSeconds: timeout_seconds,
+    SuccessThreshold: 1,
+    FailureThreshold: failure_threshold,
+    ..,
+  }
+}
+
+fn startup_failure_threshold(timeout: time.Duration) -> int32 {
+  let seconds = timeout.Seconds()
+  let threshold = ((seconds + 1.0) / 2.0) as int32
+
+  if threshold < 1 { 1 } else { threshold }
+}
+
+fn env_var(name: string, value: string) -> core.EnvVar {
+  core.EnvVar { Name: name, Value: value, .. }
+}

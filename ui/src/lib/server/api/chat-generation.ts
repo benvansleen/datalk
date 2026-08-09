@@ -107,13 +107,25 @@ export const generateResponse = Effect.fn('generateResponse')(function* (
   const stream = yield* agent.run(chatId, dataset, currentMessage);
 
   // Process each stream part and publish to Redis
-  const runStream = Stream.runForEach(stream, (part) => {
-    const event = streamPartToEvent(part);
-    return Option.match(event, {
-      onSome: (event) => publishGenerationEvent(messageId, event),
-      onNone: () => Effect.void,
-    });
-  }).pipe(
+  const runStream = Effect.useSpan(
+    'chat.generation.publishes',
+    {
+      attributes: {
+        chatId,
+        'chat.message_request.id': messageId,
+      },
+      kind: 'producer',
+    },
+    (publishSpan) =>
+      Stream.runForEach(stream, (part) => {
+        const event = streamPartToEvent(part);
+        return Option.match(event, {
+          onSome: (event) =>
+            publishGenerationEvent(messageId, event).pipe(Effect.withParentSpan(publishSpan)),
+          onNone: () => Effect.void,
+        });
+      }),
+  ).pipe(
     Effect.catchAllCause((cause) =>
       finalizeGeneration(userId, chatId, messageId, Cause.pretty(cause)).pipe(
         Effect.andThen(Effect.failCause(cause)),
