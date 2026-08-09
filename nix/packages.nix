@@ -41,7 +41,6 @@
     {
       packages = {
         ui = pkgs.callPackage ../ui inputs;
-        python-server = pkgs.callPackage ../python-server inputs;
         lis-python-server = pkgs.callPackage ../lis-python-server inputs;
         lis-python-worker = pkgs.callPackage ../lis-python-server/worker inputs;
 
@@ -123,19 +122,6 @@
             ];
             User = "1000:1000";
           };
-        };
-
-        python-server-image = inputs'.nix2container.packages.nix2container.buildImage {
-          name = "python-server";
-          tag = "local";
-          copyToRoot = pkgs.buildEnv {
-            name = "python-server-image-root";
-            paths = with self'.packages; [
-              python-server
-              pkgs.gnutar
-            ];
-          };
-          config.Cmd = [ "/bin/server" ];
         };
       };
     };

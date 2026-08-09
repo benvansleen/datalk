@@ -28,7 +28,6 @@
           datalk-image
           lis-python-server-image
           lis-python-worker-image
-          python-server-image
         ];
         imageKey = img: lib.replaceStrings [ "-" ] [ "_" ] img.imageName;
         pushImage = img: {
@@ -74,6 +73,7 @@
         imports = with self.modules.infra; [
           production-k8s
           production-secrets
+          production-datasets
         ];
 
         config = {
@@ -88,6 +88,7 @@
               depends_on = [
                 "google_container_cluster.${self.gcloud.name}"
                 "terraform_data.propagate_secrets"
+                "terraform_data.push_datasets"
               ]
               ++ map (img: "terraform_data.push_${imageKey img}") imgs;
             };

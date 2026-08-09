@@ -4,8 +4,13 @@ This suite characterizes the execution server exclusively through its HTTP API. 
 import server code, inspect server files, or start a particular implementation.
 
 The target must provide the current `College Football 2025` dataset and be listening before the
-tests start. From this repository, start the current implementation with `nix run ..#python-server`
-while the working directory is `python-server/`.
+tests start. From this repository, run the `local` Kubernetes environment (k3d) and forward the
+`python-server` service:
+
+```sh
+kubectl --context k3d-datalk-local port-forward -n datalk svc/python-server 9000:8000
+DATALK_SERVER_URL=http://127.0.0.1:9000 npm test
+```
 
 Run the TypeScript suite from this directory with Node.js 22 or newer. The HTTP driver, request
 sequencing, failure channel, and cleanup are implemented with Effect:

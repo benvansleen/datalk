@@ -62,6 +62,7 @@ pub struct StorageConfig {
   pub dataset_claim: string,
   pub checkpoint_storage_class: string,
   pub checkpoint_size: string,
+  pub use_gcs_fuse: bool,
 }
 
 pub struct DatasetConfig {
@@ -283,6 +284,7 @@ pub struct RawStorageConfig {
   pub dataset_claim: Option<string>,
   pub checkpoint_storage_class: Option<string>,
   pub checkpoint_size: Option<string>,
+  pub use_gcs_fuse: Option<bool>,
 }
 
 impl RawStorageConfig {
@@ -301,6 +303,7 @@ impl RawStorageConfig {
           "storage.checkpoint_size",
           self.checkpoint_size,
         )?,
+        use_gcs_fuse: self.use_gcs_fuse.unwrap_or(false),
       },
     )
   }

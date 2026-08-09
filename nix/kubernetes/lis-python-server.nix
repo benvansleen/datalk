@@ -1,3 +1,5 @@
+{ self, ... }:
+
 {
   flake.modules.kubernetes.lis-python-server =
     { config, lib, ... }:
@@ -20,6 +22,14 @@
         };
         datasetHostPath = mkOption {
           type = types.str;
+        };
+        datasetGcsBucket = mkOption {
+          type = types.nullOr types.str;
+          default = null;
+        };
+        checkpointStorageClass = mkOption {
+          type = types.str;
+          default = "local-path";
         };
         maxWorkers = mkOption {
           type = types.ints.positive;
@@ -66,13 +76,14 @@
                 cpu_limit = "1";
                 memory_request = "512Mi";
                 memory_limit = "1Gi";
-                ephemeral_storage_limit = "1Gi";
+                ephemeral_storage_limit = "256Mi";
               };
             };
             storage = {
               dataset_claim = datasetClaim;
-              checkpoint_storage_class = "local-path";
+              checkpoint_storage_class = cfg.checkpointStorageClass;
               checkpoint_size = "256Mi";
+              use_gcs_fuse = cfg.datasetGcsBucket != null;
             };
             datasets = {
               catalog_path = "/etc/datalk/datasets.json";
@@ -98,6 +109,7 @@
                   python-server-datasets.data."datasets.json" = datasetCatalog;
                 };
 
+                ## TODO: move to ESO/local-secrets
                 secrets.python-worker-auth = {
                   type = "Opaque";
                   stringData.worker-auth-key = "datalk-local-worker-auth-key-change-me";
@@ -203,7 +215,11 @@
               createNamespace = true;
 
               resources = {
-                serviceAccounts.datalk-worker.automountServiceAccountToken = false;
+                serviceAccounts.datalk-worker = {
+                  automountServiceAccountToken = false;
+                  metadata.annotations."iam.gke.io/gcp-service-account" =
+                    "datalk-datasets@${self.gcloud.project}.iam.gserviceaccount.com";
+                };
 
                 roles.python-server-controller.rules = [
                   {
@@ -251,11 +267,28 @@
                   accessModes = [ "ReadOnlyMany" ];
                   persistentVolumeReclaimPolicy = "Retain";
                   storageClassName = "";
-                  hostPath = {
-                    path = cfg.datasetHostPath;
-                    type = "Directory";
-                  };
-                };
+                }
+                // (
+                  if cfg.datasetGcsBucket != null then
+                    {
+                      mountOptions = [ "implicit-dirs" ];
+                      csi = {
+                        driver = "gcsfuse.csi.storage.gke.io";
+                        volumeHandle = cfg.datasetGcsBucket;
+                        readOnly = true;
+                        volumeAttributes = {
+                          bucketName = cfg.datasetGcsBucket;
+                        };
+                      };
+                    }
+                  else
+                    {
+                      hostPath = {
+                        path = cfg.datasetHostPath;
+                        type = "Directory";
+                      };
+                    }
+                );
 
                 persistentVolumeClaims.${datasetClaim}.spec = {
                   accessModes = [ "ReadOnlyMany" ];
@@ -292,7 +325,39 @@
                       ];
                     }
                   ];
-                  egress = [ ];
+                  # TODO: don't hardcode these ips inline
+                  egress =
+                    if cfg.datasetGcsBucket != null then
+                      [
+                        {
+                          to = [
+                            {
+                              ipBlock.cidr = "169.254.169.254/32";
+                            }
+                          ];
+                          ports = [
+                            {
+                              protocol = "TCP";
+                              port = 80;
+                            }
+                          ];
+                        }
+                        {
+                          to = [
+                            {
+                              ipBlock.cidr = "199.36.153.8/30";
+                            }
+                          ];
+                          ports = [
+                            {
+                              protocol = "TCP";
+                              port = 443;
+                            }
+                          ];
+                        }
+                      ]
+                    else
+                      [ ];
                 };
               };
             };

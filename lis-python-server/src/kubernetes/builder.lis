@@ -71,6 +71,13 @@ impl Builder {
     annotations[DATASET_ANNOTATION] = self.spec.dataset.name
     annotations[CHECKPOINT_ANNOTATION] = self.spec.checkpoint_name
 
+    if self.storage.use_gcs_fuse {
+      annotations["gke-gcsfuse/volumes"] = "true"
+      // TODO: lift to service configmap
+      annotations["gke-gcsfuse/ephemeral-storage-request"] = "256Mi"
+      annotations["gke-gcsfuse/ephemeral-storage-limit"] = "0"
+    }
+
     let pod_security = pod_security_context()
     let container = self.build_container()
 

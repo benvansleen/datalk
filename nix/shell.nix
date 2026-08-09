@@ -23,7 +23,6 @@
 
             uv
 
-            self'.packages.python-server
             self'.packages.dev-services
             (python313.withPackages (
               pypkg: with pypkg; [
