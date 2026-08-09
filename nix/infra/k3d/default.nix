@@ -8,14 +8,12 @@
 
     modules.infra.k3d =
       {
-        config,
         pkgs,
         lib,
         ...
       }:
       let
         inherit (pkgs.stdenv.hostPlatform) system;
-        kubectl = lib.getExe pkgs.kubectl;
 
         registriesConf = pkgs.writeText "registries.conf" /* toml */ ''
           unqualified-search-registries = ["docker.io"]
@@ -60,35 +58,13 @@
         pushImages = builtins.listToAttrs (map pushImage imgs);
       in
       {
-        options = with lib; {
-          context = mkOption {
-            type = types.str;
-          };
-          manifest = mkOption {
-            type = types.package;
-          };
-        };
-
         imports = with self.modules.infra; [
           k3d-cluster
           k3d-secrets
         ];
 
         config = {
-          resource.terraform_data = pushImages // {
-            apply_local = {
-              triggers_replace.manifest = toString config.manifest;
-              provisioner.local-exec.command = /* sh */ ''
-                ${kubectl} config use-context "${config.context}"
-                ${config.manifest}/apply
-              '';
-              depends_on = [
-                "terraform_data.k3d_cluster"
-                "terraform_data.local_secrets"
-              ]
-              ++ map (img: "terraform_data.push_${imageKey img}") imgs;
-            };
-          };
+          resource.terraform_data = pushImages;
         };
       };
   };

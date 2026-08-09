@@ -18,7 +18,6 @@
       let
         inherit (pkgs.stdenv.hostPlatform) system;
         gcloud = lib.getExe pkgs.google-cloud-sdk;
-        kubectl = lib.getExe pkgs.kubectl;
 
         registriesConf = pkgs.writeText "registries.conf" /* toml */ ''
           unqualified-search-registries = ["docker.io"]
@@ -57,19 +56,6 @@
         pushImages = builtins.listToAttrs (map pushImage imgs);
       in
       {
-        options = with lib; {
-          context = mkOption {
-            type = types.str;
-          };
-          manifest = mkOption {
-            type = types.package;
-          };
-          prepareContext = mkOption {
-            type = types.str;
-            default = "";
-          };
-        };
-
         imports = with self.modules.infra; [
           production-k8s
           production-secrets
@@ -78,21 +64,6 @@
 
         config = {
           resource.terraform_data = pushImages // {
-            apply = {
-              triggers_replace.manifest = toString config.manifest;
-              provisioner.local-exec.command = /* sh */ ''
-                ${config.prepareContext}
-                ${kubectl} config use-context "${config.context}"
-                ${config.manifest}/apply
-              '';
-              depends_on = [
-                "google_container_cluster.${self.gcloud.name}"
-                "terraform_data.propagate_secrets"
-                "terraform_data.push_datasets"
-              ]
-              ++ map (img: "terraform_data.push_${imageKey img}") imgs;
-            };
-
             propagate_secrets =
               let
                 secretsFile = "../../.env.prod.k8s";
@@ -107,7 +78,6 @@
                   ${self.apps.${system}.populate-prod-secrets.program} "${secretsFile}"
                 '';
               };
-
           };
         };
       };

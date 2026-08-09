@@ -24,6 +24,18 @@
                 ];
               }
             );
+
+            terraform-providers = prev.terraform-providers // {
+              alekc_kubectl = prev.terraform-providers.mkProvider {
+                owner = "alekc";
+                repo = "terraform-provider-kubectl";
+                rev = "v2.4.1";
+                hash = "sha256-Lq17X+9TQbDNqZbT3OGooa9zwpRCip1gvWpyNmqPZ08=";
+                vendorHash = "sha256-+i5snU9JvT8iQPdm61IHvV/Z/eFJiT5fbKldLNhaYsM=";
+                homepage = "https://registry.terraform.io/providers/alekc/kubectl";
+                spdx = "MPL-2.0";
+              };
+            };
           })
         ];
       };
