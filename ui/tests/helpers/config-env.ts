@@ -14,7 +14,6 @@ export const stubConfigEnv = () => {
   vi.stubEnv('PYTHON_SERVER_PORT', '8000');
   vi.stubEnv('ENVIRONMENT', 'test');
   vi.stubEnv('OPENAI_API_KEY', 'test-key');
-  vi.stubEnv('CELLD_AUTH_SECRET', 'test-celld-auth-secret');
   vi.stubEnv('INTERNAL_PROJECTION_SECRET', 'test-internal-projection-secret');
 };
 

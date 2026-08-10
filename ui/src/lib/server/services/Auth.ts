@@ -99,11 +99,23 @@ export class Auth extends Effect.Service<Auth>()('app/Auth', {
       );
     });
 
+    const verifySessionCookie = Effect.fn('Auth.verifySessionCookie')(function* (cookie: string) {
+      const session = yield* getSession(new Headers({ cookie }));
+      return Option.map(session, ({ session: s, user }) => ({
+        userId: user.id,
+        expiresAt:
+          s.expiresAt instanceof Date
+            ? Math.floor(s.expiresAt.getTime() / 1000)
+            : Number(s.expiresAt),
+      }));
+    });
+
     return {
       signup,
       login,
       logout,
       getSession,
+      verifySessionCookie,
       __raw: auth,
     } as const;
   }),

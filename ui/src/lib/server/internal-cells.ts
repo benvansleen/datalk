@@ -1,8 +1,58 @@
 import postgres from 'postgres';
-import { Effect, Redacted, Schema } from 'effect';
+import { Effect, Match, Redacted, Schema } from 'effect';
 import { Config } from './services/Config';
+import type { TextPartContent, ToolCallPartContent, ToolResultPartContent } from './db/schema';
 
 const encoder = new TextEncoder();
+
+const base64UrlEncode = (value: Uint8Array): string =>
+  btoa(String.fromCharCode(...value))
+    .replaceAll('+', '-')
+    .replaceAll('/', '_')
+    .replaceAll('=', '');
+
+const constantTimeEqual = (left: Uint8Array, right: Uint8Array): boolean => {
+  if (left.byteLength !== right.byteLength) return false;
+  let difference = 0;
+  for (let index = 0; index < left.byteLength; index += 1) difference |= left[index] ^ right[index];
+  return difference === 0;
+};
+
+const constantTimeEqualStrings = (left: string, right: string): boolean =>
+  constantTimeEqual(encoder.encode(left), encoder.encode(right));
+
+const sha256 = (value: string): Effect.Effect<Uint8Array> =>
+  Effect.promise(() =>
+    crypto.subtle.digest('SHA-256', encoder.encode(value)).then((digest) => new Uint8Array(digest)),
+  );
+
+const hmacSha256 = (secret: string, message: string): Effect.Effect<Uint8Array> =>
+  Effect.promise(() =>
+    crypto.subtle
+      .importKey('raw', encoder.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'])
+      .then((key) =>
+        crypto.subtle
+          .sign('HMAC', key, encoder.encode(message))
+          .then((signature) => new Uint8Array(signature)),
+      ),
+  );
+
+export const internalSignature = (
+  secret: string,
+  method: string,
+  pathname: string,
+  body: string,
+  timestamp: string,
+): Effect.Effect<string> =>
+  Effect.gen(function* () {
+    const digest = yield* sha256(body);
+    const signature = yield* hmacSha256(
+      secret,
+      `${timestamp}\n${method}\n${pathname}\n${base64UrlEncode(digest)}`,
+    );
+    return base64UrlEncode(signature);
+  });
+
 const MAX_CLOCK_SKEW_MS = 30_000;
 
 export class InternalCellError extends Schema.TaggedError<InternalCellError>()(
@@ -54,20 +104,6 @@ export const ProjectionRequest = Schema.Struct({
 });
 export type ProjectionRequest = typeof ProjectionRequest.Type;
 
-const base64Url = (bytes: Uint8Array) =>
-  btoa(String.fromCharCode(...bytes))
-    .replaceAll('+', '-')
-    .replaceAll('/', '_')
-    .replaceAll('=', '');
-
-const equal = (left: string, right: string) => {
-  if (left.length !== right.length) return false;
-  let result = 0;
-  for (let index = 0; index < left.length; index += 1)
-    result |= left.charCodeAt(index) ^ right.charCodeAt(index);
-  return result === 0;
-};
-
 export const verifyInternalCellRequest = (request: Request, body: string) =>
   Effect.gen(function* () {
     const config = yield* Config;
@@ -84,27 +120,14 @@ export const verifyInternalCellRequest = (request: Request, body: string) =>
         new InternalCellError({ status: 401, message: 'Expired internal signature' }),
       );
     }
-    const bodyHash = base64Url(
-      new Uint8Array(
-        yield* Effect.promise(() => crypto.subtle.digest('SHA-256', encoder.encode(body))),
-      ),
+    const expected = yield* internalSignature(
+      Redacted.value(config.internalProjectionSecret),
+      request.method,
+      new URL(request.url).pathname,
+      body,
+      timestamp,
     );
-    const key = yield* Effect.promise(() =>
-      crypto.subtle.importKey(
-        'raw',
-        encoder.encode(Redacted.value(config.internalProjectionSecret)),
-        { name: 'HMAC', hash: 'SHA-256' },
-        false,
-        ['sign'],
-      ),
-    );
-    const canonical = `${timestamp}\n${request.method}\n${new URL(request.url).pathname}\n${bodyHash}`;
-    const expected = base64Url(
-      new Uint8Array(
-        yield* Effect.promise(() => crypto.subtle.sign('HMAC', key, encoder.encode(canonical))),
-      ),
-    );
-    if (!equal(signature, expected)) {
+    if (!constantTimeEqualStrings(signature, expected)) {
       return yield* Effect.fail(
         new InternalCellError({ status: 401, message: 'Invalid internal signature' }),
       );
@@ -114,15 +137,7 @@ export const verifyInternalCellRequest = (request: Request, body: string) =>
 const withSql = <A>(run: (sql: postgres.Sql) => Promise<A>) =>
   Effect.gen(function* () {
     const config = yield* Config;
-    const sql = postgres({
-      host: process.env.DB_HOST,
-      port: Number(process.env.DB_PORT),
-      user: process.env.DB_USER,
-      password: process.env.DB_PASSWORD,
-      database: process.env.DB_NAME,
-      ssl: false,
-      max: 1,
-    });
+    const sql = postgres(Redacted.value(config.databaseUrl), { max: 1 });
     return yield* Effect.acquireUseRelease(
       Effect.succeed(sql),
       (client) =>
@@ -161,21 +176,56 @@ const applySnapshot = async (sql: postgres.TransactionSql, snapshot: ProjectedCh
       VALUES (${snapshot.id}::uuid, ${message.role}, ${sequence}, ${new Date(message.createdAt)})
       RETURNING id
     `;
-    if (message.role === 'tool') {
+    const parts = Match.value(message.role).pipe(
+      Match.when(
+        'tool',
+        (): ReadonlyArray<{ type: string; sequence: number; content: postgres.JSONValue }> => {
+          if (!message.toolCallId || !message.toolName) {
+            throw new InternalCellError({
+              status: 400,
+              message: 'Tool message is missing toolCallId or toolName',
+            });
+          }
+          const parts: Array<{ type: string; sequence: number; content: postgres.JSONValue }> = [
+            {
+              type: 'tool-call',
+              sequence: 0,
+              content: {
+                id: message.toolCallId,
+                name: message.toolName,
+                params: message.toolArguments,
+              } satisfies ToolCallPartContent as postgres.JSONValue,
+            },
+          ];
+          if (message.toolResult !== undefined) {
+            parts.push({
+              type: 'tool-result',
+              sequence: 1,
+              content: {
+                id: message.toolCallId,
+                name: message.toolName,
+                result: message.toolResult,
+                isFailure: message.toolFailed ?? false,
+              } satisfies ToolResultPartContent as postgres.JSONValue,
+            });
+          }
+          return parts;
+        },
+      ),
+      Match.orElse(
+        (): ReadonlyArray<{ type: string; sequence: number; content: postgres.JSONValue }> => [
+          {
+            type: 'text',
+            sequence: 0,
+            content: { text: message.content } satisfies TextPartContent,
+          },
+        ],
+      ),
+    );
+    for (const part of parts) {
       await sql`
         INSERT INTO chat_message_part (message_id, type, sequence, content)
-        VALUES (${stored.id}, 'tool-call', 0, ${sql.json({ id: message.toolCallId, name: message.toolName, params: message.toolArguments } as never)})
-      `;
-      if (message.toolResult !== undefined) {
-        await sql`
-          INSERT INTO chat_message_part (message_id, type, sequence, content)
-          VALUES (${stored.id}, 'tool-result', 1, ${sql.json({ id: message.toolCallId, name: message.toolName, result: message.toolResult, isFailure: message.toolFailed ?? false } as never)})
-        `;
-      }
-    } else {
-      await sql`
-        INSERT INTO chat_message_part (message_id, type, sequence, content)
-        VALUES (${stored.id}, 'text', 0, ${sql.json({ text: message.content })})
+        VALUES (${stored.id}, ${part.type}, ${part.sequence}, ${sql.json(part.content)})
       `;
     }
   }

@@ -7,18 +7,17 @@
   import * as Select from '$lib/components/shadcn/select/index.js';
   import Separator from '$lib/components/shadcn/separator/separator.svelte';
   import ChatSummary from '$lib/components/chat-summary.svelte';
-  import { LiveClient, createChat, deleteChat, type LiveChatSummary } from '$lib/live/client';
+  import {
+    LiveClient,
+    createChat,
+    deleteChat,
+    reduceChats,
+    toLiveChats,
+    type LiveChatSummary,
+  } from '$lib/live/client';
 
   let { data }: PageProps = $props();
-  let chats = $state<LiveChatSummary[]>(
-    data.chats.map((chat) => ({
-      id: chat.id,
-      dataset: chat.dataset,
-      title: chat.title ?? '...',
-      generating: chat.currentMessageRequest !== null,
-      updatedAt: chat.updatedAt.getTime(),
-    })),
-  );
+  let chats = $state<LiveChatSummary[]>(toLiveChats(data.chats));
   let dataset = $state('');
   let error = $state('');
   const triggerContent = $derived(
@@ -31,23 +30,7 @@
     const client = new LiveClient(
       () => '/live/socket',
       (message) => {
-        if (!message || typeof message !== 'object' || !('type' in message) || !('data' in message))
-          return;
-        const wire = message as {
-          type: string;
-          data: LiveChatSummary | LiveChatSummary[] | { chatId: string };
-        };
-        if (wire.type === 'snapshot' && Array.isArray(wire.data)) chats = wire.data;
-        if (
-          (wire.type === 'chat-created' || wire.type === 'chat-status') &&
-          !Array.isArray(wire.data)
-        )
-          chats = [
-            wire.data as LiveChatSummary,
-            ...chats.filter((chat) => chat.id !== (wire.data as LiveChatSummary).id),
-          ];
-        if (wire.type === 'chat-deleted' && !Array.isArray(wire.data))
-          chats = chats.filter((chat) => chat.id !== (wire.data as { chatId: string }).chatId);
+        chats = reduceChats(chats, message);
       },
     );
     client.start();

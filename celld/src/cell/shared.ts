@@ -1,9 +1,13 @@
+import { Schema } from 'effect';
 import type { ChatMessage, ChatSummary, Env, GenerationEvent } from '../types';
 
 export const jsonHeaders = {
   'content-type': 'application/json',
   'cache-control': 'no-store',
 };
+
+export const KEY_SNAPSHOT = 'snapshot';
+export const KEY_CHAT_ID = 'chat-id';
 
 export type StoredChatSnapshot = {
   id: string;
@@ -44,16 +48,27 @@ export const summaryOf = (snapshot: StoredChatSnapshot): ChatSummary => ({
 export const isInternalRequest = (request: Request, env: Env) =>
   request.headers.get('x-datalk-internal-secret') === env.INTERNAL_CELL_SECRET;
 
-export const internalHeaders = (env: Env, userId: string): HeadersInit => ({
+export const internalHeaders = (env: Env, userId: string, chatId?: string): HeadersInit => ({
   ...jsonHeaders,
   'x-datalk-internal-secret': env.INTERNAL_CELL_SECRET,
   'x-datalk-user-id': userId,
+  ...(chatId ? { 'x-datalk-chat-id': chatId } : {}),
 });
 
-export const readField = (body: unknown, key: string): unknown =>
-  typeof body === 'object' && body !== null && key in body
-    ? (body as Record<string, unknown>)[key]
-    : undefined;
+export const decodeRequestJson = <A>(
+  schema: Schema.Schema<A>,
+  request: Request,
+): Promise<A | null> =>
+  request
+    .json()
+    .then((body) => {
+      try {
+        return Schema.decodeUnknownSync(schema)(body);
+      } catch {
+        return null;
+      }
+    })
+    .catch(() => null);
 
 export const upgradeSocket = (
   state: DurableObjectState,

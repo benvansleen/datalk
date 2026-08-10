@@ -12,14 +12,14 @@ The event log is bounded to 1,000 records and is intended for reconnect replay, 
 
 ## Required secrets and variables
 
-- `AUTH_SECRET`: HMAC key used to validate short-lived `datalk_live` JWTs minted by the SvelteKit auth service. Claims must be `{ sub, exp, aud: "datalk-live", iss: "datalk" }`.
 - `INTERNAL_CELL_SECRET`: shared secret carried only on Worker-to-cell requests. It prevents celld's public direct-DO routes from being used to bypass the live router.
+- `INTERNAL_PROJECTION_SECRET`: shared secret used to sign internal requests to SvelteKit, including forwarding the caller's session cookie to `/api/internal/auth/verify-session`.
 - `OPENAI_API_KEY`: OpenAI API key for generation.
 - `OPENAI_MODEL`: optional, defaults to `gpt-5-nano`.
 - `LIVE_ORIGIN`: public SvelteKit origin permitted to make cookie-authenticated live HTTP and WebSocket requests.
 - `PYTHON_SERVER_URL`: the existing `lis-python-server` service URL.
 
-Use celld's secret environment support for the first four values. Do not put them in `wrangler.jsonc`.
+Use celld's secret environment support for the first three values. Do not put them in `wrangler.jsonc`.
 
 ## Public API
 
@@ -27,11 +27,10 @@ Use celld's secret environment support for the first four values. Do not put the
 - `GET|POST /live/chats`
 - `DELETE /live/chats/:chatId`
 - `POST /live/chats/:chatId/messages`
-- `GET /live/chats/:chatId/events?after=<sequence>`
-- `GET /live/chats/:chatId/socket?after=<sequence>` with WebSocket upgrade
+- `GET /live/chats/:chatId/socket` with WebSocket upgrade
 - `GET /live/socket` with WebSocket upgrade
 
-All live routes except health require the short-lived session credential. The chat socket first sends a snapshot, then replays events newer than `after`; subsequent state changes are sent as snapshots. This keeps reconnection semantics explicit while the browser migration is still pending.
+All live routes except health require a valid Better Auth session cookie, verified by forwarding the caller's `cookie` header to SvelteKit's signed `/api/internal/auth/verify-session` endpoint (cached per cookie in the isolate). The chat socket first sends a snapshot, then streams generation events; subsequent state changes are sent as snapshots. Reconnects restart from the current snapshot, since the bounded event log lives inside the cell.
 
 ## Validation
 

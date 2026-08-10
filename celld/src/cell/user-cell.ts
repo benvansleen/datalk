@@ -1,14 +1,15 @@
-import { Effect } from 'effect';
-import { runEffect } from '../runtime';
+import { Effect, Exit } from 'effect';
+import { runEffectExit } from '../runtime';
 import { InternalApi } from '../services/InternalApi';
 import type { ChatSummary, Env } from '../types';
+import { CreateChatCommand } from '../types';
 import {
   broadcast,
+  decodeRequestJson,
   internalHeaders,
   isInternalRequest,
   jsonHeaders,
   pong,
-  readField,
   upgradeSocket,
 } from './shared';
 
@@ -30,7 +31,6 @@ export class UserCell implements DurableObject {
     await this.ensureHydrated(userId);
 
     const url = new URL(request.url);
-    if (request.method === 'GET' && url.pathname === '/chats') return this.listChats();
     if (request.method === 'GET' && url.pathname === '/socket') return this.upgradeSocket();
     if (request.method === 'POST' && url.pathname === '/chats') {
       return this.createChat(request, userId);
@@ -44,16 +44,12 @@ export class UserCell implements DurableObject {
     return Response.json({ error: 'Not found' }, { status: 404 });
   }
 
-  private async listChats(): Promise<Response> {
-    const chats = (await this.state.storage.get<ChatSummary[]>(KEY_CHATS)) ?? [];
-    return Response.json(chats, { headers: jsonHeaders });
-  }
-
   private async createChat(request: Request, userId: string): Promise<Response> {
-    const dataset = readField(await request.json().catch(() => undefined), 'dataset');
-    if (typeof dataset !== 'string' || dataset.length === 0) {
+    const body = await decodeRequestJson(CreateChatCommand, request);
+    if (!body) {
       return Response.json({ error: 'dataset is required' }, { status: 400 });
     }
+    const { dataset } = body;
     const chatId = crypto.randomUUID();
     const chat = this.env.CHAT_CELL.get(this.env.CHAT_CELL.idFromName(chatId));
     const initialized = await chat.fetch('https://chat-cell/initialize', {
@@ -97,15 +93,17 @@ export class UserCell implements DurableObject {
 
   private async ensureHydrated(userId: string): Promise<void> {
     if (await this.state.storage.get<boolean>(KEY_HYDRATED)) return;
-    const chats = await runEffect(
+    const hydrated = await runEffectExit(
       this.env,
       Effect.gen(function* () {
         const api = yield* InternalApi;
         return yield* api.hydrateUser(userId);
       }),
-    ).catch(() => []);
-    await this.state.storage.put(KEY_CHATS, chats as ChatSummary[]);
-    await this.state.storage.put(KEY_HYDRATED, true);
+    );
+    if (Exit.isSuccess(hydrated)) {
+      await this.state.storage.put(KEY_CHATS, hydrated.value as ChatSummary[]);
+      await this.state.storage.put(KEY_HYDRATED, true);
+    }
   }
 
   private upgradeSocket(): Response {

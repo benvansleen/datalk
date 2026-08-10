@@ -4,27 +4,23 @@ import { Agent, GenerationSink, type GenerationSinkShape } from '../services/Age
 import { InternalApi } from '../services/InternalApi';
 import { Projection } from '../services/Projection';
 import type { Env, GenerationEvent } from '../types';
+import { InitializeCommand, SubmitMessageCommand } from '../types';
 import {
+  KEY_CHAT_ID,
+  KEY_SNAPSHOT,
   broadcast,
+  decodeRequestJson,
   emptySnapshot,
   internalHeaders,
   isInternalRequest,
   jsonHeaders,
   pong,
-  readField,
   summaryOf,
   upgradeSocket,
   type StoredChatSnapshot,
 } from './shared';
 
 const MAX_EVENTS = 1_000;
-const KEY_SNAPSHOT = 'snapshot';
-const KEY_CHAT_ID = 'chat-id';
-
-const parseAfter = (url: URL): number => {
-  const after = Number(url.searchParams.get('after') ?? '0');
-  return Number.isSafeInteger(after) && after >= 0 ? after : 0;
-};
 
 export class ChatCell implements DurableObject {
   constructor(
@@ -57,8 +53,6 @@ export class ChatCell implements DurableObject {
     if (request.method === 'GET' && url.pathname === '/snapshot') {
       return Response.json(snapshot, { headers: jsonHeaders });
     }
-    if (request.method === 'GET' && url.pathname === '/events')
-      return this.streamEvents(snapshot, url);
     if (request.method === 'GET' && url.pathname === '/socket') return this.upgradeSocket(snapshot);
     if (request.method === 'POST' && url.pathname === '/messages') {
       return this.submitMessage(request, snapshot);
@@ -78,12 +72,11 @@ export class ChatCell implements DurableObject {
   }
 
   private async initialize(request: Request, userId: string): Promise<Response> {
-    const body = await request.json().catch(() => undefined);
-    const chatId = readField(body, 'chatId');
-    const dataset = readField(body, 'dataset');
-    if (typeof chatId !== 'string' || typeof dataset !== 'string') {
+    const body = await decodeRequestJson(InitializeCommand, request);
+    if (!body) {
       return Response.json({ error: 'chatId and dataset are required' }, { status: 400 });
     }
+    const { chatId, dataset } = body;
     const snapshot =
       (await this.state.storage.get<StoredChatSnapshot>(KEY_SNAPSHOT)) ??
       emptySnapshot(chatId, userId, dataset);
@@ -101,21 +94,15 @@ export class ChatCell implements DurableObject {
     return new Response(null, { status: 204 });
   }
 
-  private async streamEvents(snapshot: StoredChatSnapshot, url: URL): Promise<Response> {
-    return Response.json(
-      snapshot.events.filter((event) => event.sequence > parseAfter(url)),
-      { headers: jsonHeaders },
-    );
-  }
-
   private async submitMessage(request: Request, snapshot: StoredChatSnapshot): Promise<Response> {
-    const content = readField(await request.json().catch(() => undefined), 'content');
-    if (typeof content !== 'string' || content.length === 0 || content.length > 32_000) {
+    const body = await decodeRequestJson(SubmitMessageCommand, request);
+    if (!body) {
       return Response.json(
         { error: 'content must be between 1 and 32000 characters' },
         { status: 400 },
       );
     }
+    const { content } = body;
     if (snapshot.generating) {
       return Response.json({ error: 'Already generating a response' }, { status: 409 });
     }
@@ -200,7 +187,11 @@ export class ChatCell implements DurableObject {
         return yield* projection.enqueueProjection(state, snapshot);
       }),
     );
-    await this.notifyUser(snapshot);
+    this.state.waitUntil(
+      this.notifyUser(snapshot).catch((error) => {
+        console.error('User cell notification failed', error);
+      }),
+    );
     this.broadcast({ type: 'snapshot', data: snapshot });
   }
 

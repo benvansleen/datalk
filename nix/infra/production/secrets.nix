@@ -125,7 +125,6 @@
           GCLOUD = "${lib.getExe pkgs.google-cloud-sdk}" # noqa
           SECRET_IDS = {
               "BETTER_AUTH_SECRET": "better-auth-secret",
-              "CELLD_AUTH_SECRET": "celld-auth-secret",
               "INTERNAL_CELL_SECRET": "internal-cell-secret",
               "INTERNAL_PROJECTION_SECRET": "internal-projection-secret",
               "OPENAI_API_KEY": "openai-api-key",

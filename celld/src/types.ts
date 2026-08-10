@@ -5,14 +5,6 @@ export class HttpError extends Schema.TaggedError<HttpError>()('HttpError', {
   message: Schema.String,
 }) {}
 
-export const LiveSession = Schema.Struct({
-  sub: Schema.String.pipe(Schema.minLength(1)),
-  exp: Schema.Number,
-  aud: Schema.Literal('datalk-live'),
-  iss: Schema.Literal('datalk'),
-});
-export type LiveSession = typeof LiveSession.Type;
-
 export const CreateChatCommand = Schema.Struct({
   dataset: Schema.String.pipe(Schema.minLength(1)),
 });
@@ -23,6 +15,12 @@ export const SubmitMessageCommand = Schema.Struct({
 });
 export type SubmitMessageCommand = typeof SubmitMessageCommand.Type;
 
+export const InitializeCommand = Schema.Struct({
+  chatId: Schema.String,
+  dataset: Schema.String,
+});
+export type InitializeCommand = typeof InitializeCommand.Type;
+
 export const ChatSummary = Schema.Struct({
   id: Schema.String,
   dataset: Schema.String,
@@ -31,6 +29,13 @@ export const ChatSummary = Schema.Struct({
   generating: Schema.Boolean,
 });
 export type ChatSummary = typeof ChatSummary.Type;
+
+export const ToolCall = Schema.Struct({
+  toolCallId: Schema.String,
+  toolName: Schema.String,
+  args: Schema.String,
+});
+export type ToolCall = typeof ToolCall.Type;
 
 export const ChatMessage = Schema.Struct({
   id: Schema.String,
@@ -42,6 +47,7 @@ export const ChatMessage = Schema.Struct({
   toolArguments: Schema.optional(Schema.Unknown),
   toolResult: Schema.optional(Schema.Unknown),
   toolFailed: Schema.optional(Schema.Boolean),
+  toolCalls: Schema.optional(Schema.Array(ToolCall)),
 });
 export type ChatMessage = typeof ChatMessage.Type;
 
@@ -53,23 +59,7 @@ export const GenerationEvent = Schema.Struct({
 });
 export type GenerationEvent = typeof GenerationEvent.Type;
 
-export const ChatSnapshot = Schema.Struct({
-  id: Schema.String,
-  userId: Schema.String,
-  dataset: Schema.String,
-  title: Schema.String,
-  deleted: Schema.Boolean,
-  generating: Schema.Boolean,
-  currentMessageRequestId: Schema.NullOr(Schema.String),
-  createdAt: Schema.Number,
-  updatedAt: Schema.Number,
-  messages: Schema.Array(ChatMessage),
-  events: Schema.Array(GenerationEvent),
-});
-export type ChatSnapshot = typeof ChatSnapshot.Type;
-
 export interface Env {
-  AUTH_SECRET: string;
   INTERNAL_CELL_SECRET: string;
   OPENAI_API_KEY?: string;
   OPENAI_MODEL?: string;

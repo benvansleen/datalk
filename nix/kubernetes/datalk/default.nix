@@ -172,13 +172,6 @@
                                 };
                               }
                               {
-                                name = "CELLD_AUTH_SECRET";
-                                valueFrom.secretKeyRef = {
-                                  name = "datalk-runtime";
-                                  key = "CELLD_AUTH_SECRET";
-                                };
-                              }
-                              {
                                 name = "INTERNAL_PROJECTION_SECRET";
                                 valueFrom.secretKeyRef = {
                                   name = "datalk-runtime";

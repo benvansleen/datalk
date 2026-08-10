@@ -15,6 +15,7 @@ vi.mock('postgres', () => ({ default: vi.fn(() => mocks.sql) }));
 
 import { Config } from '$lib/server/services/Config';
 import {
+  internalSignature,
   projectCellEvents,
   verifyInternalCellRequest,
   ProjectionRequest,
@@ -231,13 +232,7 @@ describe('cell projection ledger', () => {
     ]);
 
     const parts = findCalls(calls, 'INSERT INTO chat_message_part');
-    const partKind = (query: string) =>
-      query.includes("'tool-call'")
-        ? 'tool-call'
-        : query.includes("'tool-result'")
-          ? 'tool-result'
-          : 'text';
-    expect(parts.map((call) => [call.values[0], partKind(call.query)])).toEqual([
+    expect(parts.map((call) => [call.values[0], call.values[1]])).toEqual([
       ['message-1', 'text'],
       ['message-2', 'text'],
       ['message-3', 'tool-call'],
@@ -245,19 +240,19 @@ describe('cell projection ledger', () => {
       ['message-4', 'tool-call'],
       ['message-4', 'tool-result'],
     ]);
-    expect(parts[0].values[1]).toEqual({ text: 'Hello' });
-    expect(parts[2].values[1]).toEqual({
+    expect(parts[0].values[3]).toEqual({ text: 'Hello' });
+    expect(parts[2].values[3]).toEqual({
       id: 'tc-1',
       name: 'run_sql',
       params: { sql_statement: ['select 1'] },
     });
-    expect(parts[3].values[1]).toEqual({
+    expect(parts[3].values[3]).toEqual({
       id: 'tc-1',
       name: 'run_sql',
       result: '1',
       isFailure: false,
     });
-    expect(parts[5].values[1]).toEqual({
+    expect(parts[5].values[3]).toEqual({
       id: 'tc-2',
       name: 'run_python',
       result: 'done',
@@ -352,49 +347,19 @@ describe('projection request schema', () => {
 });
 
 describe('verifyInternalCellRequest', () => {
-  const encoder = new TextEncoder();
   const url = 'https://datalk.test/api/internal/cells/project';
   const body = '{"cellKind":"chat"}';
 
-  const base64Url = (bytes: Uint8Array) =>
-    btoa(String.fromCharCode(...bytes))
-      .replaceAll('+', '-')
-      .replaceAll('/', '_')
-      .replaceAll('=', '');
-
-  const sign = async (
-    secret: string,
-    timestamp: string,
-    method: string,
-    pathname: string,
-    payload: string,
-  ) => {
-    const hash = base64Url(
-      new Uint8Array(await crypto.subtle.digest('SHA-256', encoder.encode(payload))),
-    );
-    const key = await crypto.subtle.importKey(
-      'raw',
-      encoder.encode(secret),
-      { name: 'HMAC', hash: 'SHA-256' },
-      false,
-      ['sign'],
-    );
-    const signature = await crypto.subtle.sign(
-      'HMAC',
-      key,
-      encoder.encode(`${timestamp}\n${method}\n${pathname}\n${hash}`),
-    );
-    return base64Url(new Uint8Array(signature));
-  };
-
   const signedRequest = async (options: { secret?: string; timestamp?: string; body?: string }) => {
     const timestamp = options.timestamp ?? String(Date.now());
-    const signature = await sign(
-      options.secret ?? 'test-internal-projection-secret',
-      timestamp,
-      'POST',
-      '/api/internal/cells/project',
-      options.body ?? body,
+    const signature = await Effect.runPromise(
+      internalSignature(
+        options.secret ?? 'test-internal-projection-secret',
+        'POST',
+        '/api/internal/cells/project',
+        options.body ?? body,
+        timestamp,
+      ),
     );
     return new Request(url, {
       method: 'POST',

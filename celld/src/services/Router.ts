@@ -65,8 +65,6 @@ export class Router extends Effect.Service<Router>()('app/Router', {
         ),
       );
 
-    const listChats: Handler = (ctx) => cellRequest(userCell(ctx), '/chats', ctx.userId, ctx.env);
-
     const createChat: Handler = (ctx) =>
       http.decodeJson(ctx.request, CreateChatCommand).pipe(
         Effect.flatMap((body) =>
@@ -116,18 +114,6 @@ export class Router extends Effect.Service<Router>()('app/Router', {
       );
     };
 
-    const streamEvents: Handler = (ctx) => {
-      const chatId = ctx.params.chatId;
-      return cellRequest(
-        chatCell(ctx, chatId),
-        `/events${ctx.url.search}`,
-        ctx.userId,
-        ctx.env,
-        {},
-        chatId,
-      );
-    };
-
     const openChatSocket: Handler = (ctx) => {
       const chatId = ctx.params.chatId;
       return requireUpgrade(ctx.request).pipe(
@@ -146,7 +132,6 @@ export class Router extends Effect.Service<Router>()('app/Router', {
 
     const routes: ReadonlyArray<Route> = [
       { method: 'GET', pattern: /^\/live\/socket$/, handle: openUserSocket },
-      { method: 'GET', pattern: /^\/live\/chats$/, handle: listChats },
       { method: 'POST', pattern: /^\/live\/chats$/, handle: createChat },
       { method: 'DELETE', pattern: /^\/live\/chats\/(?<chatId>[^/]+)$/, handle: deleteChat },
       {
@@ -154,7 +139,6 @@ export class Router extends Effect.Service<Router>()('app/Router', {
         pattern: /^\/live\/chats\/(?<chatId>[^/]+)\/messages$/,
         handle: submitMessage,
       },
-      { method: 'GET', pattern: /^\/live\/chats\/(?<chatId>[^/]+)\/events$/, handle: streamEvents },
       {
         method: 'GET',
         pattern: /^\/live\/chats\/(?<chatId>[^/]+)\/socket$/,

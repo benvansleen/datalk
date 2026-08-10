@@ -34,7 +34,6 @@
             };
           };
           workerEnv = [
-            ({ name = "CELLD_VAR_AUTH_SECRET"; } // secret "CELLD_AUTH_SECRET")
             ({ name = "CELLD_VAR_INTERNAL_CELL_SECRET"; } // secret "INTERNAL_CELL_SECRET")
             ({ name = "CELLD_VAR_INTERNAL_PROJECTION_SECRET"; } // secret "INTERNAL_PROJECTION_SECRET")
             ({ name = "CELLD_VAR_OPENAI_API_KEY"; } // secret "OPENAI_API_KEY")

@@ -25,12 +25,67 @@ const aiSchema = <A, I>(schema: Schema.Schema<A, I, never>) =>
     },
   });
 
-const toModelMessages = (messages: ChatMessage[]): ModelMessage[] =>
-  messages
-    .filter(
-      (message): message is ChatMessage & { role: 'user' | 'assistant' } => message.role !== 'tool',
-    )
-    .map((message) => ({ role: message.role, content: message.content }));
+const parseToolArgs = (args: string): unknown => {
+  try {
+    return JSON.parse(args);
+  } catch {
+    return args;
+  }
+};
+
+const toModelMessages = (messages: ChatMessage[]): ModelMessage[] => {
+  const toolCallIds = new Set(
+    messages.flatMap((message) => (message.toolCalls ?? []).map((call) => call.toolCallId)),
+  );
+  return messages.flatMap((message) =>
+    Match.value(message).pipe(
+      Match.when({ role: 'user' }, (message): ModelMessage[] => [
+        { role: 'user', content: message.content },
+      ]),
+      Match.when({ role: 'tool' }, (message): ModelMessage[] =>
+        message.toolCallId && message.toolName && toolCallIds.has(message.toolCallId)
+          ? [
+              {
+                role: 'tool',
+                content: [
+                  {
+                    type: 'tool-result',
+                    toolCallId: message.toolCallId,
+                    toolName: message.toolName,
+                    output: { type: 'text', value: message.content },
+                  },
+                ],
+              },
+            ]
+          : [],
+      ),
+      Match.when({ role: 'assistant' }, (message): ModelMessage[] => {
+        const content: Array<
+          | {
+              type: 'text';
+              text: string;
+            }
+          | {
+              type: 'tool-call';
+              toolCallId: string;
+              toolName: string;
+              input: unknown;
+            }
+        > = [
+          ...(message.content ? [{ type: 'text' as const, text: message.content }] : []),
+          ...(message.toolCalls ?? []).map((call) => ({
+            type: 'tool-call' as const,
+            toolCallId: call.toolCallId,
+            toolName: call.toolName,
+            input: parseToolArgs(call.args),
+          })),
+        ];
+        return content.length > 0 ? [{ role: 'assistant', content }] : [];
+      }),
+      Match.orElse(() => []),
+    ),
+  );
+};
 
 type Model = ReturnType<ReturnType<typeof createOpenAI>['chat']>;
 
@@ -132,7 +187,7 @@ export class Agent extends Effect.Service<Agent>()('app/Agent', {
           stopWhen: isStepCount(MAX_AGENT_ITERATIONS),
         });
 
-        let assistantId: string | undefined;
+        let assistantId: Option.Option<string> = Option.none();
         yield* Stream.fromAsyncIterable(result.stream, (error) => error).pipe(
           Stream.runForEach((part) =>
             Match.value(part).pipe(
@@ -141,18 +196,18 @@ export class Agent extends Effect.Service<Agent>()('app/Agent', {
                   value.type === 'text-delta',
                 (value) =>
                   Effect.gen(function* () {
-                    if (!assistantId) {
-                      assistantId = crypto.randomUUID();
+                    if (Option.isNone(assistantId)) {
+                      const id = crypto.randomUUID();
+                      assistantId = Option.some(id);
                       snapshot.messages.push({
-                        id: assistantId,
+                        id,
                         role: 'assistant',
                         content: '',
                         createdAt: Date.now(),
                       });
                     }
-                    const index = snapshot.messages.findIndex(
-                      (message) => message.id === assistantId,
-                    );
+                    const id = Option.getOrNull(assistantId)!;
+                    const index = snapshot.messages.findIndex((message) => message.id === id);
                     if (index !== -1) {
                       const assistant = snapshot.messages[index];
                       snapshot.messages[index] = {
@@ -160,7 +215,7 @@ export class Agent extends Effect.Service<Agent>()('app/Agent', {
                         content: assistant.content + value.text,
                       };
                     }
-                    yield* sink.emit('text-delta', { id: assistantId, delta: value.text });
+                    yield* sink.emit('text-delta', { id, delta: value.text });
                   }),
               ),
               Match.when(
@@ -176,10 +231,42 @@ export class Agent extends Effect.Service<Agent>()('app/Agent', {
               Match.when(
                 (value): value is typeof part & { type: 'tool-call' } => value.type === 'tool-call',
                 (value) =>
-                  sink.emit('tool-call', {
-                    id: value.toolCallId,
-                    name: value.toolName,
-                    params: JSON.stringify(value.input),
+                  Effect.gen(function* () {
+                    const params = JSON.stringify(value.input);
+                    const assistantIdOrNull = Option.getOrNull(assistantId);
+                    const index =
+                      assistantIdOrNull === null
+                        ? -1
+                        : snapshot.messages.findIndex(
+                            (message) => message.id === assistantIdOrNull,
+                          );
+                    const toolCall = {
+                      toolCallId: value.toolCallId,
+                      toolName: value.toolName,
+                      args: params,
+                    };
+                    if (index === -1) {
+                      const id = crypto.randomUUID();
+                      assistantId = Option.some(id);
+                      snapshot.messages.push({
+                        id,
+                        role: 'assistant',
+                        content: '',
+                        createdAt: Date.now(),
+                        toolCalls: [toolCall],
+                      });
+                    } else {
+                      const assistant = snapshot.messages[index];
+                      snapshot.messages[index] = {
+                        ...assistant,
+                        toolCalls: [...(assistant.toolCalls ?? []), toolCall],
+                      };
+                    }
+                    yield* sink.emit('tool-call', {
+                      id: value.toolCallId,
+                      name: value.toolName,
+                      params,
+                    });
                   }),
               ),
               Match.when(
@@ -202,6 +289,7 @@ export class Agent extends Effect.Service<Agent>()('app/Agent', {
                       toolResult: result,
                       toolFailed: false,
                     });
+                    assistantId = Option.none();
                     yield* sink.emit('tool-result', {
                       id: value.toolCallId,
                       name: value.toolName,

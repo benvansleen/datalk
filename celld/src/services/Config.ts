@@ -5,7 +5,6 @@ export class Config extends Effect.Service<Config>()('app/Config', {
   effect: Effect.gen(function* () {
     const env = yield* Environment;
     return {
-      authSecret: Redacted.make(env.AUTH_SECRET),
       internalCellSecret: Redacted.make(env.INTERNAL_CELL_SECRET),
       openaiApiKey: Option.fromNullable(env.OPENAI_API_KEY),
       openaiModel: Option.fromNullable(env.OPENAI_MODEL),

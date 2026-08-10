@@ -171,6 +171,38 @@ describe('Auth service', () => {
     }
   });
 
+  it('resolves a session cookie to a userId and expiry', async () => {
+    const expiresAt = new Date(Date.now() + 60_000);
+    getSession.mockResolvedValueOnce({
+      session: { expiresAt },
+      user: { id: 'user-1' },
+    });
+
+    const program = Effect.gen(function* () {
+      const auth = yield* Auth;
+      return yield* auth.verifySessionCookie('better-auth.session_token=abc');
+    });
+
+    const result = await Effect.runPromise(program.pipe(Effect.provide(authLayer)));
+    expect(Option.getOrThrow(result)).toEqual({
+      userId: 'user-1',
+      expiresAt: Math.floor(expiresAt.getTime() / 1000),
+    });
+    expect(getSession).toHaveBeenCalledWith({ headers: expect.any(Headers) });
+  });
+
+  it('returns none for an unknown or expired session cookie', async () => {
+    getSession.mockResolvedValueOnce(null);
+
+    const program = Effect.gen(function* () {
+      const auth = yield* Auth;
+      return yield* auth.verifySessionCookie('better-auth.session_token=nope');
+    });
+
+    const result = await Effect.runPromise(program.pipe(Effect.provide(authLayer)));
+    expect(Option.isNone(result)).toBe(true);
+  });
+
   it('passes the application schema to the drizzle adapter', async () => {
     const { drizzleAdapter } = await import('better-auth/adapters/drizzle');
     const schema = await import('$lib/server/db/schema');

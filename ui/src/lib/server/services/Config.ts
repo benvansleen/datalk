@@ -7,7 +7,6 @@ export class Config extends Effect.Service<Config>()('Config', {
     const dbHost = yield* EffectConfig.string('DB_HOST');
     const dbPort = yield* EffectConfig.string('DB_PORT');
     const dbName = yield* EffectConfig.string('DB_NAME');
-    const celldAuthSecret = yield* EffectConfig.redacted('CELLD_AUTH_SECRET');
     const internalProjectionSecret = yield* EffectConfig.redacted('INTERNAL_PROJECTION_SECRET');
     const pythonServerHost = yield* EffectConfig.string('PYTHON_SERVER_HOST');
     const pythonServerPort = yield* EffectConfig.string('PYTHON_SERVER_PORT');
@@ -23,7 +22,6 @@ export class Config extends Effect.Service<Config>()('Config', {
         `postgres://${dbUser}:${dbPasswordValue}@${dbHost}:${dbPort}/${dbName}?sslmode=disable`,
       ),
       pythonServerUrl: `http://${pythonServerHost}:${pythonServerPort}`,
-      celldAuthSecret,
       internalProjectionSecret,
       environment,
       isProduction: environment === 'production',

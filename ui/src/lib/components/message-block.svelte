@@ -68,24 +68,23 @@ ${sql_statement.join('\n')}
       outputText = String(output.text);
     }
     if (outputText) {
+      let displayOutput = outputText;
       try {
-        const parsed = JSON.parse(outputText);
-        const outputs = parsed.outputs;
-        if (outputs) {
-          result += `
-\`\`\`
-> ${outputs}
-\`\`\`
-`;
+        const parsed = JSON.parse(outputText) as { outputs?: unknown } | null;
+        const outputs = parsed?.outputs;
+        if (Array.isArray(outputs)) {
+          displayOutput = outputs.map(String).join('\n');
+        } else if (outputs != null) {
+          displayOutput = String(outputs);
         }
       } catch {
-        // If not valid JSON, just show the raw output
-        result += `
+        // Not valid JSON, so show the raw output.
+      }
+      result += `
 \`\`\`
-> ${outputText}
+> ${displayOutput}
 \`\`\`
 `;
-      }
     }
 
     return result;

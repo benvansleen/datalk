@@ -4,46 +4,64 @@ import { Config, ConfigLive } from './Config';
 
 const encoder = new TextEncoder();
 
+const base64UrlEncode = (value: Uint8Array): string =>
+  btoa(String.fromCharCode(...value))
+    .replaceAll('+', '-')
+    .replaceAll('/', '_')
+    .replaceAll('=', '');
+
+const sha256 = (value: string): Effect.Effect<Uint8Array> =>
+  Effect.promise(() =>
+    crypto.subtle.digest('SHA-256', encoder.encode(value)).then((digest) => new Uint8Array(digest)),
+  );
+
+const hmacSha256 = (secret: string, message: string): Effect.Effect<Uint8Array> =>
+  Effect.promise(() =>
+    crypto.subtle
+      .importKey('raw', encoder.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'])
+      .then((key) =>
+        crypto.subtle
+          .sign('HMAC', key, encoder.encode(message))
+          .then((signature) => new Uint8Array(signature)),
+      ),
+  );
+
+const internalSignature = (
+  secret: string,
+  method: string,
+  pathname: string,
+  body: string,
+  timestamp: string,
+): Effect.Effect<string> =>
+  Effect.gen(function* () {
+    const digest = yield* sha256(body);
+    const signature = yield* hmacSha256(
+      secret,
+      `${timestamp}\n${method}\n${pathname}\n${base64UrlEncode(digest)}`,
+    );
+    return base64UrlEncode(signature);
+  });
+
 const ProjectionResponse = Schema.Struct({ acknowledgedSequence: Schema.Number });
+
+const VerifySessionResponse = Schema.Struct({
+  userId: Schema.String,
+  expiresAt: Schema.Number,
+});
 
 export class InternalApi extends Effect.Service<InternalApi>()('app/InternalApi', {
   effect: Effect.gen(function* () {
     const config = yield* Config;
 
-    const base64Url = (bytes: Uint8Array) =>
-      btoa(String.fromCharCode(...bytes))
-        .replaceAll('+', '-')
-        .replaceAll('/', '_')
-        .replaceAll('=', '');
-
-    const sign = (secret: string, message: string) =>
-      Effect.gen(function* () {
-        const key = yield* Effect.promise(() =>
-          crypto.subtle.importKey(
-            'raw',
-            encoder.encode(secret),
-            { name: 'HMAC', hash: 'SHA-256' },
-            false,
-            ['sign'],
-          ),
-        );
-        const signature = yield* Effect.promise(() =>
-          crypto.subtle.sign('HMAC', key, encoder.encode(message)),
-        );
-        return base64Url(new Uint8Array(signature));
-      });
-
     const signedRequest = (method: string, path: string, body = '') =>
       Effect.gen(function* () {
         const timestamp = String(Date.now());
-        const hash = base64Url(
-          new Uint8Array(
-            yield* Effect.promise(() => crypto.subtle.digest('SHA-256', encoder.encode(body))),
-          ),
-        );
-        const signature = yield* sign(
+        const signature = yield* internalSignature(
           Redacted.value(config.internalProjectionSecret),
-          `${timestamp}\n${method}\n${path}\n${hash}`,
+          method,
+          path,
+          body,
+          timestamp,
         );
         return new Request(new URL(path, config.internalApiUrl), {
           method,
@@ -99,6 +117,36 @@ export class InternalApi extends Effect.Service<InternalApi>()('app/InternalApi'
         );
       });
 
+    const verifySession = (cookie: string) =>
+      Effect.gen(function* () {
+        const response = yield* fetchInternal(
+          '/api/internal/auth/verify-session',
+          { method: 'POST', body: JSON.stringify({ cookie }) },
+          'Session verification is unavailable',
+        );
+        if (!response.ok) {
+          return yield* Effect.fail(
+            new HttpError({
+              status: response.status === 401 ? 401 : 502,
+              message:
+                response.status === 401
+                  ? 'Invalid live session'
+                  : 'Session verification was rejected',
+            }),
+          );
+        }
+        const json = yield* Effect.tryPromise({
+          try: () => response.json(),
+          catch: () =>
+            new HttpError({ status: 502, message: 'Invalid session verification response' }),
+        });
+        return yield* Schema.decodeUnknown(VerifySessionResponse)(json).pipe(
+          Effect.mapError(
+            () => new HttpError({ status: 502, message: 'Invalid session verification response' }),
+          ),
+        );
+      });
+
     const hydrate = (path: string) =>
       Effect.gen(function* () {
         const response = yield* fetchInternal(
@@ -125,7 +173,7 @@ export class InternalApi extends Effect.Service<InternalApi>()('app/InternalApi'
     const hydrateUser = (userId: string) =>
       hydrate(`/api/internal/cells/users/${encodeURIComponent(userId)}`);
 
-    return { project, hydrateChat, hydrateUser } as const;
+    return { project, verifySession, hydrateChat, hydrateUser } as const;
   }),
   dependencies: [ConfigLive],
 }) {}
