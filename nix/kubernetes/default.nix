@@ -135,6 +135,25 @@
       system,
       ...
     }:
+    let
+      seaweedfsOperatorChart =
+        let
+          src = pkgs.fetchFromGitHub {
+            owner = "seaweedfs";
+            repo = "seaweedfs-operator";
+            rev = "afef5cd8e1e6bc0f22d37b18437b5f7708ee5762";
+            hash = "sha256-up0K0UrXnMTj9LLVhSaXdeUMRcasFsiHUCogyxplKP4=";
+          };
+        in
+        pkgs.runCommand "seaweedfs-operator-chart" { } ''
+          cp -r ${src}/deploy/helm $out
+        '';
+      charts = inputs.nixhelm.chartsDerivations.${system} // {
+        seaweedfs-operator = {
+          seaweedfs-operator = seaweedfsOperatorChart;
+        };
+      };
+    in
     {
       packages = {
         nixidy = inputs'.nixidy.packages.default.overrideAttrs (old: {
@@ -144,8 +163,7 @@
 
       legacyPackages = {
         nixidyEnvs.${system} = inputs.nixidy.lib.mkEnvs {
-          inherit pkgs;
-          charts = inputs.nixhelm.chartsDerivations.${system};
+          inherit pkgs charts;
           envs = {
             default.modules = [ self.modules.kubernetes.default ];
             local.modules = [ self.modules.kubernetes.local ];
@@ -169,6 +187,10 @@
               tailscale-operator = fromChartCRD {
                 name = "tailscale";
                 chart = inputs.nixhelm.chartsDerivations.${system}.tailscale.tailscale-operator;
+              };
+              seaweedfs-operator = fromChartCRD {
+                name = "seaweedfs-operator";
+                chart = seaweedfsOperatorChart;
               };
             };
             generatedOutputDir = "nix/kubernetes/_generated";

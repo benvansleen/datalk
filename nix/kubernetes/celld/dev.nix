@@ -49,7 +49,7 @@
                   "--bucket"
                   "s3://datalk-celld"
                   "--endpoint"
-                  "http://seaweedfs-s3:8333"
+                  "http://storage-s3:8333"
                   "--region"
                   "us-east-1"
                 ];
@@ -104,7 +104,7 @@
                   "--"
                   "bash"
                   "-c"
-                  "celld deploy /app --bucket s3://datalk-celld --endpoint http://seaweedfs-s3:8333 --region us-east-1 && kill -USR1 \"$(cat /control/supervisor.pid)\""
+                  "celld deploy /app --bucket s3://datalk-celld --endpoint http://storage-s3:8333 --region us-east-1 && kill -USR1 \"$(cat /control/supervisor.pid)\""
                 ];
                 env = deployWithEsbuild;
                 volumeMounts = [

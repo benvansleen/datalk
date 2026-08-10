@@ -402,11 +402,11 @@ let
 
       options = {
         "conversionStrategy" = mkOption {
-          description = "Used to define a conversion Strategy";
+          description = "Used to define a conversion Strategy. Defaults to Default when omitted.";
           type = types.nullOr types.str;
         };
         "decodingStrategy" = mkOption {
-          description = "Used to define a decoding Strategy";
+          description = "Used to define a decoding Strategy. Defaults to None when omitted.";
           type = types.nullOr types.str;
         };
         "key" = mkOption {
@@ -445,11 +445,11 @@ let
 
       options = {
         "conversionStrategy" = mkOption {
-          description = "Used to define a conversion Strategy";
+          description = "Used to define a conversion Strategy. Defaults to Default when omitted.";
           type = types.nullOr types.str;
         };
         "decodingStrategy" = mkOption {
-          description = "Used to define a decoding Strategy";
+          description = "Used to define a decoding Strategy. Defaults to None when omitted.";
           type = types.nullOr types.str;
         };
         "name" = mkOption {
@@ -657,11 +657,11 @@ let
 
       options = {
         "conversionStrategy" = mkOption {
-          description = "Used to define a conversion Strategy";
+          description = "Used to define a conversion Strategy. Defaults to Default when omitted.";
           type = types.nullOr types.str;
         };
         "decodingStrategy" = mkOption {
-          description = "Used to define a decoding Strategy";
+          description = "Used to define a decoding Strategy. Defaults to None when omitted.";
           type = types.nullOr types.str;
         };
         "key" = mkOption {
@@ -961,11 +961,11 @@ let
           );
         };
         "target" = mkOption {
-          description = "Target specifies where to place the template result.\nFor Secret resources, common values are: \"Data\", \"Annotations\", \"Labels\".\nFor custom resources (when spec.target.manifest is set), this supports\nnested paths like \"spec.database.config\" or \"data\".";
+          description = "Target specifies where to place the template result.\nFor Secret resources the accepted values are empty, \"Data\", \"Annotations\" and \"Labels\";\nany other value is rejected because it would allow writes to privileged Secret fields.\nFor custom resources (when spec.target.manifest is set), this supports\nnested paths like \"spec.database.config\" or \"data\".";
           type = types.nullOr types.str;
         };
         "valuesDecodingStrategy" = mkOption {
-          description = "Used to define a decoding Strategy for the rendered template values.";
+          description = "Used to define a decoding Strategy for the rendered template values.\nDefaults to None when omitted.";
           type = types.nullOr types.str;
         };
       };
@@ -1270,8 +1270,8 @@ let
           type = submoduleOf "external-secrets.io.v1.ClusterSecretStoreSpecProvider";
         };
         "refreshInterval" = mkOption {
-          description = "Used to configure store refresh interval in seconds. Empty or 0 will default to the controller config.";
-          type = types.nullOr types.int;
+          description = "Used to configure store refresh interval. Accepts either an integer number\nof seconds (legacy) or a Go duration string such as \"1h\" or \"5m\". Empty or\n0 will default to the controller config.";
+          type = types.nullOr (types.either types.int types.str);
         };
         "retrySettings" = mkOption {
           description = "Used to configure HTTP retries on failures.";
@@ -1406,6 +1406,10 @@ let
         "conjur" = mkOption {
           description = "Conjur configures this store to sync secrets using conjur provider";
           type = types.nullOr (submoduleOf "external-secrets.io.v1.ClusterSecretStoreSpecProviderConjur");
+        };
+        "crd" = mkOption {
+          description = "CRD configures this store to sync secrets from arbitrary Kubernetes resources,\nincluding both custom resources (CRDs) and core API resources. Resources are\nselected by API group, version and kind, where group can be \"\" (empty string)\nfor core resources such as ConfigMap. Reading the core v1 Secret is\nintentionally blocked — use the Kubernetes provider for that.";
+          type = types.nullOr (submoduleOf "external-secrets.io.v1.ClusterSecretStoreSpecProviderCrd");
         };
         "delinea" = mkOption {
           description = "Delinea DevOps Secrets Vault\nhttps://docs.delinea.com/online-help/products/devops-secrets-vault/current";
@@ -1568,6 +1572,7 @@ let
         "chef" = mkOverride 1002 null;
         "cloudrusm" = mkOverride 1002 null;
         "conjur" = mkOverride 1002 null;
+        "crd" = mkOverride 1002 null;
         "delinea" = mkOverride 1002 null;
         "doppler" = mkOverride 1002 null;
         "dvls" = mkOverride 1002 null;
@@ -1624,11 +1629,16 @@ let
             submoduleOf "external-secrets.io.v1.ClusterSecretStoreSpecProviderAkeylessCaProvider"
           );
         };
+        "ignoreCache" = mkOption {
+          description = "IgnoreCache bypasses the Gateway cache for secret reads when true.\nOnly relevant when akeylessGWApiURL points to an Akeyless Gateway.";
+          type = types.nullOr types.bool;
+        };
       };
 
       config = {
         "caBundle" = mkOverride 1002 null;
         "caProvider" = mkOverride 1002 null;
+        "ignoreCache" = mkOverride 1002 null;
       };
 
     };
@@ -1647,11 +1657,18 @@ let
             submoduleOf "external-secrets.io.v1.ClusterSecretStoreSpecProviderAkeylessAuthSecretRefSecretRef"
           );
         };
+        "serviceAccountRef" = mkOption {
+          description = "ServiceAccountRef specifies a Kubernetes ServiceAccount used for azure_ad\nauthentication on AKS Workload Identity. The operator obtains a federated\nidentity token from this ServiceAccount via the TokenRequest API instead\nof using the ESO controller pod identity. Ignored for other access types.";
+          type = types.nullOr (
+            submoduleOf "external-secrets.io.v1.ClusterSecretStoreSpecProviderAkeylessAuthSecretRefServiceAccountRef"
+          );
+        };
       };
 
       config = {
         "kubernetesAuth" = mkOverride 1002 null;
         "secretRef" = mkOverride 1002 null;
+        "serviceAccountRef" = mkOverride 1002 null;
       };
 
     };
@@ -1838,6 +1855,29 @@ let
         };
 
       };
+    "external-secrets.io.v1.ClusterSecretStoreSpecProviderAkeylessAuthSecretRefServiceAccountRef" = {
+
+      options = {
+        "audiences" = mkOption {
+          description = "Audience specifies the `aud` claim for the service account token\nIf the service account uses a well-known annotation for e.g. IRSA or GCP Workload Identity\nthen this audiences will be appended to the list";
+          type = types.nullOr (types.listOf types.str);
+        };
+        "name" = mkOption {
+          description = "The name of the ServiceAccount resource being referred to.";
+          type = types.str;
+        };
+        "namespace" = mkOption {
+          description = "Namespace of the resource being referred to.\nIgnored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.";
+          type = types.nullOr types.str;
+        };
+      };
+
+      config = {
+        "audiences" = mkOverride 1002 null;
+        "namespace" = mkOverride 1002 null;
+      };
+
+    };
     "external-secrets.io.v1.ClusterSecretStoreSpecProviderAkeylessCaProvider" = {
 
       options = {
@@ -3289,6 +3329,12 @@ let
             submoduleOf "external-secrets.io.v1.ClusterSecretStoreSpecProviderConjurAuthApikey"
           );
         };
+        "cert" = mkOption {
+          description = "Cert enables certificate-based authentication using a client certificate and key.";
+          type = types.nullOr (
+            submoduleOf "external-secrets.io.v1.ClusterSecretStoreSpecProviderConjurAuthCert"
+          );
+        };
         "jwt" = mkOption {
           description = "Jwt enables JWT authentication using Kubernetes service account tokens.";
           type = types.nullOr (
@@ -3299,6 +3345,7 @@ let
 
       config = {
         "apikey" = mkOverride 1002 null;
+        "cert" = mkOverride 1002 null;
         "jwt" = mkOverride 1002 null;
       };
 
@@ -3348,6 +3395,84 @@ let
 
     };
     "external-secrets.io.v1.ClusterSecretStoreSpecProviderConjurAuthApikeyUserRef" = {
+
+      options = {
+        "key" = mkOption {
+          description = "A key in the referenced Secret.\nSome instances of this field may be defaulted, in others it may be required.";
+          type = types.nullOr types.str;
+        };
+        "name" = mkOption {
+          description = "The name of the Secret resource being referred to.";
+          type = types.nullOr types.str;
+        };
+        "namespace" = mkOption {
+          description = "The namespace of the Secret resource being referred to.\nIgnored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.";
+          type = types.nullOr types.str;
+        };
+      };
+
+      config = {
+        "key" = mkOverride 1002 null;
+        "name" = mkOverride 1002 null;
+        "namespace" = mkOverride 1002 null;
+      };
+
+    };
+    "external-secrets.io.v1.ClusterSecretStoreSpecProviderConjurAuthCert" = {
+
+      options = {
+        "account" = mkOption {
+          description = "Account is the Conjur organization account name.";
+          type = types.str;
+        };
+        "clientCertRef" = mkOption {
+          description = "ClientCertRef is a reference to a specific 'key' containing the client certificate\nwithin a Secret resource. The certificate must be PEM-encoded.";
+          type = submoduleOf "external-secrets.io.v1.ClusterSecretStoreSpecProviderConjurAuthCertClientCertRef";
+        };
+        "clientKeyRef" = mkOption {
+          description = "ClientKeyRef is a reference to a specific 'key' containing the private RSA client key\nwithin a Secret resource. The key must be PEM-encoded.";
+          type = submoduleOf "external-secrets.io.v1.ClusterSecretStoreSpecProviderConjurAuthCertClientKeyRef";
+        };
+        "hostId" = mkOption {
+          description = "Optional HostID for cert authentication (can be omitted when using 'spiffe' mode).";
+          type = types.nullOr types.str;
+        };
+        "serviceID" = mkOption {
+          description = "The conjur authn cert webservice id";
+          type = types.str;
+        };
+      };
+
+      config = {
+        "hostId" = mkOverride 1002 null;
+      };
+
+    };
+    "external-secrets.io.v1.ClusterSecretStoreSpecProviderConjurAuthCertClientCertRef" = {
+
+      options = {
+        "key" = mkOption {
+          description = "A key in the referenced Secret.\nSome instances of this field may be defaulted, in others it may be required.";
+          type = types.nullOr types.str;
+        };
+        "name" = mkOption {
+          description = "The name of the Secret resource being referred to.";
+          type = types.nullOr types.str;
+        };
+        "namespace" = mkOption {
+          description = "The namespace of the Secret resource being referred to.\nIgnored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.";
+          type = types.nullOr types.str;
+        };
+      };
+
+      config = {
+        "key" = mkOverride 1002 null;
+        "name" = mkOverride 1002 null;
+        "namespace" = mkOverride 1002 null;
+      };
+
+    };
+    "external-secrets.io.v1.ClusterSecretStoreSpecProviderConjurAuthCertClientKeyRef" = {
 
       options = {
         "key" = mkOption {
@@ -3478,6 +3603,335 @@ let
       config = {
         "key" = mkOverride 1002 null;
         "namespace" = mkOverride 1002 null;
+      };
+
+    };
+    "external-secrets.io.v1.ClusterSecretStoreSpecProviderCrd" = {
+
+      options = {
+        "auth" = mkOption {
+          description = "Auth configures authentication to the Kubernetes API, same as the\nKubernetes provider. Required when Server.URL is set (unless using AuthRef).";
+          type = types.nullOr (submoduleOf "external-secrets.io.v1.ClusterSecretStoreSpecProviderCrdAuth");
+        };
+        "authRef" = mkOption {
+          description = "AuthRef references a Secret containing a kubeconfig. Same semantics as the\nKubernetes provider.";
+          type = types.nullOr (submoduleOf "external-secrets.io.v1.ClusterSecretStoreSpecProviderCrdAuthRef");
+        };
+        "resource" = mkOption {
+          description = "Resource identifies the CRD by its API group, version and kind.";
+          type = submoduleOf "external-secrets.io.v1.ClusterSecretStoreSpecProviderCrdResource";
+        };
+        "server" = mkOption {
+          description = "Server configures the Kubernetes API address and TLS trust, same as the\nKubernetes provider. When omitted, the URL defaults to the in-cluster API.";
+          type = types.nullOr (submoduleOf "external-secrets.io.v1.ClusterSecretStoreSpecProviderCrdServer");
+        };
+        "whitelist" = mkOption {
+          description = "Whitelist optionally restricts which object names and requested properties\nare allowed to be read.";
+          type = types.nullOr (
+            submoduleOf "external-secrets.io.v1.ClusterSecretStoreSpecProviderCrdWhitelist"
+          );
+        };
+      };
+
+      config = {
+        "auth" = mkOverride 1002 null;
+        "authRef" = mkOverride 1002 null;
+        "server" = mkOverride 1002 null;
+        "whitelist" = mkOverride 1002 null;
+      };
+
+    };
+    "external-secrets.io.v1.ClusterSecretStoreSpecProviderCrdAuth" = {
+
+      options = {
+        "cert" = mkOption {
+          description = "has both clientCert and clientKey as secretKeySelector";
+          type = types.nullOr (
+            submoduleOf "external-secrets.io.v1.ClusterSecretStoreSpecProviderCrdAuthCert"
+          );
+        };
+        "serviceAccount" = mkOption {
+          description = "points to a service account that should be used for authentication";
+          type = types.nullOr (
+            submoduleOf "external-secrets.io.v1.ClusterSecretStoreSpecProviderCrdAuthServiceAccount"
+          );
+        };
+        "token" = mkOption {
+          description = "use static token to authenticate with";
+          type = types.nullOr (
+            submoduleOf "external-secrets.io.v1.ClusterSecretStoreSpecProviderCrdAuthToken"
+          );
+        };
+      };
+
+      config = {
+        "cert" = mkOverride 1002 null;
+        "serviceAccount" = mkOverride 1002 null;
+        "token" = mkOverride 1002 null;
+      };
+
+    };
+    "external-secrets.io.v1.ClusterSecretStoreSpecProviderCrdAuthCert" = {
+
+      options = {
+        "clientCert" = mkOption {
+          description = "SecretKeySelector is a reference to a specific 'key' within a Secret resource.\nIn some instances, `key` is a required field.";
+          type = submoduleOf "external-secrets.io.v1.ClusterSecretStoreSpecProviderCrdAuthCertClientCert";
+        };
+        "clientKey" = mkOption {
+          description = "SecretKeySelector is a reference to a specific 'key' within a Secret resource.\nIn some instances, `key` is a required field.";
+          type = submoduleOf "external-secrets.io.v1.ClusterSecretStoreSpecProviderCrdAuthCertClientKey";
+        };
+      };
+
+      config = { };
+
+    };
+    "external-secrets.io.v1.ClusterSecretStoreSpecProviderCrdAuthCertClientCert" = {
+
+      options = {
+        "key" = mkOption {
+          description = "A key in the referenced Secret.\nSome instances of this field may be defaulted, in others it may be required.";
+          type = types.nullOr types.str;
+        };
+        "name" = mkOption {
+          description = "The name of the Secret resource being referred to.";
+          type = types.nullOr types.str;
+        };
+        "namespace" = mkOption {
+          description = "The namespace of the Secret resource being referred to.\nIgnored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.";
+          type = types.nullOr types.str;
+        };
+      };
+
+      config = {
+        "key" = mkOverride 1002 null;
+        "name" = mkOverride 1002 null;
+        "namespace" = mkOverride 1002 null;
+      };
+
+    };
+    "external-secrets.io.v1.ClusterSecretStoreSpecProviderCrdAuthCertClientKey" = {
+
+      options = {
+        "key" = mkOption {
+          description = "A key in the referenced Secret.\nSome instances of this field may be defaulted, in others it may be required.";
+          type = types.nullOr types.str;
+        };
+        "name" = mkOption {
+          description = "The name of the Secret resource being referred to.";
+          type = types.nullOr types.str;
+        };
+        "namespace" = mkOption {
+          description = "The namespace of the Secret resource being referred to.\nIgnored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.";
+          type = types.nullOr types.str;
+        };
+      };
+
+      config = {
+        "key" = mkOverride 1002 null;
+        "name" = mkOverride 1002 null;
+        "namespace" = mkOverride 1002 null;
+      };
+
+    };
+    "external-secrets.io.v1.ClusterSecretStoreSpecProviderCrdAuthRef" = {
+
+      options = {
+        "key" = mkOption {
+          description = "A key in the referenced Secret.\nSome instances of this field may be defaulted, in others it may be required.";
+          type = types.nullOr types.str;
+        };
+        "name" = mkOption {
+          description = "The name of the Secret resource being referred to.";
+          type = types.nullOr types.str;
+        };
+        "namespace" = mkOption {
+          description = "The namespace of the Secret resource being referred to.\nIgnored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.";
+          type = types.nullOr types.str;
+        };
+      };
+
+      config = {
+        "key" = mkOverride 1002 null;
+        "name" = mkOverride 1002 null;
+        "namespace" = mkOverride 1002 null;
+      };
+
+    };
+    "external-secrets.io.v1.ClusterSecretStoreSpecProviderCrdAuthServiceAccount" = {
+
+      options = {
+        "audiences" = mkOption {
+          description = "Audience specifies the `aud` claim for the service account token\nIf the service account uses a well-known annotation for e.g. IRSA or GCP Workload Identity\nthen this audiences will be appended to the list";
+          type = types.nullOr (types.listOf types.str);
+        };
+        "name" = mkOption {
+          description = "The name of the ServiceAccount resource being referred to.";
+          type = types.str;
+        };
+        "namespace" = mkOption {
+          description = "Namespace of the resource being referred to.\nIgnored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.";
+          type = types.nullOr types.str;
+        };
+      };
+
+      config = {
+        "audiences" = mkOverride 1002 null;
+        "namespace" = mkOverride 1002 null;
+      };
+
+    };
+    "external-secrets.io.v1.ClusterSecretStoreSpecProviderCrdAuthToken" = {
+
+      options = {
+        "bearerToken" = mkOption {
+          description = "SecretKeySelector is a reference to a specific 'key' within a Secret resource.\nIn some instances, `key` is a required field.";
+          type = submoduleOf "external-secrets.io.v1.ClusterSecretStoreSpecProviderCrdAuthTokenBearerToken";
+        };
+      };
+
+      config = { };
+
+    };
+    "external-secrets.io.v1.ClusterSecretStoreSpecProviderCrdAuthTokenBearerToken" = {
+
+      options = {
+        "key" = mkOption {
+          description = "A key in the referenced Secret.\nSome instances of this field may be defaulted, in others it may be required.";
+          type = types.nullOr types.str;
+        };
+        "name" = mkOption {
+          description = "The name of the Secret resource being referred to.";
+          type = types.nullOr types.str;
+        };
+        "namespace" = mkOption {
+          description = "The namespace of the Secret resource being referred to.\nIgnored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.";
+          type = types.nullOr types.str;
+        };
+      };
+
+      config = {
+        "key" = mkOverride 1002 null;
+        "name" = mkOverride 1002 null;
+        "namespace" = mkOverride 1002 null;
+      };
+
+    };
+    "external-secrets.io.v1.ClusterSecretStoreSpecProviderCrdResource" = {
+
+      options = {
+        "group" = mkOption {
+          description = "Group is the API group of the resource. Use \"\" (empty string) for core\nKubernetes resources such as ConfigMap; use e.g. \"config.example.io\"\nfor a CRD. The field is required to be present in the manifest — write\n`group: \"\"` explicitly for core resources so typos fail at admission\ntime rather than later at discovery.";
+          type = types.str;
+        };
+        "kind" = mkOption {
+          description = "Kind is the Kubernetes resource kind (e.g. \"MyCustomResource\").";
+          type = types.str;
+        };
+        "version" = mkOption {
+          description = "Version is the API version of the resource (e.g. \"v1alpha1\").";
+          type = types.str;
+        };
+      };
+
+      config = { };
+
+    };
+    "external-secrets.io.v1.ClusterSecretStoreSpecProviderCrdServer" = {
+
+      options = {
+        "caBundle" = mkOption {
+          description = "CABundle is a base64-encoded CA certificate";
+          type = types.nullOr types.str;
+        };
+        "caProvider" = mkOption {
+          description = "see: https://external-secrets.io/latest/spec/#external-secrets.io/v1alpha1.CAProvider";
+          type = types.nullOr (
+            submoduleOf "external-secrets.io.v1.ClusterSecretStoreSpecProviderCrdServerCaProvider"
+          );
+        };
+        "url" = mkOption {
+          description = "configures the Kubernetes server Address.";
+          type = types.nullOr types.str;
+        };
+      };
+
+      config = {
+        "caBundle" = mkOverride 1002 null;
+        "caProvider" = mkOverride 1002 null;
+        "url" = mkOverride 1002 null;
+      };
+
+    };
+    "external-secrets.io.v1.ClusterSecretStoreSpecProviderCrdServerCaProvider" = {
+
+      options = {
+        "key" = mkOption {
+          description = "The key where the CA certificate can be found in the Secret or ConfigMap.";
+          type = types.nullOr types.str;
+        };
+        "name" = mkOption {
+          description = "The name of the object located at the provider type.";
+          type = types.str;
+        };
+        "namespace" = mkOption {
+          description = "The namespace the Provider type is in.\nCan only be defined when used in a ClusterSecretStore.";
+          type = types.nullOr types.str;
+        };
+        "type" = mkOption {
+          description = "The type of provider to use such as \"Secret\", or \"ConfigMap\".";
+          type = types.str;
+        };
+      };
+
+      config = {
+        "key" = mkOverride 1002 null;
+        "namespace" = mkOverride 1002 null;
+      };
+
+    };
+    "external-secrets.io.v1.ClusterSecretStoreSpecProviderCrdWhitelist" = {
+
+      options = {
+        "rules" = mkOption {
+          description = "Rules is a list of allow rules. If rules are set, at least one rule must\nmatch for a request to be allowed.";
+          type = types.nullOr (
+            coerceAttrsOfSubmodulesToListByKey
+              "external-secrets.io.v1.ClusterSecretStoreSpecProviderCrdWhitelistRules"
+              "name"
+              [ ]
+          );
+          apply = attrsToList;
+        };
+      };
+
+      config = {
+        "rules" = mkOverride 1002 null;
+      };
+
+    };
+    "external-secrets.io.v1.ClusterSecretStoreSpecProviderCrdWhitelistRules" = {
+
+      options = {
+        "name" = mkOption {
+          description = "Name is an optional regular expression matched against the bare object name.\nFor both SecretStore and ClusterSecretStore this is always the object name\nwithout any namespace prefix (e.g. \"my-db-spec\", not \"prod/my-db-spec\").";
+          type = types.nullOr types.str;
+        };
+        "namespace" = mkOption {
+          description = "Namespace is an optional regular expression matched against the namespace of\nthe object. Applies only when a ClusterSecretStore is used; it is ignored\nfor SecretStore (where the namespace is fixed to the store namespace).";
+          type = types.nullOr types.str;
+        };
+        "properties" = mkOption {
+          description = "Properties is an optional list of regular expressions matched against\nrequested property keys (for example: \"spec.secretValue\").";
+          type = types.nullOr (types.listOf types.str);
+        };
+      };
+
+      config = {
+        "name" = mkOverride 1002 null;
+        "namespace" = mkOverride 1002 null;
+        "properties" = mkOverride 1002 null;
       };
 
     };
@@ -5590,22 +6044,15 @@ let
       options = {
         "clientCert" = mkOption {
           description = "SecretKeySelector is a reference to a specific 'key' within a Secret resource.\nIn some instances, `key` is a required field.";
-          type = types.nullOr (
-            submoduleOf "external-secrets.io.v1.ClusterSecretStoreSpecProviderKubernetesAuthCertClientCert"
-          );
+          type = submoduleOf "external-secrets.io.v1.ClusterSecretStoreSpecProviderKubernetesAuthCertClientCert";
         };
         "clientKey" = mkOption {
           description = "SecretKeySelector is a reference to a specific 'key' within a Secret resource.\nIn some instances, `key` is a required field.";
-          type = types.nullOr (
-            submoduleOf "external-secrets.io.v1.ClusterSecretStoreSpecProviderKubernetesAuthCertClientKey"
-          );
+          type = submoduleOf "external-secrets.io.v1.ClusterSecretStoreSpecProviderKubernetesAuthCertClientKey";
         };
       };
 
-      config = {
-        "clientCert" = mkOverride 1002 null;
-        "clientKey" = mkOverride 1002 null;
-      };
+      config = { };
 
     };
     "external-secrets.io.v1.ClusterSecretStoreSpecProviderKubernetesAuthCertClientCert" = {
@@ -5708,15 +6155,11 @@ let
       options = {
         "bearerToken" = mkOption {
           description = "SecretKeySelector is a reference to a specific 'key' within a Secret resource.\nIn some instances, `key` is a required field.";
-          type = types.nullOr (
-            submoduleOf "external-secrets.io.v1.ClusterSecretStoreSpecProviderKubernetesAuthTokenBearerToken"
-          );
+          type = submoduleOf "external-secrets.io.v1.ClusterSecretStoreSpecProviderKubernetesAuthTokenBearerToken";
         };
       };
 
-      config = {
-        "bearerToken" = mkOverride 1002 null;
-      };
+      config = { };
 
     };
     "external-secrets.io.v1.ClusterSecretStoreSpecProviderKubernetesAuthTokenBearerToken" = {
@@ -5751,7 +6194,7 @@ let
           type = types.nullOr types.str;
         };
         "caProvider" = mkOption {
-          description = "see: https://external-secrets.io/v0.4.1/spec/#external-secrets.io/v1alpha1.CAProvider";
+          description = "see: https://external-secrets.io/latest/spec/#external-secrets.io/v1alpha1.CAProvider";
           type = types.nullOr (
             submoduleOf "external-secrets.io.v1.ClusterSecretStoreSpecProviderKubernetesServerCaProvider"
           );
@@ -6192,6 +6635,10 @@ let
             submoduleOf "external-secrets.io.v1.ClusterSecretStoreSpecProviderOnepasswordSDKCache"
           );
         };
+        "environment" = mkOption {
+          description = "Environment defines the 1Password Environment ID to read variables from.\nEnvironments are read-only: PushSecret, DeleteSecret, and SecretExists return an error when set.\nMutually exclusive with Vault.";
+          type = types.nullOr types.str;
+        };
         "integrationInfo" = mkOption {
           description = "IntegrationInfo specifies the name and version of the integration built using the 1Password Go SDK.\nIf you don't know which name and version to use, use `DefaultIntegrationName` and `DefaultIntegrationVersion`, respectively.";
           type = types.nullOr (
@@ -6199,14 +6646,16 @@ let
           );
         };
         "vault" = mkOption {
-          description = "Vault defines the vault's name or uuid to access. Do NOT add op:// prefix. This will be done automatically.";
-          type = types.str;
+          description = "Vault defines the vault's name or uuid to access. Do NOT add op:// prefix. This will be done automatically.\nMutually exclusive with Environment.";
+          type = types.nullOr types.str;
         };
       };
 
       config = {
         "cache" = mkOverride 1002 null;
+        "environment" = mkOverride 1002 null;
         "integrationInfo" = mkOverride 1002 null;
+        "vault" = mkOverride 1002 null;
       };
 
     };
@@ -7473,16 +7922,26 @@ let
           type = types.nullOr types.str;
         };
         "password" = mkOption {
-          description = "Password is the secret server account password.";
-          type = submoduleOf "external-secrets.io.v1.ClusterSecretStoreSpecProviderSecretserverPassword";
+          description = "Password is the secret server account password.\nRequired unless Token is set.";
+          type = types.nullOr (
+            submoduleOf "external-secrets.io.v1.ClusterSecretStoreSpecProviderSecretserverPassword"
+          );
         };
         "serverURL" = mkOption {
           description = "ServerURL\nURL to your secret server installation";
           type = types.str;
         };
+        "token" = mkOption {
+          description = "Token is an access token used to authenticate to the secret server,\nas an alternative to Username and Password. When set, Username and\nPassword are not required and are ignored.";
+          type = types.nullOr (
+            submoduleOf "external-secrets.io.v1.ClusterSecretStoreSpecProviderSecretserverToken"
+          );
+        };
         "username" = mkOption {
-          description = "Username is the secret server account username.";
-          type = submoduleOf "external-secrets.io.v1.ClusterSecretStoreSpecProviderSecretserverUsername";
+          description = "Username is the secret server account username.\nRequired unless Token is set.";
+          type = types.nullOr (
+            submoduleOf "external-secrets.io.v1.ClusterSecretStoreSpecProviderSecretserverUsername"
+          );
         };
       };
 
@@ -7490,6 +7949,9 @@ let
         "caBundle" = mkOverride 1002 null;
         "caProvider" = mkOverride 1002 null;
         "domain" = mkOverride 1002 null;
+        "password" = mkOverride 1002 null;
+        "token" = mkOverride 1002 null;
+        "username" = mkOverride 1002 null;
       };
 
     };
@@ -7542,6 +8004,51 @@ let
 
     };
     "external-secrets.io.v1.ClusterSecretStoreSpecProviderSecretserverPasswordSecretRef" = {
+
+      options = {
+        "key" = mkOption {
+          description = "A key in the referenced Secret.\nSome instances of this field may be defaulted, in others it may be required.";
+          type = types.nullOr types.str;
+        };
+        "name" = mkOption {
+          description = "The name of the Secret resource being referred to.";
+          type = types.nullOr types.str;
+        };
+        "namespace" = mkOption {
+          description = "The namespace of the Secret resource being referred to.\nIgnored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.";
+          type = types.nullOr types.str;
+        };
+      };
+
+      config = {
+        "key" = mkOverride 1002 null;
+        "name" = mkOverride 1002 null;
+        "namespace" = mkOverride 1002 null;
+      };
+
+    };
+    "external-secrets.io.v1.ClusterSecretStoreSpecProviderSecretserverToken" = {
+
+      options = {
+        "secretRef" = mkOption {
+          description = "SecretRef references a key in a secret that will be used as value.";
+          type = types.nullOr (
+            submoduleOf "external-secrets.io.v1.ClusterSecretStoreSpecProviderSecretserverTokenSecretRef"
+          );
+        };
+        "value" = mkOption {
+          description = "Value can be specified directly to set a value without using a secret.";
+          type = types.nullOr types.str;
+        };
+      };
+
+      config = {
+        "secretRef" = mkOverride 1002 null;
+        "value" = mkOverride 1002 null;
+      };
+
+    };
+    "external-secrets.io.v1.ClusterSecretStoreSpecProviderSecretserverTokenSecretRef" = {
 
       options = {
         "key" = mkOption {
@@ -9620,11 +10127,11 @@ let
 
       options = {
         "conversionStrategy" = mkOption {
-          description = "Used to define a conversion Strategy";
+          description = "Used to define a conversion Strategy. Defaults to Default when omitted.";
           type = types.nullOr types.str;
         };
         "decodingStrategy" = mkOption {
-          description = "Used to define a decoding Strategy";
+          description = "Used to define a decoding Strategy. Defaults to None when omitted.";
           type = types.nullOr types.str;
         };
         "key" = mkOption {
@@ -9663,11 +10170,11 @@ let
 
       options = {
         "conversionStrategy" = mkOption {
-          description = "Used to define a conversion Strategy";
+          description = "Used to define a conversion Strategy. Defaults to Default when omitted.";
           type = types.nullOr types.str;
         };
         "decodingStrategy" = mkOption {
-          description = "Used to define a decoding Strategy";
+          description = "Used to define a decoding Strategy. Defaults to None when omitted.";
           type = types.nullOr types.str;
         };
         "name" = mkOption {
@@ -9868,11 +10375,11 @@ let
 
       options = {
         "conversionStrategy" = mkOption {
-          description = "Used to define a conversion Strategy";
+          description = "Used to define a conversion Strategy. Defaults to Default when omitted.";
           type = types.nullOr types.str;
         };
         "decodingStrategy" = mkOption {
-          description = "Used to define a decoding Strategy";
+          description = "Used to define a decoding Strategy. Defaults to None when omitted.";
           type = types.nullOr types.str;
         };
         "key" = mkOption {
@@ -10160,11 +10667,11 @@ let
           );
         };
         "target" = mkOption {
-          description = "Target specifies where to place the template result.\nFor Secret resources, common values are: \"Data\", \"Annotations\", \"Labels\".\nFor custom resources (when spec.target.manifest is set), this supports\nnested paths like \"spec.database.config\" or \"data\".";
+          description = "Target specifies where to place the template result.\nFor Secret resources the accepted values are empty, \"Data\", \"Annotations\" and \"Labels\";\nany other value is rejected because it would allow writes to privileged Secret fields.\nFor custom resources (when spec.target.manifest is set), this supports\nnested paths like \"spec.database.config\" or \"data\".";
           type = types.nullOr types.str;
         };
         "valuesDecodingStrategy" = mkOption {
-          description = "Used to define a decoding Strategy for the rendered template values.";
+          description = "Used to define a decoding Strategy for the rendered template values.\nDefaults to None when omitted.";
           type = types.nullOr types.str;
         };
       };
@@ -10377,8 +10884,8 @@ let
           type = submoduleOf "external-secrets.io.v1.SecretStoreSpecProvider";
         };
         "refreshInterval" = mkOption {
-          description = "Used to configure store refresh interval in seconds. Empty or 0 will default to the controller config.";
-          type = types.nullOr types.int;
+          description = "Used to configure store refresh interval. Accepts either an integer number\nof seconds (legacy) or a Go duration string such as \"1h\" or \"5m\". Empty or\n0 will default to the controller config.";
+          type = types.nullOr (types.either types.int types.str);
         };
         "retrySettings" = mkOption {
           description = "Used to configure HTTP retries on failures.";
@@ -10511,6 +11018,10 @@ let
         "conjur" = mkOption {
           description = "Conjur configures this store to sync secrets using conjur provider";
           type = types.nullOr (submoduleOf "external-secrets.io.v1.SecretStoreSpecProviderConjur");
+        };
+        "crd" = mkOption {
+          description = "CRD configures this store to sync secrets from arbitrary Kubernetes resources,\nincluding both custom resources (CRDs) and core API resources. Resources are\nselected by API group, version and kind, where group can be \"\" (empty string)\nfor core resources such as ConfigMap. Reading the core v1 Secret is\nintentionally blocked — use the Kubernetes provider for that.";
+          type = types.nullOr (submoduleOf "external-secrets.io.v1.SecretStoreSpecProviderCrd");
         };
         "delinea" = mkOption {
           description = "Delinea DevOps Secrets Vault\nhttps://docs.delinea.com/online-help/products/devops-secrets-vault/current";
@@ -10655,6 +11166,7 @@ let
         "chef" = mkOverride 1002 null;
         "cloudrusm" = mkOverride 1002 null;
         "conjur" = mkOverride 1002 null;
+        "crd" = mkOverride 1002 null;
         "delinea" = mkOverride 1002 null;
         "doppler" = mkOverride 1002 null;
         "dvls" = mkOverride 1002 null;
@@ -10711,11 +11223,16 @@ let
             submoduleOf "external-secrets.io.v1.SecretStoreSpecProviderAkeylessCaProvider"
           );
         };
+        "ignoreCache" = mkOption {
+          description = "IgnoreCache bypasses the Gateway cache for secret reads when true.\nOnly relevant when akeylessGWApiURL points to an Akeyless Gateway.";
+          type = types.nullOr types.bool;
+        };
       };
 
       config = {
         "caBundle" = mkOverride 1002 null;
         "caProvider" = mkOverride 1002 null;
+        "ignoreCache" = mkOverride 1002 null;
       };
 
     };
@@ -10734,11 +11251,18 @@ let
             submoduleOf "external-secrets.io.v1.SecretStoreSpecProviderAkeylessAuthSecretRefSecretRef"
           );
         };
+        "serviceAccountRef" = mkOption {
+          description = "ServiceAccountRef specifies a Kubernetes ServiceAccount used for azure_ad\nauthentication on AKS Workload Identity. The operator obtains a federated\nidentity token from this ServiceAccount via the TokenRequest API instead\nof using the ESO controller pod identity. Ignored for other access types.";
+          type = types.nullOr (
+            submoduleOf "external-secrets.io.v1.SecretStoreSpecProviderAkeylessAuthSecretRefServiceAccountRef"
+          );
+        };
       };
 
       config = {
         "kubernetesAuth" = mkOverride 1002 null;
         "secretRef" = mkOverride 1002 null;
+        "serviceAccountRef" = mkOverride 1002 null;
       };
 
     };
@@ -10919,6 +11443,29 @@ let
       config = {
         "key" = mkOverride 1002 null;
         "name" = mkOverride 1002 null;
+        "namespace" = mkOverride 1002 null;
+      };
+
+    };
+    "external-secrets.io.v1.SecretStoreSpecProviderAkeylessAuthSecretRefServiceAccountRef" = {
+
+      options = {
+        "audiences" = mkOption {
+          description = "Audience specifies the `aud` claim for the service account token\nIf the service account uses a well-known annotation for e.g. IRSA or GCP Workload Identity\nthen this audiences will be appended to the list";
+          type = types.nullOr (types.listOf types.str);
+        };
+        "name" = mkOption {
+          description = "The name of the ServiceAccount resource being referred to.";
+          type = types.str;
+        };
+        "namespace" = mkOption {
+          description = "Namespace of the resource being referred to.\nIgnored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.";
+          type = types.nullOr types.str;
+        };
+      };
+
+      config = {
+        "audiences" = mkOverride 1002 null;
         "namespace" = mkOverride 1002 null;
       };
 
@@ -12362,6 +12909,10 @@ let
           description = "Authenticates with Conjur using an API key.";
           type = types.nullOr (submoduleOf "external-secrets.io.v1.SecretStoreSpecProviderConjurAuthApikey");
         };
+        "cert" = mkOption {
+          description = "Cert enables certificate-based authentication using a client certificate and key.";
+          type = types.nullOr (submoduleOf "external-secrets.io.v1.SecretStoreSpecProviderConjurAuthCert");
+        };
         "jwt" = mkOption {
           description = "Jwt enables JWT authentication using Kubernetes service account tokens.";
           type = types.nullOr (submoduleOf "external-secrets.io.v1.SecretStoreSpecProviderConjurAuthJwt");
@@ -12370,6 +12921,7 @@ let
 
       config = {
         "apikey" = mkOverride 1002 null;
+        "cert" = mkOverride 1002 null;
         "jwt" = mkOverride 1002 null;
       };
 
@@ -12419,6 +12971,84 @@ let
 
     };
     "external-secrets.io.v1.SecretStoreSpecProviderConjurAuthApikeyUserRef" = {
+
+      options = {
+        "key" = mkOption {
+          description = "A key in the referenced Secret.\nSome instances of this field may be defaulted, in others it may be required.";
+          type = types.nullOr types.str;
+        };
+        "name" = mkOption {
+          description = "The name of the Secret resource being referred to.";
+          type = types.nullOr types.str;
+        };
+        "namespace" = mkOption {
+          description = "The namespace of the Secret resource being referred to.\nIgnored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.";
+          type = types.nullOr types.str;
+        };
+      };
+
+      config = {
+        "key" = mkOverride 1002 null;
+        "name" = mkOverride 1002 null;
+        "namespace" = mkOverride 1002 null;
+      };
+
+    };
+    "external-secrets.io.v1.SecretStoreSpecProviderConjurAuthCert" = {
+
+      options = {
+        "account" = mkOption {
+          description = "Account is the Conjur organization account name.";
+          type = types.str;
+        };
+        "clientCertRef" = mkOption {
+          description = "ClientCertRef is a reference to a specific 'key' containing the client certificate\nwithin a Secret resource. The certificate must be PEM-encoded.";
+          type = submoduleOf "external-secrets.io.v1.SecretStoreSpecProviderConjurAuthCertClientCertRef";
+        };
+        "clientKeyRef" = mkOption {
+          description = "ClientKeyRef is a reference to a specific 'key' containing the private RSA client key\nwithin a Secret resource. The key must be PEM-encoded.";
+          type = submoduleOf "external-secrets.io.v1.SecretStoreSpecProviderConjurAuthCertClientKeyRef";
+        };
+        "hostId" = mkOption {
+          description = "Optional HostID for cert authentication (can be omitted when using 'spiffe' mode).";
+          type = types.nullOr types.str;
+        };
+        "serviceID" = mkOption {
+          description = "The conjur authn cert webservice id";
+          type = types.str;
+        };
+      };
+
+      config = {
+        "hostId" = mkOverride 1002 null;
+      };
+
+    };
+    "external-secrets.io.v1.SecretStoreSpecProviderConjurAuthCertClientCertRef" = {
+
+      options = {
+        "key" = mkOption {
+          description = "A key in the referenced Secret.\nSome instances of this field may be defaulted, in others it may be required.";
+          type = types.nullOr types.str;
+        };
+        "name" = mkOption {
+          description = "The name of the Secret resource being referred to.";
+          type = types.nullOr types.str;
+        };
+        "namespace" = mkOption {
+          description = "The namespace of the Secret resource being referred to.\nIgnored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.";
+          type = types.nullOr types.str;
+        };
+      };
+
+      config = {
+        "key" = mkOverride 1002 null;
+        "name" = mkOverride 1002 null;
+        "namespace" = mkOverride 1002 null;
+      };
+
+    };
+    "external-secrets.io.v1.SecretStoreSpecProviderConjurAuthCertClientKeyRef" = {
 
       options = {
         "key" = mkOption {
@@ -12549,6 +13179,328 @@ let
       config = {
         "key" = mkOverride 1002 null;
         "namespace" = mkOverride 1002 null;
+      };
+
+    };
+    "external-secrets.io.v1.SecretStoreSpecProviderCrd" = {
+
+      options = {
+        "auth" = mkOption {
+          description = "Auth configures authentication to the Kubernetes API, same as the\nKubernetes provider. Required when Server.URL is set (unless using AuthRef).";
+          type = types.nullOr (submoduleOf "external-secrets.io.v1.SecretStoreSpecProviderCrdAuth");
+        };
+        "authRef" = mkOption {
+          description = "AuthRef references a Secret containing a kubeconfig. Same semantics as the\nKubernetes provider.";
+          type = types.nullOr (submoduleOf "external-secrets.io.v1.SecretStoreSpecProviderCrdAuthRef");
+        };
+        "resource" = mkOption {
+          description = "Resource identifies the CRD by its API group, version and kind.";
+          type = submoduleOf "external-secrets.io.v1.SecretStoreSpecProviderCrdResource";
+        };
+        "server" = mkOption {
+          description = "Server configures the Kubernetes API address and TLS trust, same as the\nKubernetes provider. When omitted, the URL defaults to the in-cluster API.";
+          type = types.nullOr (submoduleOf "external-secrets.io.v1.SecretStoreSpecProviderCrdServer");
+        };
+        "whitelist" = mkOption {
+          description = "Whitelist optionally restricts which object names and requested properties\nare allowed to be read.";
+          type = types.nullOr (submoduleOf "external-secrets.io.v1.SecretStoreSpecProviderCrdWhitelist");
+        };
+      };
+
+      config = {
+        "auth" = mkOverride 1002 null;
+        "authRef" = mkOverride 1002 null;
+        "server" = mkOverride 1002 null;
+        "whitelist" = mkOverride 1002 null;
+      };
+
+    };
+    "external-secrets.io.v1.SecretStoreSpecProviderCrdAuth" = {
+
+      options = {
+        "cert" = mkOption {
+          description = "has both clientCert and clientKey as secretKeySelector";
+          type = types.nullOr (submoduleOf "external-secrets.io.v1.SecretStoreSpecProviderCrdAuthCert");
+        };
+        "serviceAccount" = mkOption {
+          description = "points to a service account that should be used for authentication";
+          type = types.nullOr (
+            submoduleOf "external-secrets.io.v1.SecretStoreSpecProviderCrdAuthServiceAccount"
+          );
+        };
+        "token" = mkOption {
+          description = "use static token to authenticate with";
+          type = types.nullOr (submoduleOf "external-secrets.io.v1.SecretStoreSpecProviderCrdAuthToken");
+        };
+      };
+
+      config = {
+        "cert" = mkOverride 1002 null;
+        "serviceAccount" = mkOverride 1002 null;
+        "token" = mkOverride 1002 null;
+      };
+
+    };
+    "external-secrets.io.v1.SecretStoreSpecProviderCrdAuthCert" = {
+
+      options = {
+        "clientCert" = mkOption {
+          description = "SecretKeySelector is a reference to a specific 'key' within a Secret resource.\nIn some instances, `key` is a required field.";
+          type = submoduleOf "external-secrets.io.v1.SecretStoreSpecProviderCrdAuthCertClientCert";
+        };
+        "clientKey" = mkOption {
+          description = "SecretKeySelector is a reference to a specific 'key' within a Secret resource.\nIn some instances, `key` is a required field.";
+          type = submoduleOf "external-secrets.io.v1.SecretStoreSpecProviderCrdAuthCertClientKey";
+        };
+      };
+
+      config = { };
+
+    };
+    "external-secrets.io.v1.SecretStoreSpecProviderCrdAuthCertClientCert" = {
+
+      options = {
+        "key" = mkOption {
+          description = "A key in the referenced Secret.\nSome instances of this field may be defaulted, in others it may be required.";
+          type = types.nullOr types.str;
+        };
+        "name" = mkOption {
+          description = "The name of the Secret resource being referred to.";
+          type = types.nullOr types.str;
+        };
+        "namespace" = mkOption {
+          description = "The namespace of the Secret resource being referred to.\nIgnored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.";
+          type = types.nullOr types.str;
+        };
+      };
+
+      config = {
+        "key" = mkOverride 1002 null;
+        "name" = mkOverride 1002 null;
+        "namespace" = mkOverride 1002 null;
+      };
+
+    };
+    "external-secrets.io.v1.SecretStoreSpecProviderCrdAuthCertClientKey" = {
+
+      options = {
+        "key" = mkOption {
+          description = "A key in the referenced Secret.\nSome instances of this field may be defaulted, in others it may be required.";
+          type = types.nullOr types.str;
+        };
+        "name" = mkOption {
+          description = "The name of the Secret resource being referred to.";
+          type = types.nullOr types.str;
+        };
+        "namespace" = mkOption {
+          description = "The namespace of the Secret resource being referred to.\nIgnored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.";
+          type = types.nullOr types.str;
+        };
+      };
+
+      config = {
+        "key" = mkOverride 1002 null;
+        "name" = mkOverride 1002 null;
+        "namespace" = mkOverride 1002 null;
+      };
+
+    };
+    "external-secrets.io.v1.SecretStoreSpecProviderCrdAuthRef" = {
+
+      options = {
+        "key" = mkOption {
+          description = "A key in the referenced Secret.\nSome instances of this field may be defaulted, in others it may be required.";
+          type = types.nullOr types.str;
+        };
+        "name" = mkOption {
+          description = "The name of the Secret resource being referred to.";
+          type = types.nullOr types.str;
+        };
+        "namespace" = mkOption {
+          description = "The namespace of the Secret resource being referred to.\nIgnored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.";
+          type = types.nullOr types.str;
+        };
+      };
+
+      config = {
+        "key" = mkOverride 1002 null;
+        "name" = mkOverride 1002 null;
+        "namespace" = mkOverride 1002 null;
+      };
+
+    };
+    "external-secrets.io.v1.SecretStoreSpecProviderCrdAuthServiceAccount" = {
+
+      options = {
+        "audiences" = mkOption {
+          description = "Audience specifies the `aud` claim for the service account token\nIf the service account uses a well-known annotation for e.g. IRSA or GCP Workload Identity\nthen this audiences will be appended to the list";
+          type = types.nullOr (types.listOf types.str);
+        };
+        "name" = mkOption {
+          description = "The name of the ServiceAccount resource being referred to.";
+          type = types.str;
+        };
+        "namespace" = mkOption {
+          description = "Namespace of the resource being referred to.\nIgnored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.";
+          type = types.nullOr types.str;
+        };
+      };
+
+      config = {
+        "audiences" = mkOverride 1002 null;
+        "namespace" = mkOverride 1002 null;
+      };
+
+    };
+    "external-secrets.io.v1.SecretStoreSpecProviderCrdAuthToken" = {
+
+      options = {
+        "bearerToken" = mkOption {
+          description = "SecretKeySelector is a reference to a specific 'key' within a Secret resource.\nIn some instances, `key` is a required field.";
+          type = submoduleOf "external-secrets.io.v1.SecretStoreSpecProviderCrdAuthTokenBearerToken";
+        };
+      };
+
+      config = { };
+
+    };
+    "external-secrets.io.v1.SecretStoreSpecProviderCrdAuthTokenBearerToken" = {
+
+      options = {
+        "key" = mkOption {
+          description = "A key in the referenced Secret.\nSome instances of this field may be defaulted, in others it may be required.";
+          type = types.nullOr types.str;
+        };
+        "name" = mkOption {
+          description = "The name of the Secret resource being referred to.";
+          type = types.nullOr types.str;
+        };
+        "namespace" = mkOption {
+          description = "The namespace of the Secret resource being referred to.\nIgnored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.";
+          type = types.nullOr types.str;
+        };
+      };
+
+      config = {
+        "key" = mkOverride 1002 null;
+        "name" = mkOverride 1002 null;
+        "namespace" = mkOverride 1002 null;
+      };
+
+    };
+    "external-secrets.io.v1.SecretStoreSpecProviderCrdResource" = {
+
+      options = {
+        "group" = mkOption {
+          description = "Group is the API group of the resource. Use \"\" (empty string) for core\nKubernetes resources such as ConfigMap; use e.g. \"config.example.io\"\nfor a CRD. The field is required to be present in the manifest — write\n`group: \"\"` explicitly for core resources so typos fail at admission\ntime rather than later at discovery.";
+          type = types.str;
+        };
+        "kind" = mkOption {
+          description = "Kind is the Kubernetes resource kind (e.g. \"MyCustomResource\").";
+          type = types.str;
+        };
+        "version" = mkOption {
+          description = "Version is the API version of the resource (e.g. \"v1alpha1\").";
+          type = types.str;
+        };
+      };
+
+      config = { };
+
+    };
+    "external-secrets.io.v1.SecretStoreSpecProviderCrdServer" = {
+
+      options = {
+        "caBundle" = mkOption {
+          description = "CABundle is a base64-encoded CA certificate";
+          type = types.nullOr types.str;
+        };
+        "caProvider" = mkOption {
+          description = "see: https://external-secrets.io/latest/spec/#external-secrets.io/v1alpha1.CAProvider";
+          type = types.nullOr (
+            submoduleOf "external-secrets.io.v1.SecretStoreSpecProviderCrdServerCaProvider"
+          );
+        };
+        "url" = mkOption {
+          description = "configures the Kubernetes server Address.";
+          type = types.nullOr types.str;
+        };
+      };
+
+      config = {
+        "caBundle" = mkOverride 1002 null;
+        "caProvider" = mkOverride 1002 null;
+        "url" = mkOverride 1002 null;
+      };
+
+    };
+    "external-secrets.io.v1.SecretStoreSpecProviderCrdServerCaProvider" = {
+
+      options = {
+        "key" = mkOption {
+          description = "The key where the CA certificate can be found in the Secret or ConfigMap.";
+          type = types.nullOr types.str;
+        };
+        "name" = mkOption {
+          description = "The name of the object located at the provider type.";
+          type = types.str;
+        };
+        "namespace" = mkOption {
+          description = "The namespace the Provider type is in.\nCan only be defined when used in a ClusterSecretStore.";
+          type = types.nullOr types.str;
+        };
+        "type" = mkOption {
+          description = "The type of provider to use such as \"Secret\", or \"ConfigMap\".";
+          type = types.str;
+        };
+      };
+
+      config = {
+        "key" = mkOverride 1002 null;
+        "namespace" = mkOverride 1002 null;
+      };
+
+    };
+    "external-secrets.io.v1.SecretStoreSpecProviderCrdWhitelist" = {
+
+      options = {
+        "rules" = mkOption {
+          description = "Rules is a list of allow rules. If rules are set, at least one rule must\nmatch for a request to be allowed.";
+          type = types.nullOr (
+            coerceAttrsOfSubmodulesToListByKey "external-secrets.io.v1.SecretStoreSpecProviderCrdWhitelistRules"
+              "name"
+              [ ]
+          );
+          apply = attrsToList;
+        };
+      };
+
+      config = {
+        "rules" = mkOverride 1002 null;
+      };
+
+    };
+    "external-secrets.io.v1.SecretStoreSpecProviderCrdWhitelistRules" = {
+
+      options = {
+        "name" = mkOption {
+          description = "Name is an optional regular expression matched against the bare object name.\nFor both SecretStore and ClusterSecretStore this is always the object name\nwithout any namespace prefix (e.g. \"my-db-spec\", not \"prod/my-db-spec\").";
+          type = types.nullOr types.str;
+        };
+        "namespace" = mkOption {
+          description = "Namespace is an optional regular expression matched against the namespace of\nthe object. Applies only when a ClusterSecretStore is used; it is ignored\nfor SecretStore (where the namespace is fixed to the store namespace).";
+          type = types.nullOr types.str;
+        };
+        "properties" = mkOption {
+          description = "Properties is an optional list of regular expressions matched against\nrequested property keys (for example: \"spec.secretValue\").";
+          type = types.nullOr (types.listOf types.str);
+        };
+      };
+
+      config = {
+        "name" = mkOverride 1002 null;
+        "namespace" = mkOverride 1002 null;
+        "properties" = mkOverride 1002 null;
       };
 
     };
@@ -14636,22 +15588,15 @@ let
       options = {
         "clientCert" = mkOption {
           description = "SecretKeySelector is a reference to a specific 'key' within a Secret resource.\nIn some instances, `key` is a required field.";
-          type = types.nullOr (
-            submoduleOf "external-secrets.io.v1.SecretStoreSpecProviderKubernetesAuthCertClientCert"
-          );
+          type = submoduleOf "external-secrets.io.v1.SecretStoreSpecProviderKubernetesAuthCertClientCert";
         };
         "clientKey" = mkOption {
           description = "SecretKeySelector is a reference to a specific 'key' within a Secret resource.\nIn some instances, `key` is a required field.";
-          type = types.nullOr (
-            submoduleOf "external-secrets.io.v1.SecretStoreSpecProviderKubernetesAuthCertClientKey"
-          );
+          type = submoduleOf "external-secrets.io.v1.SecretStoreSpecProviderKubernetesAuthCertClientKey";
         };
       };
 
-      config = {
-        "clientCert" = mkOverride 1002 null;
-        "clientKey" = mkOverride 1002 null;
-      };
+      config = { };
 
     };
     "external-secrets.io.v1.SecretStoreSpecProviderKubernetesAuthCertClientCert" = {
@@ -14754,15 +15699,11 @@ let
       options = {
         "bearerToken" = mkOption {
           description = "SecretKeySelector is a reference to a specific 'key' within a Secret resource.\nIn some instances, `key` is a required field.";
-          type = types.nullOr (
-            submoduleOf "external-secrets.io.v1.SecretStoreSpecProviderKubernetesAuthTokenBearerToken"
-          );
+          type = submoduleOf "external-secrets.io.v1.SecretStoreSpecProviderKubernetesAuthTokenBearerToken";
         };
       };
 
-      config = {
-        "bearerToken" = mkOverride 1002 null;
-      };
+      config = { };
 
     };
     "external-secrets.io.v1.SecretStoreSpecProviderKubernetesAuthTokenBearerToken" = {
@@ -14797,7 +15738,7 @@ let
           type = types.nullOr types.str;
         };
         "caProvider" = mkOption {
-          description = "see: https://external-secrets.io/v0.4.1/spec/#external-secrets.io/v1alpha1.CAProvider";
+          description = "see: https://external-secrets.io/latest/spec/#external-secrets.io/v1alpha1.CAProvider";
           type = types.nullOr (
             submoduleOf "external-secrets.io.v1.SecretStoreSpecProviderKubernetesServerCaProvider"
           );
@@ -15234,6 +16175,10 @@ let
             submoduleOf "external-secrets.io.v1.SecretStoreSpecProviderOnepasswordSDKCache"
           );
         };
+        "environment" = mkOption {
+          description = "Environment defines the 1Password Environment ID to read variables from.\nEnvironments are read-only: PushSecret, DeleteSecret, and SecretExists return an error when set.\nMutually exclusive with Vault.";
+          type = types.nullOr types.str;
+        };
         "integrationInfo" = mkOption {
           description = "IntegrationInfo specifies the name and version of the integration built using the 1Password Go SDK.\nIf you don't know which name and version to use, use `DefaultIntegrationName` and `DefaultIntegrationVersion`, respectively.";
           type = types.nullOr (
@@ -15241,14 +16186,16 @@ let
           );
         };
         "vault" = mkOption {
-          description = "Vault defines the vault's name or uuid to access. Do NOT add op:// prefix. This will be done automatically.";
-          type = types.str;
+          description = "Vault defines the vault's name or uuid to access. Do NOT add op:// prefix. This will be done automatically.\nMutually exclusive with Environment.";
+          type = types.nullOr types.str;
         };
       };
 
       config = {
         "cache" = mkOverride 1002 null;
+        "environment" = mkOverride 1002 null;
         "integrationInfo" = mkOverride 1002 null;
+        "vault" = mkOverride 1002 null;
       };
 
     };
@@ -16505,16 +17452,24 @@ let
           type = types.nullOr types.str;
         };
         "password" = mkOption {
-          description = "Password is the secret server account password.";
-          type = submoduleOf "external-secrets.io.v1.SecretStoreSpecProviderSecretserverPassword";
+          description = "Password is the secret server account password.\nRequired unless Token is set.";
+          type = types.nullOr (
+            submoduleOf "external-secrets.io.v1.SecretStoreSpecProviderSecretserverPassword"
+          );
         };
         "serverURL" = mkOption {
           description = "ServerURL\nURL to your secret server installation";
           type = types.str;
         };
+        "token" = mkOption {
+          description = "Token is an access token used to authenticate to the secret server,\nas an alternative to Username and Password. When set, Username and\nPassword are not required and are ignored.";
+          type = types.nullOr (submoduleOf "external-secrets.io.v1.SecretStoreSpecProviderSecretserverToken");
+        };
         "username" = mkOption {
-          description = "Username is the secret server account username.";
-          type = submoduleOf "external-secrets.io.v1.SecretStoreSpecProviderSecretserverUsername";
+          description = "Username is the secret server account username.\nRequired unless Token is set.";
+          type = types.nullOr (
+            submoduleOf "external-secrets.io.v1.SecretStoreSpecProviderSecretserverUsername"
+          );
         };
       };
 
@@ -16522,6 +17477,9 @@ let
         "caBundle" = mkOverride 1002 null;
         "caProvider" = mkOverride 1002 null;
         "domain" = mkOverride 1002 null;
+        "password" = mkOverride 1002 null;
+        "token" = mkOverride 1002 null;
+        "username" = mkOverride 1002 null;
       };
 
     };
@@ -16574,6 +17532,51 @@ let
 
     };
     "external-secrets.io.v1.SecretStoreSpecProviderSecretserverPasswordSecretRef" = {
+
+      options = {
+        "key" = mkOption {
+          description = "A key in the referenced Secret.\nSome instances of this field may be defaulted, in others it may be required.";
+          type = types.nullOr types.str;
+        };
+        "name" = mkOption {
+          description = "The name of the Secret resource being referred to.";
+          type = types.nullOr types.str;
+        };
+        "namespace" = mkOption {
+          description = "The namespace of the Secret resource being referred to.\nIgnored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.";
+          type = types.nullOr types.str;
+        };
+      };
+
+      config = {
+        "key" = mkOverride 1002 null;
+        "name" = mkOverride 1002 null;
+        "namespace" = mkOverride 1002 null;
+      };
+
+    };
+    "external-secrets.io.v1.SecretStoreSpecProviderSecretserverToken" = {
+
+      options = {
+        "secretRef" = mkOption {
+          description = "SecretRef references a key in a secret that will be used as value.";
+          type = types.nullOr (
+            submoduleOf "external-secrets.io.v1.SecretStoreSpecProviderSecretserverTokenSecretRef"
+          );
+        };
+        "value" = mkOption {
+          description = "Value can be specified directly to set a value without using a secret.";
+          type = types.nullOr types.str;
+        };
+      };
+
+      config = {
+        "secretRef" = mkOverride 1002 null;
+        "value" = mkOverride 1002 null;
+      };
+
+    };
+    "external-secrets.io.v1.SecretStoreSpecProviderSecretserverTokenSecretRef" = {
 
       options = {
         "key" = mkOption {
@@ -19188,11 +20191,11 @@ let
           );
         };
         "target" = mkOption {
-          description = "Target specifies where to place the template result.\nFor Secret resources, common values are: \"Data\", \"Annotations\", \"Labels\".\nFor custom resources (when spec.target.manifest is set), this supports\nnested paths like \"spec.database.config\" or \"data\".";
+          description = "Target specifies where to place the template result.\nFor Secret resources the accepted values are empty, \"Data\", \"Annotations\" and \"Labels\";\nany other value is rejected because it would allow writes to privileged Secret fields.\nFor custom resources (when spec.target.manifest is set), this supports\nnested paths like \"spec.database.config\" or \"data\".";
           type = types.nullOr types.str;
         };
         "valuesDecodingStrategy" = mkOption {
-          description = "Used to define a decoding Strategy for the rendered template values.";
+          description = "Used to define a decoding Strategy for the rendered template values.\nDefaults to None when omitted.";
           type = types.nullOr types.str;
         };
       };
@@ -19947,11 +20950,11 @@ let
           );
         };
         "target" = mkOption {
-          description = "Target specifies where to place the template result.\nFor Secret resources, common values are: \"Data\", \"Annotations\", \"Labels\".\nFor custom resources (when spec.target.manifest is set), this supports\nnested paths like \"spec.database.config\" or \"data\".";
+          description = "Target specifies where to place the template result.\nFor Secret resources the accepted values are empty, \"Data\", \"Annotations\" and \"Labels\";\nany other value is rejected because it would allow writes to privileged Secret fields.\nFor custom resources (when spec.target.manifest is set), this supports\nnested paths like \"spec.database.config\" or \"data\".";
           type = types.nullOr types.str;
         };
         "valuesDecodingStrategy" = mkOption {
-          description = "Used to define a decoding Strategy for the rendered template values.";
+          description = "Used to define a decoding Strategy for the rendered template values.\nDefaults to None when omitted.";
           type = types.nullOr types.str;
         };
       };
@@ -20707,6 +21710,12 @@ let
             submoduleOf "generators.external-secrets.io.v1alpha1.ClusterGeneratorSpecGeneratorGithubAccessTokenSpec"
           );
         };
+        "gitlabDeployTokenSpec" = mkOption {
+          description = "GitlabDeployTokenSpec defines the desired state to generate a GitLab deploy token.";
+          type = types.nullOr (
+            submoduleOf "generators.external-secrets.io.v1alpha1.ClusterGeneratorSpecGeneratorGitlabDeployTokenSpec"
+          );
+        };
         "grafanaSpec" = mkOption {
           description = "GrafanaSpec controls the behavior of the grafana generator.";
           type = types.nullOr (
@@ -20769,6 +21778,7 @@ let
         "fakeSpec" = mkOverride 1002 null;
         "gcrAccessTokenSpec" = mkOverride 1002 null;
         "githubAccessTokenSpec" = mkOverride 1002 null;
+        "gitlabDeployTokenSpec" = mkOverride 1002 null;
         "grafanaSpec" = mkOverride 1002 null;
         "mfaSpec" = mkOverride 1002 null;
         "passwordSpec" = mkOverride 1002 null;
@@ -21787,6 +22797,102 @@ let
         };
 
       };
+    "generators.external-secrets.io.v1alpha1.ClusterGeneratorSpecGeneratorGitlabDeployTokenSpec" = {
+
+      options = {
+        "auth" = mkOption {
+          description = "Auth configures how ESO authenticates with the GitLab API.";
+          type = submoduleOf "generators.external-secrets.io.v1alpha1.ClusterGeneratorSpecGeneratorGitlabDeployTokenSpecAuth";
+        };
+        "expiresAt" = mkOption {
+          description = "ExpiresAt is an optional expiry for the deploy token. If omitted the token does\nnot expire on the GitLab side and is revoked only when the generator state is\ncleaned up (on regeneration or when the consuming ExternalSecret is deleted).";
+          type = types.nullOr types.str;
+        };
+        "groupID" = mkOption {
+          description = "GroupID is the numeric ID or unescaped path (e.g. parent/group) of the group to\ncreate the deploy token in. The generator URL-escapes paths before calling the\nGitLab API, so do not pre-encode. Mutually exclusive with projectID.";
+          type = types.nullOr types.str;
+        };
+        "name" = mkOption {
+          description = "Name of the deploy token.";
+          type = types.str;
+        };
+        "projectID" = mkOption {
+          description = "ProjectID is the numeric ID or unescaped path (e.g. group/project) of the\nproject to create the deploy token in. The generator URL-escapes paths before\ncalling the GitLab API, so do not pre-encode. Mutually exclusive with groupID.";
+          type = types.nullOr types.str;
+        };
+        "scopes" = mkOption {
+          description = "Scopes granted to the deploy token. At least one scope is required.";
+          type = types.listOf types.str;
+        };
+        "url" = mkOption {
+          description = "URL configures the GitLab instance URL. Defaults to https://gitlab.com.";
+          type = types.nullOr types.str;
+        };
+        "username" = mkOption {
+          description = "Username is an optional username for the deploy token. GitLab defaults it to\ngitlab+deploy-token-{n} when omitted.";
+          type = types.nullOr types.str;
+        };
+      };
+
+      config = {
+        "expiresAt" = mkOverride 1002 null;
+        "groupID" = mkOverride 1002 null;
+        "projectID" = mkOverride 1002 null;
+        "url" = mkOverride 1002 null;
+        "username" = mkOverride 1002 null;
+      };
+
+    };
+    "generators.external-secrets.io.v1alpha1.ClusterGeneratorSpecGeneratorGitlabDeployTokenSpecAuth" = {
+
+      options = {
+        "token" = mkOption {
+          description = "Token references a secret containing a GitLab access token (personal, group, or\nproject) with the api scope and at least the Maintainer role on the target.";
+          type = submoduleOf "generators.external-secrets.io.v1alpha1.ClusterGeneratorSpecGeneratorGitlabDeployTokenSpecAuthToken";
+        };
+      };
+
+      config = { };
+
+    };
+    "generators.external-secrets.io.v1alpha1.ClusterGeneratorSpecGeneratorGitlabDeployTokenSpecAuthToken" =
+      {
+
+        options = {
+          "secretRef" = mkOption {
+            description = "SecretKeySelector is a reference to a specific 'key' within a Secret resource.\nIn some instances, `key` is a required field.";
+            type = submoduleOf "generators.external-secrets.io.v1alpha1.ClusterGeneratorSpecGeneratorGitlabDeployTokenSpecAuthTokenSecretRef";
+          };
+        };
+
+        config = { };
+
+      };
+    "generators.external-secrets.io.v1alpha1.ClusterGeneratorSpecGeneratorGitlabDeployTokenSpecAuthTokenSecretRef" =
+      {
+
+        options = {
+          "key" = mkOption {
+            description = "A key in the referenced Secret.\nSome instances of this field may be defaulted, in others it may be required.";
+            type = types.nullOr types.str;
+          };
+          "name" = mkOption {
+            description = "The name of the Secret resource being referred to.";
+            type = types.nullOr types.str;
+          };
+          "namespace" = mkOption {
+            description = "The namespace of the Secret resource being referred to.\nIgnored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.";
+            type = types.nullOr types.str;
+          };
+        };
+
+        config = {
+          "key" = mkOverride 1002 null;
+          "name" = mkOverride 1002 null;
+          "namespace" = mkOverride 1002 null;
+        };
+
+      };
     "generators.external-secrets.io.v1alpha1.ClusterGeneratorSpecGeneratorGrafanaSpec" = {
 
       options = {
@@ -21896,9 +23002,15 @@ let
           description = "Role is the role of the service account.\nSee here for the documentation on basic roles offered by Grafana:\nhttps://grafana.com/docs/grafana/latest/administration/roles-and-permissions/access-control/rbac-fixed-basic-role-definitions/";
           type = types.str;
         };
+        "secondsToLive" = mkOption {
+          description = "SecondsToLive is the number of seconds before the generated service account token will expire.\nSome Grafana deployments (e.g. AWS Managed Grafana) require this value to be set.";
+          type = types.nullOr types.int;
+        };
       };
 
-      config = { };
+      config = {
+        "secondsToLive" = mkOverride 1002 null;
+      };
 
     };
     "generators.external-secrets.io.v1alpha1.ClusterGeneratorSpecGeneratorMfaSpec" = {
@@ -24505,6 +25617,129 @@ let
       };
 
     };
+    "generators.external-secrets.io.v1alpha1.GitlabDeployToken" = {
+
+      options = {
+        "apiVersion" = mkOption {
+          description = "APIVersion defines the versioned schema of this representation of an object.\nServers should convert recognized schemas to the latest internal value, and\nmay reject unrecognized values.\nMore info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources";
+          type = types.nullOr types.str;
+        };
+        "kind" = mkOption {
+          description = "Kind is a string value representing the REST resource this object represents.\nServers may infer this from the endpoint the client submits requests to.\nCannot be updated.\nIn CamelCase.\nMore info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds";
+          type = types.nullOr types.str;
+        };
+        "metadata" = mkOption {
+          description = "Standard object's metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata";
+          type = types.nullOr (globalSubmoduleOf "io.k8s.apimachinery.pkg.apis.meta.v1.ObjectMeta");
+        };
+        "spec" = mkOption {
+          description = "GitlabDeployTokenSpec defines the desired state to generate a GitLab deploy token.";
+          type = types.nullOr (submoduleOf "generators.external-secrets.io.v1alpha1.GitlabDeployTokenSpec");
+        };
+      };
+
+      config = {
+        "apiVersion" = mkOverride 1002 null;
+        "kind" = mkOverride 1002 null;
+        "metadata" = mkOverride 1002 null;
+        "spec" = mkOverride 1002 null;
+      };
+
+    };
+    "generators.external-secrets.io.v1alpha1.GitlabDeployTokenSpec" = {
+
+      options = {
+        "auth" = mkOption {
+          description = "Auth configures how ESO authenticates with the GitLab API.";
+          type = submoduleOf "generators.external-secrets.io.v1alpha1.GitlabDeployTokenSpecAuth";
+        };
+        "expiresAt" = mkOption {
+          description = "ExpiresAt is an optional expiry for the deploy token. If omitted the token does\nnot expire on the GitLab side and is revoked only when the generator state is\ncleaned up (on regeneration or when the consuming ExternalSecret is deleted).";
+          type = types.nullOr types.str;
+        };
+        "groupID" = mkOption {
+          description = "GroupID is the numeric ID or unescaped path (e.g. parent/group) of the group to\ncreate the deploy token in. The generator URL-escapes paths before calling the\nGitLab API, so do not pre-encode. Mutually exclusive with projectID.";
+          type = types.nullOr types.str;
+        };
+        "name" = mkOption {
+          description = "Name of the deploy token.";
+          type = types.str;
+        };
+        "projectID" = mkOption {
+          description = "ProjectID is the numeric ID or unescaped path (e.g. group/project) of the\nproject to create the deploy token in. The generator URL-escapes paths before\ncalling the GitLab API, so do not pre-encode. Mutually exclusive with groupID.";
+          type = types.nullOr types.str;
+        };
+        "scopes" = mkOption {
+          description = "Scopes granted to the deploy token. At least one scope is required.";
+          type = types.listOf types.str;
+        };
+        "url" = mkOption {
+          description = "URL configures the GitLab instance URL. Defaults to https://gitlab.com.";
+          type = types.nullOr types.str;
+        };
+        "username" = mkOption {
+          description = "Username is an optional username for the deploy token. GitLab defaults it to\ngitlab+deploy-token-{n} when omitted.";
+          type = types.nullOr types.str;
+        };
+      };
+
+      config = {
+        "expiresAt" = mkOverride 1002 null;
+        "groupID" = mkOverride 1002 null;
+        "projectID" = mkOverride 1002 null;
+        "url" = mkOverride 1002 null;
+        "username" = mkOverride 1002 null;
+      };
+
+    };
+    "generators.external-secrets.io.v1alpha1.GitlabDeployTokenSpecAuth" = {
+
+      options = {
+        "token" = mkOption {
+          description = "Token references a secret containing a GitLab access token (personal, group, or\nproject) with the api scope and at least the Maintainer role on the target.";
+          type = submoduleOf "generators.external-secrets.io.v1alpha1.GitlabDeployTokenSpecAuthToken";
+        };
+      };
+
+      config = { };
+
+    };
+    "generators.external-secrets.io.v1alpha1.GitlabDeployTokenSpecAuthToken" = {
+
+      options = {
+        "secretRef" = mkOption {
+          description = "SecretKeySelector is a reference to a specific 'key' within a Secret resource.\nIn some instances, `key` is a required field.";
+          type = submoduleOf "generators.external-secrets.io.v1alpha1.GitlabDeployTokenSpecAuthTokenSecretRef";
+        };
+      };
+
+      config = { };
+
+    };
+    "generators.external-secrets.io.v1alpha1.GitlabDeployTokenSpecAuthTokenSecretRef" = {
+
+      options = {
+        "key" = mkOption {
+          description = "A key in the referenced Secret.\nSome instances of this field may be defaulted, in others it may be required.";
+          type = types.nullOr types.str;
+        };
+        "name" = mkOption {
+          description = "The name of the Secret resource being referred to.";
+          type = types.nullOr types.str;
+        };
+        "namespace" = mkOption {
+          description = "The namespace of the Secret resource being referred to.\nIgnored if referent is not cluster-scoped, otherwise defaults to the namespace of the referent.";
+          type = types.nullOr types.str;
+        };
+      };
+
+      config = {
+        "key" = mkOverride 1002 null;
+        "name" = mkOverride 1002 null;
+        "namespace" = mkOverride 1002 null;
+      };
+
+    };
     "generators.external-secrets.io.v1alpha1.Grafana" = {
 
       options = {
@@ -24638,9 +25873,15 @@ let
           description = "Role is the role of the service account.\nSee here for the documentation on basic roles offered by Grafana:\nhttps://grafana.com/docs/grafana/latest/administration/roles-and-permissions/access-control/rbac-fixed-basic-role-definitions/";
           type = types.str;
         };
+        "secondsToLive" = mkOption {
+          description = "SecondsToLive is the number of seconds before the generated service account token will expire.\nSome Grafana deployments (e.g. AWS Managed Grafana) require this value to be set.";
+          type = types.nullOr types.int;
+        };
       };
 
-      config = { };
+      config = {
+        "secondsToLive" = mkOverride 1002 null;
+      };
 
     };
     "generators.external-secrets.io.v1alpha1.MFA" = {
@@ -26804,6 +28045,17 @@ in
         );
         default = { };
       };
+      "generators.external-secrets.io"."v1alpha1"."GitlabDeployToken" = mkOption {
+        description = "GitlabDeployToken generates a GitLab deploy token.";
+        type = types.attrsOf (
+          submoduleForDefinition "generators.external-secrets.io.v1alpha1.GitlabDeployToken"
+            "gitlabdeploytokens"
+            "GitlabDeployToken"
+            "generators.external-secrets.io"
+            "v1alpha1"
+        );
+        default = { };
+      };
       "generators.external-secrets.io"."v1alpha1"."Grafana" = mkOption {
         description = "Grafana represents a generator for Grafana service account tokens.";
         type = types.attrsOf (
@@ -27021,6 +28273,17 @@ in
           submoduleForDefinition "generators.external-secrets.io.v1alpha1.GithubAccessToken"
             "githubaccesstokens"
             "GithubAccessToken"
+            "generators.external-secrets.io"
+            "v1alpha1"
+        );
+        default = { };
+      };
+      "gitlabDeployTokens" = mkOption {
+        description = "GitlabDeployToken generates a GitLab deploy token.";
+        type = types.attrsOf (
+          submoduleForDefinition "generators.external-secrets.io.v1alpha1.GitlabDeployToken"
+            "gitlabdeploytokens"
+            "GitlabDeployToken"
             "generators.external-secrets.io"
             "v1alpha1"
         );
@@ -27245,6 +28508,13 @@ in
         attrName = "githubAccessTokens";
       }
       {
+        name = "gitlabdeploytokens";
+        group = "generators.external-secrets.io";
+        version = "v1alpha1";
+        kind = "GitlabDeployToken";
+        attrName = "gitlabDeployTokens";
+      }
+      {
         name = "grafanas";
         group = "generators.external-secrets.io";
         version = "v1alpha1";
@@ -27347,6 +28617,9 @@ in
       "generators.external-secrets.io"."v1alpha1"."GithubAccessToken" =
         mkAliasDefinitions
           options.resources."githubAccessTokens";
+      "generators.external-secrets.io"."v1alpha1"."GitlabDeployToken" =
+        mkAliasDefinitions
+          options.resources."gitlabDeployTokens";
       "generators.external-secrets.io"."v1alpha1"."Grafana" =
         mkAliasDefinitions
           options.resources."grafanas";
@@ -27442,6 +28715,12 @@ in
         group = "generators.external-secrets.io";
         version = "v1alpha1";
         kind = "GithubAccessToken";
+        default.metadata.namespace = lib.mkDefault config.namespace;
+      }
+      {
+        group = "generators.external-secrets.io";
+        version = "v1alpha1";
+        kind = "GitlabDeployToken";
         default.metadata.namespace = lib.mkDefault config.namespace;
       }
       {

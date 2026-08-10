@@ -111,7 +111,7 @@
                             "sh"
                             "-c"
                             ''
-                              status="$(curl --silent --output /dev/null --write-out '%{http_code}' --request PUT http://seaweedfs-s3:8333/datalk-celld)"
+                              status="$(curl --silent --output /dev/null --write-out '%{http_code}' --request PUT http://storage-s3:8333/datalk-celld)"
                               test "$status" = 200 -o "$status" = 409
                             ''
                           ];
@@ -125,7 +125,7 @@
                             "--bucket"
                             "s3://datalk-celld"
                             "--endpoint"
-                            "http://seaweedfs-s3:8333"
+                            "http://storage-s3:8333"
                             "--region"
                             "us-east-1"
                           ];
@@ -162,7 +162,7 @@
                         }
                         {
                           name = "S3_ENDPOINT";
-                          value = "http://seaweedfs-s3:8333";
+                          value = "http://storage-s3:8333";
                         }
                         {
                           name = "AWS_REGION";

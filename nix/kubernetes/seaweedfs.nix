@@ -1,52 +1,57 @@
 {
   flake.modules.kubernetes.seaweedfs =
-    { config, lib, ... }:
     {
-      options.modules.seaweedfs.enable = lib.mkEnableOption "ephemeral SeaweedFS S3 storage";
+      config,
+      lib,
+      charts,
+      ...
+    }:
+    {
+      options.modules.seaweedfs = with lib; {
+        enable = mkEnableOption "SeaweedFS S3 storage via seaweedfs-operator";
+        namespace = mkOption {
+          type = types.str;
+          default = "datalk";
+        };
+      };
 
-      ## TODO: helm install; operator?
-      config = lib.mkIf config.modules.seaweedfs.enable {
-        applications.seaweedfs = {
-          namespace = "datalk";
-          createNamespace = true;
-          resources = {
-            services.seaweedfs-s3.spec = {
-              type = "ClusterIP";
-              selector.app = "seaweedfs";
-              ports.s3 = {
-                port = 8333;
-                targetPort = "s3";
+      config =
+        let
+          cfg = config.modules.seaweedfs;
+        in
+        lib.mkIf cfg.enable {
+          nixidy.applicationImports = [ ./_generated/seaweedfs-operator.nix ];
+
+          applications = {
+            seaweedfs-operator = {
+              inherit (cfg) namespace;
+              createNamespace = true;
+
+              helm.releases.seaweedfs-operator = {
+                chart = charts.seaweedfs-operator.seaweedfs-operator;
+                values = {
+                  webhook.enabled = false;
+                };
               };
             };
 
-            deployments.seaweedfs.spec = {
-              replicas = 1;
-              selector.matchLabels.app = "seaweedfs";
-              template = {
-                metadata.labels.app = "seaweedfs";
-                spec = {
-                  containers.seaweedfs = {
-                    image = "chrislusf/seaweedfs:4.41";
-                    args = [
-                      "server"
-                      "-s3"
-                      "-dir=/data"
-                      "-s3.port=8333"
-                    ];
-                    ports.s3.containerPort = 8333;
-                    volumeMounts = [
-                      {
-                        name = "data";
-                        mountPath = "/data";
-                      }
-                    ];
-                  };
-                  volumes.data.emptyDir = { };
-                };
+            datalk.resources.seaweeds.storage.spec = {
+              volumeServerDiskCount = 1;
+              master = {
+                replicas = 1;
+              };
+              volume = {
+                replicas = 1;
+                requests.storage = "1Gi";
+              };
+              filer = {
+                replicas = 1;
+              };
+              s3 = {
+                replicas = 1;
               };
             };
           };
         };
-      };
     };
 }
