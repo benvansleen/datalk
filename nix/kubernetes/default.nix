@@ -24,7 +24,6 @@
           lis-python-server
           seaweedfs
           tailscale-operator
-          valkey
         ];
 
         nixidy = {
@@ -69,7 +68,6 @@
           };
           seaweedfs.enable = true;
           tailscale-operator.enable = true;
-          valkey.enable = true;
         };
       };
 
@@ -85,7 +83,6 @@
           lis-python-server
           observability
           seaweedfs
-          valkey
         ];
         nixidy = {
           target = {
@@ -122,7 +119,6 @@
             datasetHostPath = "/workspace/datalk/datasets";
           };
           seaweedfs.enable = true;
-          valkey.enable = true;
         };
       };
   };

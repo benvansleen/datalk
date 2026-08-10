@@ -46,14 +46,6 @@
                     secretKey = "OPENAI_API_KEY";
                     remoteRef.key = "openai-api-key";
                   }
-                  {
-                    secretKey = "REDIS_USER";
-                    remoteRef.key = "redis-user";
-                  }
-                  {
-                    secretKey = "REDIS_PASSWORD";
-                    remoteRef.key = "redis-password";
-                  }
                 ];
               };
             };

@@ -90,22 +90,6 @@
             "google_service_account.external_secrets"
           ];
         };
-        redis_user = {
-          inherit (self.gcloud) project;
-          secret_id = "redis-user";
-          replication.auto = { };
-          depends_on = [
-            "google_service_account.external_secrets"
-          ];
-        };
-        redis_password = {
-          inherit (self.gcloud) project;
-          secret_id = "redis-password";
-          replication.auto = { };
-          depends_on = [
-            "google_service_account.external_secrets"
-          ];
-        };
       };
     };
   };
@@ -128,8 +112,6 @@
               "INTERNAL_CELL_SECRET": "internal-cell-secret",
               "INTERNAL_PROJECTION_SECRET": "internal-projection-secret",
               "OPENAI_API_KEY": "openai-api-key",
-              "REDIS_USER": "redis-user",
-              "REDIS_PASSWORD": "redis-password",
               "TAILSCALE_OAUTH_CLIENT_ID": "tailscale-oauth-client-id",
               "TAILSCALE_OAUTH_CLIENT_SECRET": "tailscale-oauth-client-secret",
           }
