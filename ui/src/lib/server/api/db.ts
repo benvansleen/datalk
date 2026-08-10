@@ -1,7 +1,7 @@
 import { Effect, Match, Option } from 'effect';
 import { Database } from '../services/Database';
 import * as T from '$lib/server/db/schema';
-import { eq, and, desc, asc } from 'drizzle-orm';
+import { eq, and, desc, asc, isNull } from 'drizzle-orm';
 import { AuthError, DatabaseError } from '../errors';
 
 /**
@@ -13,7 +13,7 @@ export const getChatsForUser = (userId: string) =>
     return yield* db
       .select()
       .from(T.chat)
-      .where(eq(T.chat.userId, userId))
+      .where(and(eq(T.chat.userId, userId), isNull(T.chat.deletedAt)))
       .orderBy(desc(T.chat.updatedAt));
   }).pipe(
     Effect.mapError(
@@ -38,7 +38,7 @@ export const requireChatOwnership = (userId: string, chatId: string) =>
   Effect.gen(function* () {
     const db = yield* Database;
     const chatResult = yield* db.query.chat.findFirst({
-      where: and(eq(T.chat.userId, userId), eq(T.chat.id, chatId)),
+      where: and(eq(T.chat.userId, userId), eq(T.chat.id, chatId), isNull(T.chat.deletedAt)),
     });
 
     if (!chatResult) {
@@ -253,7 +253,7 @@ export const getChatWithHistory = (userId: string, chatId: string) =>
     const db = yield* Database;
 
     const chat = yield* db.query.chat.findFirst({
-      where: and(eq(T.chat.userId, userId), eq(T.chat.id, chatId)),
+      where: and(eq(T.chat.userId, userId), eq(T.chat.id, chatId), isNull(T.chat.deletedAt)),
       with: {
         currentMessageRequestRecord: true,
         messages: {

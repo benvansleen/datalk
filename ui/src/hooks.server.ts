@@ -5,8 +5,12 @@ import { Auth, AuthError, runEffectExit, requestSpanFromRequest } from '$lib/ser
 import { Cause, Effect, Exit, Option } from 'effect';
 
 const UNPROTECTED_ROUTES = ['/login', '/signup'];
+const isInternalCellRoute = (pathname: string) => pathname.startsWith('/api/internal/cells/');
 
 export const handle: Handle = async ({ event, resolve }) => {
+  if (isInternalCellRoute(event.url.pathname)) {
+    return resolve(event);
+  }
   const isUnprotectedRoute = UNPROTECTED_ROUTES.includes(event.url.pathname);
 
   return Exit.match(

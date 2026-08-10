@@ -137,6 +137,14 @@
                             ++ redisEnv
                             ++ [
                               {
+                                name = "PYTHON_SERVER_HOST";
+                                value = "python-server";
+                              }
+                              {
+                                name = "PYTHON_SERVER_PORT";
+                                value = toString config.modules.python-server.port;
+                              }
+                              {
                                 name = "ENVIRONMENT";
                                 value = cfg.environment;
                               }
@@ -164,12 +172,18 @@
                                 };
                               }
                               {
-                                name = "PYTHON_SERVER_HOST";
-                                value = "python-server";
+                                name = "CELLD_AUTH_SECRET";
+                                valueFrom.secretKeyRef = {
+                                  name = "datalk-runtime";
+                                  key = "CELLD_AUTH_SECRET";
+                                };
                               }
                               {
-                                name = "PYTHON_SERVER_PORT";
-                                value = toString config.modules.python-server.port;
+                                name = "INTERNAL_PROJECTION_SECRET";
+                                valueFrom.secretKeyRef = {
+                                  name = "datalk-runtime";
+                                  key = "INTERNAL_PROJECTION_SECRET";
+                                };
                               }
                               {
                                 name = "OPENAI_API_KEY";
@@ -179,17 +193,6 @@
                                 };
                               }
                             ];
-
-                          # resources = {
-                          # requests = {
-                          #   cpu = "100m";
-                          #   memory = "2Gi";
-                          # };
-                          # limits = {
-                          #   cpu = "500m";
-                          #   memory = "3Gi";
-                          # };
-                          # };
                         };
                       };
                   };

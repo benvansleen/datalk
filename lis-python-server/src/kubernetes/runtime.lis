@@ -2,6 +2,7 @@ import apierrors "go:k8s.io/apimachinery/pkg/api/errors"
 import "go:context"
 import core "go:k8s.io/api/core/v1"
 import coreclient "go:k8s.io/client-go/kubernetes/typed/core/v1"
+import "go:fmt"
 import meta "go:k8s.io/apimachinery/pkg/apis/meta/v1"
 import resource "go:k8s.io/apimachinery/pkg/api/resource"
 import "go:strings"
@@ -89,11 +90,52 @@ impl Runtime {
         pod_name,
       )
       .build()
-    let created = self.pods
-      .Create(ctx, &pod, meta.CreateOptions { .. })
-      .map_err(map_api_error)?
+
+    let created = clear_capacity_on_err(
+      || self.pods
+        .Create(ctx, &pod, meta.CreateOptions { .. })
+        .map_err(map_api_error),
+      || self.prune_inactive(ctx, pod_name),
+    )?
 
     runtime_info(spec.environment_id, created)
+  }
+
+  fn prune_inactive(self, ctx: context.Context, keep_name: string) -> Result<(), env.RuntimeError> {
+    let pods = self.pods
+      .List(
+        ctx,
+        meta.ListOptions {
+          LabelSelector: "app.kubernetes.io/component=execution-environment",
+          ..,
+        },
+      )
+      .map_err(map_api_error)?
+
+    let results = Channel.new<Result<(), env.RuntimeError>>()
+    let mut pending = 0
+    for pod in pods.Items {
+      if pod.ObjectMeta.DeletionTimestamp.is_some() ||
+      pod.ObjectMeta.Name == keep_name ||
+      is_pod_ready(&pod) {
+        continue
+      }
+      let pod_name = pod.ObjectMeta.Name
+      pending += 1
+      task {
+        let result = match self.pods.Delete(
+          ctx,
+          pod_name,
+          meta.DeleteOptions { .. },
+        ) {
+          Ok(()) => self.wait_for_pod_deletion(ctx, pod_name),
+          Err(err) => Err(map_api_error(err)),
+        }
+        let _ = results.send(result)
+      }
+    }
+
+    await_all(results, pending)
   }
 
   fn wait_until_ready(
@@ -145,10 +187,72 @@ impl Runtime {
       meta.GetOptions { .. },
     ) {
       Ok(claim) => validate_checkpoint(claim, spec),
-      Err(err) if apierrors.IsNotFound(err) => self.create_checkpoint(ctx, spec),
+      Err(err) if apierrors.IsNotFound(err) => {
+        match self.create_checkpoint(ctx, spec) {
+          Ok(()) => Ok(()),
+          Err(env.RuntimeError.CapacityExceeded) => clear_capacity_on_err(
+            || self.create_checkpoint(ctx, spec),
+            || self.prune_inactive_checkpoints(ctx, spec.checkpoint_name),
+          ),
+          Err(err) => Err(err),
+        }
+      },
       Err(err) => Err(map_api_error(err)),
     }
+
     result
+  }
+
+  fn prune_inactive_checkpoints(self, ctx: context.Context, keep_name: string) -> Result<(), env.RuntimeError> {
+    let claims = self.claims
+      .List(ctx, meta.ListOptions { .. })
+      .map_err(map_api_error)?
+    let results = Channel.new<Result<(), env.RuntimeError>>()
+    let mut pending = 0
+    for claim in claims.Items {
+      if claim.ObjectMeta.DeletionTimestamp.is_some() ||
+      claim.ObjectMeta.Name == keep_name {
+        continue
+      }
+      let Some(environment_id) = claim.ObjectMeta.Annotations.get(
+        ENVIRONMENT_ANNOTATION,
+      ) else {
+        continue
+      }
+      let claim_name = claim.ObjectMeta.Name
+      pending += 1
+      task {
+        let _ = results.send(self.prune_checkpoint(
+          ctx,
+          environment_id,
+          claim_name,
+        ))
+      }
+    }
+
+    await_all(results, pending)
+  }
+
+  fn prune_checkpoint(
+    self,
+    ctx: context.Context,
+    environment_id: string,
+    claim_name: string,
+  ) -> Result<(), env.RuntimeError> {
+    let pod_name = name_for_pod(environment_id)
+    let active = self.pods
+      .Get(ctx, pod_name, meta.GetOptions { .. })
+      .map_or(false, is_pod_ready)
+    if active { return Ok(()) }
+
+    self.pods
+      .Delete(ctx, pod_name, meta.DeleteOptions { .. })
+      .map_err(map_api_error)?
+    self.wait_for_pod_deletion(ctx, pod_name)?
+    self.claims
+      .Delete(ctx, claim_name, meta.DeleteOptions { .. })
+      .map_err(map_api_error)?
+    self.wait_for_checkpoint_deletion(ctx, claim_name)
   }
 
   #[allow(let_and_return)]
@@ -303,6 +407,7 @@ fn validate_checkpoint(
 }
 
 fn map_api_error(err: error) -> env.RuntimeError {
+  fmt.Println(f"runtime error: {err.Error()}")
   match err {
     _ if apierrors.IsAlreadyExists(err) || apierrors.IsConflict(err) => env.RuntimeError.Conflict,
     _ if apierrors.IsTooManyRequests(err) => env.RuntimeError.CapacityExceeded,
@@ -350,4 +455,32 @@ fn parse_resources(cfg: config.WorkerResources) -> Result<core.ResourceRequireme
   let limits = core.ResourceList(limit_values)
 
   Ok(core.ResourceRequirements { Requests: requests, Limits: limits, .. })
+}
+
+fn clear_capacity_on_err<R>(
+  f: fn() -> Result<R, env.RuntimeError>,
+  cleanup: fn() -> Result<(), env.RuntimeError>,
+) -> Result<R, env.RuntimeError> {
+  match f() {
+    Err(env.RuntimeError.CapacityExceeded) => {
+      cleanup()?
+      f()
+    },
+    result => result,
+  }
+}
+
+fn await_all(results: Channel<Result<(), env.RuntimeError>>, pending: int) -> Result<(), env.RuntimeError> {
+  let mut first_error: Option<env.RuntimeError> = None
+  for _ in 0..pending {
+    match results.receive() {
+      Some(Err(err)) if first_error.is_none() => first_error = Some(err),
+      _ => (),
+    }
+  }
+
+  match first_error {
+    Some(err) => Err(err),
+    None => Ok(()),
+  }
 }

@@ -226,6 +226,7 @@
                     apiGroups = [ "" ];
                     resources = [ "pods" ];
                     verbs = [
+                      "list"
                       "create"
                       "delete"
                       "get"
@@ -235,6 +236,7 @@
                     apiGroups = [ "" ];
                     resources = [ "persistentvolumeclaims" ];
                     verbs = [
+                      "list"
                       "create"
                       "delete"
                       "get"

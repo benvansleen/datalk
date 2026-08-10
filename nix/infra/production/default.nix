@@ -25,6 +25,7 @@
 
         imgs = with self.packages.${system}; [
           datalk-image
+          celld-deploy-source-image
           lis-python-server-image
           lis-python-worker-image
         ];

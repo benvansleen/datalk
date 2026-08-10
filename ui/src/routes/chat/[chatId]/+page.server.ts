@@ -1,5 +1,4 @@
 import type { PageServerLoad } from './$types';
-import { redirect } from '@sveltejs/kit';
 import { Effect, Option } from 'effect';
 import {
   requestSpanFromRequest,
@@ -34,13 +33,13 @@ export const load: PageServerLoad = async ({ locals, params, request, url }) => 
     requestSpanFromRequest(request, url, '/chat/[chatId]'),
   );
 
-  if (!chatData) {
-    redirect(303, '/');
-  }
-
   return {
     chatId,
     chats,
-    ...chatData,
+    ...(chatData ?? {
+      currentMessageRequestId: null,
+      currentMessageRequestContent: null,
+      messages: [],
+    }),
   };
 };

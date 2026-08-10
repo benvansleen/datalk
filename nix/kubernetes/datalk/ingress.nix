@@ -32,6 +32,14 @@
               port.name = "http";
             };
           };
+          liveIngressPath = {
+            path = "/live";
+            pathType = "Prefix";
+            backend.service = {
+              name = "celld";
+              port.number = 80;
+            };
+          };
         in
         lib.mkIf (cfg != null) {
           applications.datalk.resources.ingresses = {
@@ -39,7 +47,10 @@
               rules = [
                 {
                   inherit (cfg) host;
-                  http.paths = [ ingressPath ];
+                  http.paths = [
+                    liveIngressPath
+                    ingressPath
+                  ];
                 }
               ];
             }

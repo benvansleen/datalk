@@ -53,6 +53,7 @@
               '';
               imgs = with self.packages.${system}; [
                 datalk-image
+                celld-deploy-source-image
                 lis-python-server-image
                 lis-python-worker-image
               ];
@@ -104,6 +105,7 @@
               imgs = with self.packages.${system}; [
                 datalk-image
                 datalk-dev-image
+                celld-dev-image
                 lis-python-server-image
                 lis-python-worker-image
               ];

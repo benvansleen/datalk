@@ -26,7 +26,7 @@
       <SidebarItem Icon={Home} label="Home" {collapsed} link="/" />
       {#each chats as chat}
         <SidebarItem
-          Icon={chat.currentMessageRequest === null ? MessageCircle : MessageCircleDashed}
+          Icon={chat.generating ? MessageCircleDashed : MessageCircle}
           label={chat.title}
           {collapsed}
           link={`/chat/${chat.id}`}

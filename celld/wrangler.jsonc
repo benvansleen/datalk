@@ -1,0 +1,22 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "datalk-live",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-08-09",
+  "durable_objects": {
+    "bindings": [
+      { "name": "USER_CELL", "class_name": "UserCell" },
+      { "name": "CHAT_CELL", "class_name": "ChatCell" },
+    ],
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["UserCell", "ChatCell"],
+    },
+  ],
+  "vars": {
+    "LIVE_ORIGIN": "http://localhost:8080",
+    "PYTHON_SERVER_URL": "http://python-server.datalk.svc.cluster.local:8000",
+  },
+}

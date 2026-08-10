@@ -7,12 +7,8 @@ export class Config extends Effect.Service<Config>()('Config', {
     const dbHost = yield* EffectConfig.string('DB_HOST');
     const dbPort = yield* EffectConfig.string('DB_PORT');
     const dbName = yield* EffectConfig.string('DB_NAME');
-    const redisUser = yield* EffectConfig.string('REDIS_USER').pipe(
-      EffectConfig.withDefault('default'),
-    );
-    const redisPassword = yield* EffectConfig.redacted('REDIS_PASSWORD');
-    const redisHost = yield* EffectConfig.string('REDIS_HOST');
-    const redisPort = yield* EffectConfig.string('REDIS_PORT');
+    const celldAuthSecret = yield* EffectConfig.redacted('CELLD_AUTH_SECRET');
+    const internalProjectionSecret = yield* EffectConfig.redacted('INTERNAL_PROJECTION_SECRET');
     const pythonServerHost = yield* EffectConfig.string('PYTHON_SERVER_HOST');
     const pythonServerPort = yield* EffectConfig.string('PYTHON_SERVER_PORT');
     const environment = yield* EffectConfig.string('ENVIRONMENT').pipe(
@@ -21,21 +17,16 @@ export class Config extends Effect.Service<Config>()('Config', {
 
     // Build URLs - Note: Redacted for password keeps it out of logs
     const dbPasswordValue = Redacted.value(dbPassword);
-    const redisPasswordValue = Redacted.value(redisPassword);
-
-    const openaiApiKey = yield* EffectConfig.redacted('OPENAI_API_KEY');
 
     return {
       databaseUrl: Redacted.make(
         `postgres://${dbUser}:${dbPasswordValue}@${dbHost}:${dbPort}/${dbName}?sslmode=disable`,
       ),
-      redisUrl: Redacted.make(
-        `redis://${redisUser}:${redisPasswordValue}@${redisHost}:${redisPort}`,
-      ),
       pythonServerUrl: `http://${pythonServerHost}:${pythonServerPort}`,
+      celldAuthSecret,
+      internalProjectionSecret,
       environment,
       isProduction: environment === 'production',
-      openaiApiKey,
       whitelistedEmails: new Set(['test@gmail.com']),
     } as const;
   }),

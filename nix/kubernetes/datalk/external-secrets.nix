@@ -35,6 +35,18 @@
                     remoteRef.key = "better-auth-secret";
                   }
                   {
+                    secretKey = "CELLD_AUTH_SECRET";
+                    remoteRef.key = "celld-auth-secret";
+                  }
+                  {
+                    secretKey = "INTERNAL_CELL_SECRET";
+                    remoteRef.key = "internal-cell-secret";
+                  }
+                  {
+                    secretKey = "INTERNAL_PROJECTION_SECRET";
+                    remoteRef.key = "internal-projection-secret";
+                  }
+                  {
                     secretKey = "OPENAI_API_KEY";
                     remoteRef.key = "openai-api-key";
                   }

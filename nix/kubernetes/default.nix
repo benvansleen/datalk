@@ -18,9 +18,11 @@
       {
         imports = with self.modules.kubernetes; [
           cloudnative-pg
+          celld
           datalk
           external-secrets
           lis-python-server
+          seaweedfs
           tailscale-operator
           valkey
         ];
@@ -41,6 +43,11 @@
 
         modules = {
           cloudnative-pg.enable = true;
+          celld = {
+            enable = true;
+            deploySourceImage = self.image-uri self.packages.x86_64-linux.celld-deploy-source-image;
+            liveOrigin = "https://datalk.clouded-mimosa.ts.net";
+          };
           datalk = {
             enable = true;
             image = self.image-uri self.packages.x86_64-linux.datalk-image;
@@ -60,6 +67,7 @@
             datasetGcsBucket = "datalk-datasets";
             checkpointStorageClass = "standard";
           };
+          seaweedfs.enable = true;
           tailscale-operator.enable = true;
           valkey.enable = true;
         };
@@ -72,9 +80,11 @@
       {
         imports = with self.modules.kubernetes; [
           cloudnative-pg
+          celld
           datalk
           lis-python-server
           observability
+          seaweedfs
           valkey
         ];
         nixidy = {
@@ -86,6 +96,12 @@
         };
         modules = {
           cloudnative-pg.enable = true;
+          celld = {
+            enable = true;
+            image = self.local-image-uri self.packages.x86_64-linux.celld-dev-image;
+            dev.enable = hotReload;
+            liveOrigin = "http://localhost:8080";
+          };
           observability.enable = true;
           datalk = {
             enable = true;
@@ -105,6 +121,7 @@
             workerImage = self.local-image-uri self.packages.x86_64-linux.lis-python-worker-image;
             datasetHostPath = "/workspace/datalk/datasets";
           };
+          seaweedfs.enable = true;
           valkey.enable = true;
         };
       };

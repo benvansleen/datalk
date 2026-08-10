@@ -1,0 +1,17 @@
+{
+  "name": "datalk-live",
+  "main": "index.js",
+  "compatibility_date": "2026-08-09",
+  "durable_objects": {
+    "bindings": [
+      { "name": "USER_CELL", "class_name": "UserCell" },
+      { "name": "CHAT_CELL", "class_name": "ChatCell" }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["UserCell", "ChatCell"]
+    }
+  ]
+}
