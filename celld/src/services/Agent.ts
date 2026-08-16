@@ -21,9 +21,12 @@ const aiSchema = <A, I>(schema: Schema.Schema<A, I, never>) =>
   jsonSchema<A>(JSONSchema.make(schema), {
     validate: (input) => {
       const decoded = Schema.decodeUnknownEither(schema)(input);
-      return Either.isRight(decoded)
-        ? { success: true, value: decoded.right }
-        : { success: false, error: new Error(String(decoded.left)) };
+      return decoded.pipe(
+        Either.match({
+          onLeft: (error) => ({ success: false as const, error: new Error(String(error)) }),
+          onRight: (value) => ({ success: true as const, value }),
+        }),
+      );
     },
   });
 
@@ -95,6 +98,7 @@ export type GenerationSinkShape = {
   append: (type: string, data: unknown) => Effect.Effect<void>;
   emit: (type: string, data: unknown) => Effect.Effect<void>;
   save: () => Effect.Effect<void>;
+  saveTitle: () => Effect.Effect<void>;
   spawn: (work: Effect.Effect<void, never, never>) => Effect.Effect<void>;
 };
 
@@ -133,7 +137,7 @@ export class Agent extends Effect.Service<Agent>()('app/Agent', {
         const text = title.text.trim().replaceAll(/\s+/g, ' ').slice(0, 120);
         if (!text || snapshot.title !== '...') return;
         snapshot.title = text;
-        yield* (yield* GenerationSink).save();
+        yield* (yield* GenerationSink).saveTitle();
       }).pipe(
         (effect) => observability.track('app.chat.title_generation', effect),
         // A title failure must not discard an otherwise successful response.
@@ -185,12 +189,16 @@ export class Agent extends Effect.Service<Agent>()('app/Agent', {
         let toolResultCount = 0;
         const generation = Effect.gen(function* () {
           const sink = yield* GenerationSink;
-          if (Option.isNone(config.openaiApiKey)) {
-            return yield* Effect.fail(
-              new HttpError({ status: 503, message: 'AI generation is not configured' }),
-            );
-          }
-          const model = createOpenAI({ apiKey: config.openaiApiKey.value }).chat(
+          const apiKey = yield* config.openaiApiKey.pipe(
+            Option.match({
+              onNone: () =>
+                Effect.fail(
+                  new HttpError({ status: 503, message: 'AI generation is not configured' }),
+                ),
+              onSome: Effect.succeed,
+            }),
+          );
+          const model = createOpenAI({ apiKey }).chat(
             Option.getOrElse(config.openaiModel, () => 'gpt-5-nano'),
           );
           if (snapshot.title === '...')
@@ -227,17 +235,19 @@ export class Agent extends Effect.Service<Agent>()('app/Agent', {
                       if (firstVisibleTextAt === undefined && value.text.length > 0) {
                         firstVisibleTextAt = performance.now();
                       }
-                      if (Option.isNone(assistantId)) {
-                        const id = crypto.randomUUID();
-                        assistantId = Option.some(id);
-                        snapshot.messages.push({
-                          id,
-                          role: 'assistant',
-                          content: '',
-                          createdAt: Date.now(),
-                        });
-                      }
-                      const id = Option.getOrNull(assistantId)!;
+                      const id = assistantId.pipe(
+                        Option.getOrElse(() => {
+                          const createdId = crypto.randomUUID();
+                          assistantId = Option.some(createdId);
+                          snapshot.messages.push({
+                            id: createdId,
+                            role: 'assistant',
+                            content: '',
+                            createdAt: Date.now(),
+                          });
+                          return createdId;
+                        }),
+                      );
                       const index = snapshot.messages.findIndex((message) => message.id === id);
                       if (index !== -1) {
                         const assistant = snapshot.messages[index];

@@ -1,6 +1,7 @@
 import { Effect } from 'effect';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { StoredChatSnapshot } from '../src/cell/shared';
+import { externalSnapshotOf, type StoredChatSnapshot } from '../src/cell/shared';
+import { ChatSnapshotStore, makeChatStorageLayer } from '../src/services/ChatSnapshotStore';
 import { Projection } from '../src/services/Projection';
 import type { Env } from '../src/types';
 import { runWithEnv } from './helpers/runtime';
@@ -10,17 +11,46 @@ const env = {
   INTERNAL_PROJECTION_SECRET: 'projection-secret',
 } as Env;
 
-const snapshot = { id: 'chat-1' } as unknown as StoredChatSnapshot;
+const snapshot: StoredChatSnapshot = {
+  id: 'chat-1',
+  userId: 'user-1',
+  dataset: 'dataset-1',
+  title: 'A chat',
+  deleted: false,
+  generation: { status: 'idle' },
+  createdAt: 1,
+  updatedAt: 1,
+  messages: [],
+  events: [],
+};
 
-const makeState = (initial: Record<string, unknown> = {}) => {
+const projectionEvent = (sequence: number) => ({
+  sequence,
+  type: 'chat-snapshot' as const,
+  occurredAt: 1,
+  snapshot: externalSnapshotOf(snapshot),
+});
+
+const makeState = (initial: Record<string, unknown> = {}, initialAlarm: number | null = null) => {
   const values = new Map<string, unknown>(Object.entries(initial));
+  let alarm = initialAlarm;
   const storage = {
     get: vi.fn(async <T>(key: string) => values.get(key) as T | undefined),
     put: vi.fn(async (key: string, value: unknown) => {
       values.set(key, value);
     }),
-    setAlarm: vi.fn(async (_alarm: number) => undefined),
+    getAlarm: vi.fn(async () => alarm),
+    setAlarm: vi.fn(async (scheduledTime: number) => {
+      alarm = scheduledTime;
+    }),
+  } as {
+    get: ReturnType<typeof vi.fn>;
+    put: ReturnType<typeof vi.fn>;
+    getAlarm: ReturnType<typeof vi.fn>;
+    setAlarm: ReturnType<typeof vi.fn>;
+    transaction: ReturnType<typeof vi.fn>;
   };
+  storage.transaction = vi.fn(async (callback) => callback(storage));
   return { values, storage, state: { storage } as unknown as DurableObjectState };
 };
 
@@ -28,9 +58,9 @@ const enqueue = (state: DurableObjectState) =>
   runWithEnv(
     env,
     Effect.gen(function* () {
-      const projection = yield* Projection;
-      return yield* projection.enqueueProjection(state, snapshot);
-    }),
+      const snapshots = yield* ChatSnapshotStore;
+      return yield* snapshots.putProjected(snapshot);
+    }).pipe(Effect.provide(makeChatStorageLayer(state.storage))),
   );
 
 const flush = (state: DurableObjectState) =>
@@ -38,8 +68,8 @@ const flush = (state: DurableObjectState) =>
     env,
     Effect.gen(function* () {
       const projection = yield* Projection;
-      return yield* projection.flushProjection(state);
-    }),
+      return yield* projection.flushProjection();
+    }).pipe(Effect.provide(makeChatStorageLayer(state.storage))),
   );
 
 describe('projection outbox', () => {
@@ -56,8 +86,24 @@ describe('projection outbox', () => {
 
     expect(values.get('projection-next-sequence')).toBe(2);
     expect(values.get('projection-outbox')).toEqual([
-      expect.objectContaining({ sequence: 1, type: 'chat-snapshot', snapshot }),
-      expect.objectContaining({ sequence: 2, type: 'chat-snapshot', snapshot }),
+      expect.objectContaining({
+        sequence: 1,
+        type: 'chat-snapshot',
+        snapshot: expect.objectContaining({
+          id: snapshot.id,
+          generating: false,
+          currentMessageRequestId: null,
+        }),
+      }),
+      expect.objectContaining({
+        sequence: 2,
+        type: 'chat-snapshot',
+        snapshot: expect.objectContaining({
+          id: snapshot.id,
+          generating: false,
+          currentMessageRequestId: null,
+        }),
+      }),
     ]);
     expect(storage.setAlarm).toHaveBeenCalledTimes(2);
   });
@@ -75,21 +121,48 @@ describe('projection outbox', () => {
   it('trims acknowledged events, resets attempts, and retries the remainder', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({ acknowledgedSequence: 2 })));
     const { values, storage, state } = makeState({
-      'projection-outbox': [{ sequence: 1 }, { sequence: 2 }, { sequence: 3 }],
+      'projection-outbox': [projectionEvent(1), projectionEvent(2), projectionEvent(3)],
       'projection-attempt': 4,
     });
 
     await flush(state);
 
-    expect(values.get('projection-outbox')).toEqual([{ sequence: 3 }]);
+    expect(values.get('projection-outbox')).toEqual([projectionEvent(3)]);
     expect(values.get('projection-attempt')).toBe(0);
     expect(storage.setAlarm).toHaveBeenCalledTimes(1);
+  });
+
+  it('retains projections enqueued while a batch is being delivered', async () => {
+    let resolveProjection!: (response: Response) => void;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        () =>
+          new Promise<Response>((resolve) => {
+            resolveProjection = resolve;
+          }),
+      ),
+    );
+    const { values, state } = makeState({
+      'projection-next-sequence': 1,
+      'projection-outbox': [projectionEvent(1)],
+    });
+
+    const flushing = flush(state);
+    await vi.waitFor(() => expect(resolveProjection).toBeTypeOf('function'));
+    await enqueue(state);
+    resolveProjection(Response.json({ acknowledgedSequence: 1 }));
+    await flushing;
+
+    expect(values.get('projection-outbox')).toEqual([
+      expect.objectContaining({ sequence: 2, type: 'chat-snapshot' }),
+    ]);
   });
 
   it('empties the outbox without a retry when everything is acknowledged', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({ acknowledgedSequence: 3 })));
     const { values, storage, state } = makeState({
-      'projection-outbox': [{ sequence: 1 }, { sequence: 2 }, { sequence: 3 }],
+      'projection-outbox': [projectionEvent(1), projectionEvent(2), projectionEvent(3)],
     });
 
     await flush(state);
@@ -103,8 +176,7 @@ describe('projection outbox', () => {
     const fetchMock = vi.fn().mockResolvedValue(Response.json({ acknowledgedSequence: 100 }));
     vi.stubGlobal('fetch', fetchMock);
     const { values, state } = makeState({
-      snapshot: { id: 'chat-1' },
-      'projection-outbox': Array.from({ length: 150 }, (_, index) => ({ sequence: index + 1 })),
+      'projection-outbox': Array.from({ length: 150 }, (_, index) => projectionEvent(index + 1)),
     });
 
     await flush(state);
@@ -126,13 +198,12 @@ describe('projection outbox', () => {
     );
     const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     const { values, state } = makeState({
-      snapshot: { id: 'chat-1' },
-      'projection-outbox': [{ sequence: 4 }],
+      'projection-outbox': [projectionEvent(4)],
     });
 
     await flush(state);
 
-    expect(values.get('projection-outbox')).toEqual([{ sequence: 4 }]);
+    expect(values.get('projection-outbox')).toEqual([projectionEvent(4)]);
     expect(values.get('projection-attempt')).toBe(1);
     expect(error).toHaveBeenCalledWith(
       'Projection failed',
@@ -150,11 +221,11 @@ describe('projection outbox', () => {
   it('retains the outbox when the projection service is unreachable', async () => {
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('network down')));
     const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
-    const { values, state } = makeState({ 'projection-outbox': [{ sequence: 4 }] });
+    const { values, state } = makeState({ 'projection-outbox': [projectionEvent(4)] });
 
     await flush(state);
 
-    expect(values.get('projection-outbox')).toEqual([{ sequence: 4 }]);
+    expect(values.get('projection-outbox')).toEqual([projectionEvent(4)]);
     expect(values.get('projection-attempt')).toBe(1);
     expect(error).toHaveBeenCalledWith(
       'Projection failed',
@@ -169,7 +240,7 @@ describe('projection outbox', () => {
     );
     vi.spyOn(console, 'error').mockImplementation(() => undefined);
     const { values, storage, state } = makeState({
-      'projection-outbox': [{ sequence: 1 }],
+      'projection-outbox': [projectionEvent(1)],
       'projection-attempt': 2,
     });
 
@@ -190,7 +261,7 @@ describe('projection outbox', () => {
     );
     vi.spyOn(console, 'error').mockImplementation(() => undefined);
     const { values, storage, state } = makeState({
-      'projection-outbox': [{ sequence: 1 }],
+      'projection-outbox': [projectionEvent(1)],
       'projection-attempt': 9,
     });
 
@@ -202,5 +273,23 @@ describe('projection outbox', () => {
     const alarm = storage.setAlarm.mock.calls[0][0] as number;
     expect(alarm).toBeGreaterThanOrEqual(before + 60_000);
     expect(alarm).toBeLessThanOrEqual(after + 60_000);
+  });
+
+  it('does not postpone an earlier generation alarm when projection fails', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(Response.json({ error: 'boom' }, { status: 500 })),
+    );
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const generationAlarm = Date.now() + 5_000;
+    const { storage, state } = makeState(
+      { 'projection-outbox': [projectionEvent(1)], 'projection-attempt': 9 },
+      generationAlarm,
+    );
+
+    await flush(state);
+
+    expect(storage.setAlarm).not.toHaveBeenCalled();
+    expect(await storage.getAlarm()).toBe(generationAlarm);
   });
 });

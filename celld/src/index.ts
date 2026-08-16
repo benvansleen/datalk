@@ -12,17 +12,18 @@ const hasLiveOrigin = (request: Request, env: Env) =>
   request.headers.get('origin') === env.LIVE_ORIGIN;
 
 export default {
-  async fetch(request, env): Promise<Response> {
+  fetch(request, env) {
     const url = new URL(request.url);
     if (request.method === 'GET' && url.pathname === '/live/health') {
-      return Promise.resolve(Response.json({ ok: true }));
+      return Response.json({ ok: true });
     }
     if (!url.pathname.startsWith('/live/')) {
-      return Promise.resolve(Response.json({ error: 'Not found' }, { status: 404 }));
+      return Response.json({ error: 'Not found' }, { status: 404 });
     }
     if (!hasLiveOrigin(request, env)) {
-      return Promise.resolve(
-        Response.json({ error: 'Cross-origin live requests are not allowed' }, { status: 403 }),
+      return Response.json(
+        { error: 'Cross-origin live requests are not allowed' },
+        { status: 403 },
       );
     }
 

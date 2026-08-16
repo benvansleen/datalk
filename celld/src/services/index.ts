@@ -5,3 +5,8 @@ export { InternalApi, InternalApiLive } from './InternalApi';
 export { Auth, AuthLive } from './Auth';
 export { Agent, AgentLive, GenerationSink, type GenerationSinkShape } from './Agent';
 export { Projection, ProjectionLive } from './Projection';
+export { CellStorage, CellStorageError, makeCellStorageLayer } from './CellStorage';
+export { ChatSnapshotStore, makeChatStorageLayer } from './ChatSnapshotStore';
+export { CellPlatform, makeCellPlatformLayer } from './CellPlatform';
+export { ChatCellService, makeChatCellRuntime } from './ChatCellService';
+export { UserCellService, makeUserCellRuntime } from './UserCellService';

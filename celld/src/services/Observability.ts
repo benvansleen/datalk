@@ -1,4 +1,4 @@
-import { Effect, Layer } from 'effect';
+import { Console, Effect, Layer } from 'effect';
 
 type AttributeValue = string | number | boolean | undefined;
 export type ApplicationAttributes = Record<string, AttributeValue>;
@@ -15,12 +15,12 @@ const sanitize = (attributes: ApplicationAttributes): Record<string, string | nu
 };
 
 const makeService = () => {
-  const emit = (
+  const log = (
     operation: string,
     outcome: ApplicationOutcome,
     attributes: ApplicationAttributes = {},
-  ): void => {
-    console.log(
+  ) =>
+    Console.log(
       JSON.stringify({
         telemetry: 'application',
         operation,
@@ -28,7 +28,12 @@ const makeService = () => {
         ...sanitize(attributes),
       }),
     );
-  };
+
+  const emit = (
+    operation: string,
+    outcome: ApplicationOutcome,
+    attributes: ApplicationAttributes = {},
+  ): void => Effect.runSync(log(operation, outcome, attributes));
 
   const track = <A, E, R>(
     operation: string,
@@ -37,14 +42,13 @@ const makeService = () => {
   ): Effect.Effect<A, E, R> =>
     Effect.suspend(() => {
       const startedAt = performance.now();
-      const finish = (outcome: ApplicationOutcome) =>
-        Effect.sync(() => {
-          const values = typeof attributes === 'function' ? attributes() : attributes;
-          emit(operation, outcome, {
-            ...values,
-            duration_ms: Math.max(0, performance.now() - startedAt),
-          });
+      const finish = (outcome: ApplicationOutcome) => {
+        const values = typeof attributes === 'function' ? attributes() : attributes;
+        return log(operation, outcome, {
+          ...values,
+          duration_ms: Math.max(0, performance.now() - startedAt),
         });
+      };
       return effect.pipe(
         Effect.tapBoth({
           onFailure: () => finish('error'),

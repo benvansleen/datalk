@@ -17,6 +17,7 @@ describe('Agent service', () => {
         }),
       emit: () => Effect.void,
       save: () => Effect.void,
+      saveTitle: () => Effect.void,
       spawn: () => Effect.void,
     };
     const snapshot = {

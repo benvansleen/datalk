@@ -1,8 +1,10 @@
-import { Effect, Redacted, Schema } from 'effect';
-import { HttpError } from '../types';
+import { Effect, Option, Redacted, Schema } from 'effect';
+import { HydratedChatSnapshot } from '../cell/shared';
+import { ChatSummary, HttpError } from '../types';
 import { Config, ConfigLive } from './Config';
 
 const encoder = new TextEncoder();
+const INTERNAL_REQUEST_TIMEOUT_MS = 10_000;
 
 const base64UrlEncode = (value: Uint8Array): string =>
   btoa(String.fromCharCode(...value))
@@ -82,7 +84,7 @@ export class InternalApi extends Effect.Service<InternalApi>()('app/InternalApi'
       Effect.gen(function* () {
         const request = yield* signedRequest(init.method ?? 'GET', path, init.body ?? '');
         return yield* Effect.tryPromise({
-          try: () => fetch(request),
+          try: () => fetch(request, { signal: AbortSignal.timeout(INTERNAL_REQUEST_TIMEOUT_MS) }),
           catch: () => new HttpError({ status: 503, message: unavailableMessage }),
         });
       });
@@ -147,31 +149,38 @@ export class InternalApi extends Effect.Service<InternalApi>()('app/InternalApi'
         );
       });
 
-    const hydrate = (path: string) =>
+    const hydrate = <A, I>(path: string, schema: Schema.Schema<A, I>) =>
       Effect.gen(function* () {
         const response = yield* fetchInternal(
           path,
           { method: 'GET' },
           'Hydration service is unavailable',
         );
-        if (response.status === 404) return null;
+        if (response.status === 404) return Option.none<A>();
         if (!response.ok)
           return yield* Effect.fail(
             new HttpError({ status: response.status, message: 'Hydration was rejected' }),
           );
-        return yield* Effect.tryPromise({
+        const body = yield* Effect.tryPromise({
           try: () => response.json(),
           catch: () => new HttpError({ status: 502, message: 'Invalid hydration response' }),
         });
+        return yield* Option.fromNullable(body).pipe(
+          Effect.transposeMapOption(Schema.decodeUnknown(schema)),
+          Effect.mapError(
+            () => new HttpError({ status: 502, message: 'Invalid hydration response' }),
+          ),
+        );
       });
 
     const hydrateChat = (chatId: string, userId: string) =>
       hydrate(
         `/api/internal/cells/chats/${encodeURIComponent(chatId)}?userId=${encodeURIComponent(userId)}`,
+        HydratedChatSnapshot,
       );
 
     const hydrateUser = (userId: string) =>
-      hydrate(`/api/internal/cells/users/${encodeURIComponent(userId)}`);
+      hydrate(`/api/internal/cells/users/${encodeURIComponent(userId)}`, Schema.Array(ChatSummary));
 
     return { project, verifySession, hydrateChat, hydrateUser } as const;
   }),

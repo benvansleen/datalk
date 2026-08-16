@@ -1,4 +1,4 @@
-import { Effect } from 'effect';
+import { Effect, Option } from 'effect';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { InternalApi } from '../src/services/InternalApi';
 import type { Env } from '../src/types';
@@ -65,7 +65,7 @@ describe('internal API client', () => {
     expect(await sent.text()).toBe(body);
   });
 
-  it('maps hydration 404s to null and surfaces other rejections', async () => {
+  it('maps hydration 404s to None and surfaces other rejections', async () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(new Response(null, { status: 404 }))
@@ -79,7 +79,7 @@ describe('internal API client', () => {
         return yield* api.hydrateChat('chat-1', 'user-1');
       }),
     );
-    expect(missing).toBeNull();
+    expect(Option.isNone(missing)).toBe(true);
 
     await expect(
       runWithEnv(
@@ -94,5 +94,33 @@ describe('internal API client', () => {
     const [first, second] = fetchMock.mock.calls.map(([request]) => (request as Request).url);
     expect(first).toBe('http://datalk.internal/api/internal/cells/chats/chat-1?userId=user-1');
     expect(second).toBe('http://datalk.internal/api/internal/cells/users/user-1');
+  });
+
+  it('treats a nullable hydration response as absent', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json(null)));
+
+    const hydrated = await runWithEnv(
+      env,
+      Effect.gen(function* () {
+        const api = yield* InternalApi;
+        return yield* api.hydrateChat('chat-1', 'user-1');
+      }),
+    );
+
+    expect(Option.isNone(hydrated)).toBe(true);
+  });
+
+  it('rejects hydration responses that do not match the schema', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({ id: 'chat-1' })));
+
+    await expect(
+      runWithEnv(
+        env,
+        Effect.gen(function* () {
+          const api = yield* InternalApi;
+          return yield* api.hydrateChat('chat-1', 'user-1');
+        }),
+      ),
+    ).rejects.toThrow('Invalid hydration response');
   });
 });
