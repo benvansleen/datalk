@@ -1,4 +1,5 @@
-import { Effect } from 'effect';
+import { HttpRouter, HttpServerRequest, HttpServerResponse } from '@effect/platform';
+import { Context, Effect, Option, Schema } from 'effect';
 import { CreateChatCommand, HttpError, SubmitMessageCommand, type Env } from '../types';
 import { Http, HttpLive } from './Http';
 import { Observability, ObservabilityLive } from './Observability';
@@ -8,12 +9,13 @@ type RouteContext = {
   url: URL;
   env: Env;
   userId: string;
-  params: Record<string, string>;
 };
 
 type Handler = (ctx: RouteContext) => Effect.Effect<Response, HttpError>;
 
-type Route = { name: string; method: string; pattern: RegExp; handle: Handler };
+class LiveRequest extends Context.Tag('app/Router/LiveRequest')<LiveRequest, RouteContext>() {}
+
+const ChatPathParams = Schema.Struct({ chatId: Schema.String });
 
 export class Router extends Effect.Service<Router>()('app/Router', {
   effect: Effect.gen(function* () {
@@ -48,9 +50,11 @@ export class Router extends Effect.Service<Router>()('app/Router', {
       });
 
     const requireUpgrade = (request: Request): Effect.Effect<void, HttpError> =>
-      request.headers.get('upgrade')?.toLowerCase() === 'websocket'
-        ? Effect.succeed(undefined)
-        : Effect.fail(new HttpError({ status: 426, message: 'WebSocket upgrade required' }));
+      Effect.if(request.headers.get('upgrade')?.toLowerCase() === 'websocket', {
+        onTrue: () => Effect.void,
+        onFalse: () =>
+          Effect.fail(new HttpError({ status: 426, message: 'WebSocket upgrade required' })),
+      });
 
     const userCell = (ctx: RouteContext) =>
       ctx.env.USER_CELL.get(ctx.env.USER_CELL.idFromName(ctx.userId));
@@ -77,8 +81,7 @@ export class Router extends Effect.Service<Router>()('app/Router', {
         ),
       );
 
-    const deleteChat: Handler = (ctx) => {
-      const chatId = ctx.params.chatId;
+    const deleteChat = (ctx: RouteContext, chatId: string) => {
       return cellRequest(
         chatCell(ctx, chatId),
         '/',
@@ -88,17 +91,18 @@ export class Router extends Effect.Service<Router>()('app/Router', {
         chatId,
       ).pipe(
         Effect.flatMap((response) =>
-          response.ok
-            ? cellRequest(userCell(ctx), `/chats/${chatId}`, ctx.userId, ctx.env, {
+          Effect.if(response.ok, {
+            onTrue: () =>
+              cellRequest(userCell(ctx), `/chats/${chatId}`, ctx.userId, ctx.env, {
                 method: 'DELETE',
-              })
-            : Effect.succeed(response),
+              }),
+            onFalse: () => Effect.succeed(response),
+          }),
         ),
       );
     };
 
-    const submitMessage: Handler = (ctx) => {
-      const chatId = ctx.params.chatId;
+    const submitMessage = (ctx: RouteContext, chatId: string) => {
       return http.decodeJson(ctx.request, SubmitMessageCommand).pipe(
         Effect.flatMap((body) =>
           cellRequest(
@@ -116,8 +120,7 @@ export class Router extends Effect.Service<Router>()('app/Router', {
       );
     };
 
-    const openChatSocket: Handler = (ctx) => {
-      const chatId = ctx.params.chatId;
+    const openChatSocket = (ctx: RouteContext, chatId: string) => {
       return requireUpgrade(ctx.request).pipe(
         Effect.flatMap(() =>
           cellRequest(
@@ -132,63 +135,101 @@ export class Router extends Effect.Service<Router>()('app/Router', {
       );
     };
 
-    const routes: ReadonlyArray<Route> = [
-      {
-        name: 'open_user_socket',
-        method: 'GET',
-        pattern: /^\/live\/socket$/,
-        handle: openUserSocket,
-      },
-      { name: 'create_chat', method: 'POST', pattern: /^\/live\/chats$/, handle: createChat },
-      {
-        name: 'delete_chat',
-        method: 'DELETE',
-        pattern: /^\/live\/chats\/(?<chatId>[^/]+)$/,
-        handle: deleteChat,
-      },
-      {
-        name: 'submit_message',
-        method: 'POST',
-        pattern: /^\/live\/chats\/(?<chatId>[^/]+)\/messages$/,
-        handle: submitMessage,
-      },
-      {
-        name: 'open_chat_socket',
-        method: 'GET',
-        pattern: /^\/live\/chats\/(?<chatId>[^/]+)\/socket$/,
-        handle: openChatSocket,
-      },
-    ];
+    const chatId = HttpRouter.schemaPathParams(ChatPathParams).pipe(
+      Effect.map(({ chatId }) => chatId),
+      Effect.mapError(() => new HttpError({ status: 400, message: 'Invalid chat id' })),
+    );
 
-    const route = (
-      request: Request,
-      url: URL,
-      env: Env,
-      userId: string,
-    ): Effect.Effect<Response, HttpError> => {
-      for (const { name, method, pattern, handle } of routes) {
-        if (request.method !== method) continue;
-        const match = pattern.exec(url.pathname);
-        if (!match) continue;
-        let status: number | undefined;
-        return observability.track(
+    const withRequest = (handler: Handler) => LiveRequest.pipe(Effect.flatMap(handler));
+
+    const withChatId = (
+      handler: (ctx: RouteContext, chatId: string) => Effect.Effect<Response, HttpError>,
+    ) =>
+      Effect.all([LiveRequest, chatId]).pipe(
+        Effect.flatMap(([ctx, chatId]) => handler(ctx, chatId)),
+      );
+
+    // HttpServerResponse.fromWeb cannot retain Cloudflare's WebSocket attachment. Keep the
+    // original response associated with its platform wrapper so upgrades cross unchanged.
+    const nativeResponses = new WeakMap<HttpServerResponse.HttpServerResponse, Response>();
+    const wrapResponse = (response: Response): HttpServerResponse.HttpServerResponse => {
+      const wrapped = HttpServerResponse.fromWeb(response);
+      nativeResponses.set(wrapped, response);
+      return wrapped;
+    };
+    const unwrapResponse = (response: HttpServerResponse.HttpServerResponse): Response =>
+      Option.fromNullable(nativeResponses.get(response)).pipe(
+        Option.getOrElse(() => HttpServerResponse.toWeb(response)),
+      );
+
+    const tracked = <R>(
+      name: string,
+      method: string,
+      handler: Effect.Effect<Response, HttpError, R>,
+    ): Effect.Effect<HttpServerResponse.HttpServerResponse, HttpError, R> => {
+      let status = Option.none<number>();
+      return observability
+        .track(
           'app.live.command',
-          handle({ request, url, env, userId, params: match.groups ?? {} }).pipe(
+          handler.pipe(
             Effect.tap((response) =>
               Effect.sync(() => {
-                status = response.status;
+                status = Option.some(response.status);
               }),
             ),
           ),
           () => ({
             'app.command.name': name,
             'http.request.method': method,
-            'http.response.status_code': status,
+            ...Option.match(status, {
+              onNone: () => ({}),
+              onSome: (responseStatus) => ({
+                'http.response.status_code': responseStatus,
+              }),
+            }),
           }),
-        );
-      }
-      return Effect.fail(new HttpError({ status: 404, message: 'Not found' }));
+        )
+        .pipe(Effect.map(wrapResponse));
     };
+
+    const app = HttpRouter.empty.pipe(
+      HttpRouter.get(
+        '/live/socket',
+        tracked('open_user_socket', 'GET', withRequest(openUserSocket)),
+      ),
+      HttpRouter.post('/live/chats', tracked('create_chat', 'POST', withRequest(createChat))),
+      HttpRouter.del(
+        '/live/chats/:chatId',
+        tracked('delete_chat', 'DELETE', withChatId(deleteChat)),
+      ),
+      HttpRouter.post(
+        '/live/chats/:chatId/messages',
+        tracked('submit_message', 'POST', withChatId(submitMessage)),
+      ),
+      HttpRouter.get(
+        '/live/chats/:chatId/socket',
+        tracked('open_chat_socket', 'GET', withChatId(openChatSocket)),
+      ),
+    );
+
+    const route = (
+      request: Request,
+      url: URL,
+      env: Env,
+      userId: string,
+    ): Effect.Effect<Response, HttpError> =>
+      app.pipe(
+        Effect.provideService(LiveRequest, { request, url, env, userId }),
+        Effect.provideService(
+          HttpServerRequest.HttpServerRequest,
+          HttpServerRequest.fromWeb(request),
+        ),
+        Effect.scoped,
+        Effect.catchTag('RouteNotFound', () =>
+          Effect.fail(new HttpError({ status: 404, message: 'Not found' })),
+        ),
+        Effect.map(unwrapResponse),
+      );
 
     return {
       route,
