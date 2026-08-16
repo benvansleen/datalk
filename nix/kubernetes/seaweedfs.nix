@@ -36,6 +36,7 @@
             };
 
             datalk.resources.seaweeds.storage.spec = {
+              image = "chrislusf/seaweedfs:4.41";
               volumeServerDiskCount = 1;
               master = {
                 replicas = 1;

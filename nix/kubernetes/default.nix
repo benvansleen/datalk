@@ -21,6 +21,7 @@
           celld
           datalk
           external-secrets
+          observability
           lis-python-server
           seaweedfs
           tailscale-operator
@@ -54,11 +55,12 @@
             environment = "production";
             ingress = {
               type = "tailscale";
-              host = "datalk.clouded-mimosa.ts.net";
+              host = "datalk";
             };
             runtimeExternalSecret.enable = true;
           };
           external-secrets.enable = true;
+          observability.enable = true;
           python-server = {
             enable = true;
             image = self.image-uri self.packages.x86_64-linux.lis-python-server-image;
