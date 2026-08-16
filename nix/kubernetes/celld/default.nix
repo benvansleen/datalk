@@ -95,7 +95,7 @@
               "--endpoint"
               "http://storage-s3:8333"
               "--region"
-              "us-east-1"
+              "in-cluster"
             ];
             env = cfg.deploymentEnv ++ [
               {
@@ -215,7 +215,7 @@
                             }
                             {
                               name = "AWS_REGION";
-                              value = "us-east-1";
+                              value = "in-cluster";
                             }
                             {
                               name = "CELLD_ADDR";

@@ -51,7 +51,7 @@
                   "--endpoint"
                   "http://storage-s3:8333"
                   "--region"
-                  "us-east-1"
+                  "in-cluster"
                 ];
                 env = lib.mkForce deployWithEsbuild;
                 volumeMounts = lib.mkForce [
