@@ -63,6 +63,10 @@
                     name = "tools";
                     mountPath = "/tools";
                   }
+                  {
+                    name = "tmp";
+                    mountPath = "/tmp";
+                  }
                 ];
               };
             };
@@ -76,7 +80,6 @@
                     value = "/control";
                   }
                 ];
-                readinessProbe = lib.mkForce null;
                 volumeMounts = [
                   {
                     name = "celld-app";
@@ -119,6 +122,10 @@
                   {
                     name = "tools";
                     mountPath = "/tools";
+                  }
+                  {
+                    name = "tmp";
+                    mountPath = "/tmp";
                   }
                 ];
               };

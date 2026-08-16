@@ -1,6 +1,7 @@
 import { Effect } from 'effect';
 import { CreateChatCommand, HttpError, SubmitMessageCommand, type Env } from '../types';
 import { Http, HttpLive } from './Http';
+import { Observability, ObservabilityLive } from './Observability';
 
 type RouteContext = {
   request: Request;
@@ -12,11 +13,12 @@ type RouteContext = {
 
 type Handler = (ctx: RouteContext) => Effect.Effect<Response, HttpError>;
 
-type Route = { method: string; pattern: RegExp; handle: Handler };
+type Route = { name: string; method: string; pattern: RegExp; handle: Handler };
 
 export class Router extends Effect.Service<Router>()('app/Router', {
   effect: Effect.gen(function* () {
     const http = yield* Http;
+    const observability = yield* Observability;
 
     const internalHeaders = (env: Env, userId: string, chatId?: string): HeadersInit => ({
       'content-type': 'application/json',
@@ -131,15 +133,27 @@ export class Router extends Effect.Service<Router>()('app/Router', {
     };
 
     const routes: ReadonlyArray<Route> = [
-      { method: 'GET', pattern: /^\/live\/socket$/, handle: openUserSocket },
-      { method: 'POST', pattern: /^\/live\/chats$/, handle: createChat },
-      { method: 'DELETE', pattern: /^\/live\/chats\/(?<chatId>[^/]+)$/, handle: deleteChat },
       {
+        name: 'open_user_socket',
+        method: 'GET',
+        pattern: /^\/live\/socket$/,
+        handle: openUserSocket,
+      },
+      { name: 'create_chat', method: 'POST', pattern: /^\/live\/chats$/, handle: createChat },
+      {
+        name: 'delete_chat',
+        method: 'DELETE',
+        pattern: /^\/live\/chats\/(?<chatId>[^/]+)$/,
+        handle: deleteChat,
+      },
+      {
+        name: 'submit_message',
         method: 'POST',
         pattern: /^\/live\/chats\/(?<chatId>[^/]+)\/messages$/,
         handle: submitMessage,
       },
       {
+        name: 'open_chat_socket',
         method: 'GET',
         pattern: /^\/live\/chats\/(?<chatId>[^/]+)\/socket$/,
         handle: openChatSocket,
@@ -152,11 +166,26 @@ export class Router extends Effect.Service<Router>()('app/Router', {
       env: Env,
       userId: string,
     ): Effect.Effect<Response, HttpError> => {
-      for (const { method, pattern, handle } of routes) {
+      for (const { name, method, pattern, handle } of routes) {
         if (request.method !== method) continue;
         const match = pattern.exec(url.pathname);
         if (!match) continue;
-        return handle({ request, url, env, userId, params: match.groups ?? {} });
+        let status: number | undefined;
+        return observability.track(
+          'app.live.command',
+          handle({ request, url, env, userId, params: match.groups ?? {} }).pipe(
+            Effect.tap((response) =>
+              Effect.sync(() => {
+                status = response.status;
+              }),
+            ),
+          ),
+          () => ({
+            'app.command.name': name,
+            'http.request.method': method,
+            'http.response.status_code': status,
+          }),
+        );
       }
       return Effect.fail(new HttpError({ status: 404, message: 'Not found' }));
     };
@@ -166,7 +195,7 @@ export class Router extends Effect.Service<Router>()('app/Router', {
     } as const;
   }),
 
-  dependencies: [HttpLive],
+  dependencies: [HttpLive, ObservabilityLive],
 }) {}
 
 export const RouterLive = Router.Default;

@@ -19,7 +19,7 @@ import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-proto';
 //   jaegertracing/all-in-one:latest
 export const ObservabilityLive = NodeSdk.layer(() => ({
   resource: {
-    serviceName: 'datalk',
+    serviceName: 'ui',
     serviceVersion: '0.1.0',
   },
   spanProcessor: new BatchSpanProcessor(new OTLPTraceExporter()),

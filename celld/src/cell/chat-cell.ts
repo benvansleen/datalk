@@ -3,6 +3,7 @@ import { runEffect } from '../runtime';
 import { Agent, GenerationSink, type GenerationSinkShape } from '../services/Agent';
 import { InternalApi } from '../services/InternalApi';
 import { Projection } from '../services/Projection';
+import { Observability } from '../services/Observability';
 import type { Env, GenerationEvent } from '../types';
 import { InitializeCommand, SubmitMessageCommand } from '../types';
 import {
@@ -135,13 +136,15 @@ export class ChatCell implements DurableObject {
         }),
     };
     try {
-      await runEffect(
-        this.env,
-        Effect.gen(function* () {
+      const generation = Effect.gen(function* () {
+        const observability = yield* Observability;
+        const agentOperation = Effect.gen(function* () {
           const agent = yield* Agent;
           return yield* agent.runGeneration(snapshot, messageRequestId);
-        }).pipe(Effect.provideService(GenerationSink, sink)),
-      );
+        }).pipe(Effect.provideService(GenerationSink, sink));
+        return yield* observability.track('app.chat.generation', agentOperation);
+      });
+      await runEffect(this.env, generation);
     } finally {
       snapshot.generating = false;
       snapshot.currentMessageRequestId = null;

@@ -12,7 +12,7 @@ const hasLiveOrigin = (request: Request, env: Env) =>
   request.headers.get('origin') === env.LIVE_ORIGIN;
 
 export default {
-  fetch(request, env): Promise<Response> {
+  async fetch(request, env): Promise<Response> {
     const url = new URL(request.url);
     if (request.method === 'GET' && url.pathname === '/live/health') {
       return Promise.resolve(Response.json({ ok: true }));

@@ -1,11 +1,74 @@
 {
   flake.modules.kubernetes.observability =
     { config, lib, ... }:
+    let
+      collectorConfig = /* yaml */ ''
+        receivers:
+          otlp:
+            protocols:
+              grpc:
+                endpoint: 0.0.0.0:4317
+              http:
+                endpoint: 0.0.0.0:4318
+
+        processors:
+          memory_limiter:
+            check_interval: 1s
+            limit_mib: 400
+            spike_limit_mib: 100
+          batch: {}
+
+        exporters:
+          debug:
+            verbosity: basic
+          otlp/jaeger:
+            endpoint: jaeger.observability.svc.cluster.local:4317
+            tls:
+              insecure: true
+
+        service:
+          pipelines:
+            traces:
+              receivers: [otlp]
+              processors: [memory_limiter, batch]
+              exporters: [otlp/jaeger]
+            logs:
+              receivers: [otlp]
+              processors: [memory_limiter, batch]
+              exporters: [debug]
+      '';
+    in
     {
       options.modules.observability.enable = lib.mkEnableOption "local observability runtime";
 
       config = lib.mkIf config.modules.observability.enable {
         applications = {
+          celld.resources.deployments.celld.spec.template.spec.containers.celld.env = [
+            {
+              name = "CELLD_OTEL";
+              value = "1";
+            }
+            {
+              name = "CELLD_OTEL_SINK";
+              value = "otlp";
+            }
+            {
+              name = "CELLD_OTEL_FLUSH_MS";
+              value = "10000";
+            }
+            {
+              name = "OTEL_EXPORTER_OTLP_ENDPOINT";
+              valueFrom.configMapKeyRef = {
+                name = "otel-exporter-env";
+                key = "OTEL_EXPORTER_OTLP_ENDPOINT";
+              };
+            }
+            {
+              name = "OTEL_SERVICE_NAME";
+              value = "celld";
+            }
+          ];
+
           datalk.resources = {
             configMaps.otel-exporter-env.data = {
               OTEL_EXPORTER_OTLP_ENDPOINT = "http://otel-collector.observability.svc.cluster.local:4318";
@@ -42,35 +105,7 @@
             createNamespace = true;
 
             resources = {
-              configMaps.otel-collector-config.data."config.yaml" = /* yaml */ ''
-                receivers:
-                  otlp:
-                    protocols:
-                      grpc:
-                        endpoint: 0.0.0.0:4317
-                      http:
-                        endpoint: 0.0.0.0:4318
-
-                processors:
-                  memory_limiter:
-                    check_interval: 1s
-                    limit_mib: 400
-                    spike_limit_mib: 100
-                  batch: {}
-
-                exporters:
-                  otlp/jaeger:
-                    endpoint: jaeger.observability.svc.cluster.local:4317
-                    tls:
-                      insecure: true
-
-                service:
-                  pipelines:
-                    traces:
-                      receivers: [otlp]
-                      processors: [memory_limiter, batch]
-                      exporters: [otlp/jaeger]
-              '';
+              configMaps.otel-collector-config.data."config.yaml" = collectorConfig;
 
               services = {
                 otel-collector.spec = {
@@ -109,7 +144,10 @@
                   replicas = 1;
                   selector.matchLabels.app = "otel-collector";
                   template = {
-                    metadata.labels.app = "otel-collector";
+                    metadata = {
+                      labels.app = "otel-collector";
+                      annotations."checksum/config" = builtins.hashString "sha256" collectorConfig;
+                    };
                     spec = {
                       containers.otel-collector = {
                         image = "otel/opentelemetry-collector-contrib:0.130.1@sha256:9c247564e65ca19f97d891cca19a1a8d291ce631b890885b44e3503c5fdb3895";

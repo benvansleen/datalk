@@ -8,7 +8,7 @@
         enable = mkEnableOption "celld";
         image = mkOption {
           type = types.str;
-          default = "ghcr.io/denoland/celld:0.1.0";
+          default = "ghcr.io/denoland/celld:0.2.1";
         };
         deploySourceImage = mkOption {
           type = types.str;
@@ -79,12 +79,14 @@
 
               deployments.celld.spec = {
                 replicas = 1;
+                strategy.type = "Recreate";
                 selector.matchLabels.app = "celld";
                 template = {
                   metadata.labels.app = "celld";
                   spec = {
                     volumes = {
                       app.emptyDir = { };
+                      tmp.emptyDir = { };
                     };
                     initContainers =
                       (lib.optionalAttrs (!config.modules.celld.dev.enable) {
@@ -94,6 +96,7 @@
                             "/bin/cp"
                             "-r"
                             "/app/."
+                            "/bin/esbuild"
                             "/work"
                           ];
                           volumeMounts = [
@@ -132,7 +135,7 @@
                           env = cfg.deploymentEnv ++ [
                             {
                               name = "CELLD_ESBUILD";
-                              value = "/bin/esbuild";
+                              value = "/app/esbuild";
                             }
                           ];
                           volumeMounts = [
@@ -140,16 +143,23 @@
                               name = "app";
                               mountPath = "/app";
                             }
+                            {
+                              name = "tmp";
+                              mountPath = "/tmp";
+                            }
                           ];
                         };
                       };
                     containers.celld = {
                       inherit (cfg) image;
                       imagePullPolicy = "Always";
-                      ports.http.containerPort = 8080;
+                      ports = {
+                        http.containerPort = 8080;
+                        internal.containerPort = 8081;
+                      };
                       readinessProbe = {
                         httpGet = {
-                          path = "/live/health";
+                          path = "/__celld/health";
                           port = "http";
                         };
                         initialDelaySeconds = 1;
@@ -173,15 +183,25 @@
                           value = "0.0.0.0:8080";
                         }
                         {
+                          name = "CELLD_INTERNAL_ADDR";
+                          value = "0.0.0.0:8081";
+                        }
+                        {
                           name = "POD_IP";
                           valueFrom.fieldRef.fieldPath = "status.podIP";
                         }
                         {
                           name = "CELLD_ADVERTISE";
-                          value = "$(POD_IP):8080";
+                          value = "$(POD_IP):8081";
                         }
                       ]
                       ++ cfg.deploymentEnv;
+                      volumeMounts = [
+                        {
+                          name = "tmp";
+                          mountPath = "/tmp";
+                        }
+                      ];
                     };
                   };
                 };

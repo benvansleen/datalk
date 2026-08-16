@@ -61,9 +61,15 @@
             while true; do
               celld &
               child="$!"
-              wait "$child"
-              status="$?"
+              if wait "$child"; then
+                status=0
+              else
+                status="$?"
+              fi
               if [ "$reload" = true ]; then
+                # The USR1 trap interrupts wait before celld necessarily finishes
+                # its graceful SIGTERM drain and releases the listeners.
+                wait "$child" 2>/dev/null || true
                 reload=false
                 continue
               fi

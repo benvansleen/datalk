@@ -27,7 +27,7 @@
 
             celld =
               let
-                version = "0.1.0";
+                version = "0.2.1";
               in
               final.rustPlatform.buildRustPackage {
                 pname = "celld";
@@ -36,12 +36,12 @@
                   owner = "denoland";
                   repo = "celld";
                   rev = "v${version}";
-                  hash = "sha256-Iew3/ugHftS1Ui6tiVRPj3FguYmGx9vwMfS6pY00CWQ=";
+                  hash = "sha256-BJo5TbRrHvmJKf4iBIcNsYf8M9us50/Tr3rMtu08M1o=";
                 };
-                cargoHash = "sha256-g3b2gFeHkqlUVLydWs/HiieK2dtw7BC2o9eNwCGAHT0=";
+                cargoHash = "sha256-ov1Cvi6LzJDqeZ8kUUNsYY5dEQ84/D1uXWH0yT/Vz+o=";
                 RUSTY_V8_ARCHIVE = final.fetchurl {
-                  url = "https://github.com/denoland/rusty_v8/releases/download/v152.0.0/librusty_v8_release_x86_64-unknown-linux-gnu.a.gz";
-                  hash = "sha256-nS++EYCa01QTDVw3gmNqE89YaNptLAAtqIJ7hT01x+w=";
+                  url = "https://github.com/denoland/rusty_v8/releases/download/v152.1.0/librusty_v8_release_x86_64-unknown-linux-gnu.a.gz";
+                  hash = "sha256-VrPZwer2AINF3rP3yWqtIhfpHGXYt4v+VQ9Sw6jbtQ8=";
                 };
 
                 nativeBuildInputs = with final; [
