@@ -46,4 +46,33 @@ describe('execution service client', () => {
       ),
     ).rejects.toThrow('Invalid execution service response');
   });
+
+  it('passes image attachments through and defaults them when absent', async () => {
+    const attachment = { id: 'img-1', mime: 'image/png', data: 'aGVsbG8=' };
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(Response.json({ outputs: 'ok', images: [attachment], telemetry: [] }))
+      .mockResolvedValueOnce(Response.json({ outputs: 'ok' }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(
+      runWithEnv(
+        env,
+        Effect.gen(function* () {
+          const pythonServer = yield* PythonServer;
+          return yield* pythonServer.execute('chat-1', ['print(1)'], 'python');
+        }),
+      ),
+    ).resolves.toEqual({ outputs: 'ok', images: [attachment] });
+
+    await expect(
+      runWithEnv(
+        env,
+        Effect.gen(function* () {
+          const pythonServer = yield* PythonServer;
+          return yield* pythonServer.execute('chat-1', ['print(2)'], 'python');
+        }),
+      ),
+    ).resolves.toEqual({ outputs: 'ok', images: [] });
+  });
 });

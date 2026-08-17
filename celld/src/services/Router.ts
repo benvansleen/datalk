@@ -16,6 +16,7 @@ type Handler = (ctx: RouteContext) => Effect.Effect<Response, HttpError>;
 class LiveRequest extends Context.Tag('app/Router/LiveRequest')<LiveRequest, RouteContext>() {}
 
 const ChatPathParams = Schema.Struct({ chatId: Schema.String });
+const ChatImagePathParams = Schema.Struct({ chatId: Schema.String, imageId: Schema.String });
 
 export class Router extends Effect.Service<Router>()('app/Router', {
   effect: Effect.gen(function* () {
@@ -140,6 +141,24 @@ export class Router extends Effect.Service<Router>()('app/Router', {
       Effect.mapError(() => new HttpError({ status: 400, message: 'Invalid chat id' })),
     );
 
+    const chatImagePath = HttpRouter.schemaPathParams(ChatImagePathParams).pipe(
+      Effect.mapError(() => new HttpError({ status: 400, message: 'Invalid image id' })),
+    );
+
+    const getChatImage = (ctx: RouteContext, chatId: string, imageId: string) =>
+      cellRequest(chatCell(ctx, chatId), `/images/${imageId}`, ctx.userId, ctx.env, {}, chatId);
+
+    const withChatImage = (
+      handler: (
+        ctx: RouteContext,
+        chatId: string,
+        imageId: string,
+      ) => Effect.Effect<Response, HttpError>,
+    ) =>
+      Effect.all([LiveRequest, chatImagePath]).pipe(
+        Effect.flatMap(([ctx, { chatId, imageId }]) => handler(ctx, chatId, imageId)),
+      );
+
     const withRequest = (handler: Handler) => LiveRequest.pipe(Effect.flatMap(handler));
 
     const withChatId = (
@@ -209,6 +228,10 @@ export class Router extends Effect.Service<Router>()('app/Router', {
       HttpRouter.get(
         '/live/chats/:chatId/socket',
         tracked('open_chat_socket', 'GET', withChatId(openChatSocket)),
+      ),
+      HttpRouter.get(
+        '/live/chats/:chatId/images/:imageId',
+        tracked('get_chat_image', 'GET', withChatImage(getChatImage)),
       ),
     );
 

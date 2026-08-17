@@ -94,7 +94,7 @@ fn execute(
     Ok(result) => write_json(
       writer,
       http.StatusOK,
-      ExecutionResponse { outputs: result.outputs },
+      ExecutionResponse { outputs: result.outputs, images: result.images },
     ),
     Err(err) => write_environment_error(writer, err),
   }

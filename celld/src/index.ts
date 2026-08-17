@@ -8,8 +8,14 @@ import type { Env } from './types';
 
 export { ChatCell, UserCell };
 
-const hasLiveOrigin = (request: Request, env: Env) =>
-  request.headers.get('origin') === env.LIVE_ORIGIN;
+const hasLiveOrigin = (request: Request, env: Env) => {
+  const origin = request.headers.get('origin');
+  return (
+    origin === env.LIVE_ORIGIN ||
+    (origin === null && request.method === 'GET') ||
+    request.method === 'HEAD'
+  );
+};
 
 export default {
   fetch(request, env) {

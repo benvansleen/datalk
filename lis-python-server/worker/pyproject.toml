@@ -10,6 +10,7 @@ dependencies = [
     "jupyter-client>=8.9.1",
     "pandas>=3.0.5",
     "pydantic>=2.13.4",
+    "seaborn>=0.13.2",
     "uvicorn>=0.52.1",
 ]
 

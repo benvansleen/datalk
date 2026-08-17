@@ -16,7 +16,7 @@ The event log is bounded to 1,000 records and is intended for reconnect replay, 
 - `INTERNAL_PROJECTION_SECRET`: shared secret used to sign internal requests to SvelteKit, including forwarding the caller's session cookie to `/api/internal/auth/verify-session`.
 - `OPENAI_API_KEY`: OpenAI API key for generation.
 - `OPENAI_MODEL`: optional, defaults to `gpt-5-nano`.
-- `LIVE_ORIGIN`: public SvelteKit origin permitted to make cookie-authenticated live HTTP and WebSocket requests.
+- `LIVE_ORIGIN`: public SvelteKit origin permitted to make cookie-authenticated live HTTP and WebSocket requests. Same-origin GETs/HEADs (which send no `Origin` header, e.g. `<img>` loads) are also accepted; non-GET requests and mismatched origins are rejected with 403.
 - `PYTHON_SERVER_URL`: the existing `lis-python-server` service URL.
 
 Use celld's secret environment support for the first three values. Do not put them in `wrangler.jsonc`.

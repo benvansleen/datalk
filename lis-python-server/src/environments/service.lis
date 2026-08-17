@@ -29,6 +29,7 @@ pub struct Execution {
 
 pub struct ExecutionResult {
   pub outputs: string,
+  pub images: Slice<Image>,
 }
 
 enum StartupWaitResult {

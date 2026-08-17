@@ -8,6 +8,7 @@ export class CellStorageError extends Data.TaggedError('CellStorageError')<{
 export type CellStorageTransaction = {
   get: <A>(key: string) => Effect.Effect<Option.Option<A>, CellStorageError>;
   put: (key: string, value: unknown) => Effect.Effect<void, CellStorageError>;
+  delete: (key: string) => Effect.Effect<void, CellStorageError>;
   getAlarm: () => Effect.Effect<Option.Option<number>, CellStorageError>;
   setAlarm: (scheduledTime: number) => Effect.Effect<void, CellStorageError>;
 };
@@ -33,6 +34,11 @@ const makeStorageOperations = (
     Effect.tryPromise({
       try: () => storage.put(key, value),
       catch: (cause) => storageError('put', cause),
+    }),
+  delete: (key: string) =>
+    Effect.tryPromise({
+      try: () => storage.delete(key),
+      catch: (cause) => storageError('delete', cause),
     }),
   getAlarm: () =>
     Effect.tryPromise({

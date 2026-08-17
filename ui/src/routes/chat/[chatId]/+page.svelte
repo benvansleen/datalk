@@ -108,6 +108,8 @@
             ? message.toolArguments
             : JSON.stringify(message.toolArguments ?? {})}
           output={message.toolResult}
+          chatId={data.chatId}
+          images={message.images}
         />
       {/each}
     </div>

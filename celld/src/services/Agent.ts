@@ -15,6 +15,9 @@ const systemPrompt = `
 - Use run_python or run_sql whenever computation would improve the answer.
 - Format answers in Markdown.
 - The user is probably referring to the selected dataset.
+- Plots and figures are captured and shown to the user automatically. Prefer seaborn.
+  Never call matplotlib.use or switch backends, never save figures to files,
+  and never call savefig. Create figures normally and call plt.show().
 `.trim();
 
 const aiSchema = <A, I>(schema: Schema.Schema<A, I, never>) =>
@@ -117,12 +120,17 @@ export const toModelMessages = (messages: ChatMessage[]): ModelMessage[] => {
 
 type Model = ReturnType<ReturnType<typeof createOpenAI>['chat']>;
 
+export type ToolOutput = { outputs: string; images: ReadonlyArray<{ id: string; mime: string }> };
+
 export type GenerationSinkShape = {
   append: (type: string, data: unknown) => Effect.Effect<void>;
   emit: (type: string, data: unknown) => Effect.Effect<void>;
   save: () => Effect.Effect<void>;
   saveTitle: () => Effect.Effect<void>;
   spawn: (work: Effect.Effect<void, never, never>) => Effect.Effect<void>;
+  saveImages: (
+    images: ReadonlyArray<{ id: string; mime: string; data: string }>,
+  ) => Effect.Effect<ReadonlyArray<{ id: string; mime: string }>>;
 };
 
 export class GenerationSink extends Context.Tag('app/GenerationSink')<
@@ -167,34 +175,54 @@ export class Agent extends Effect.Service<Agent>()('app/Agent', {
         Effect.catchAll(() => Effect.void),
       );
 
-    const buildTools = (snapshot: StoredChatSnapshot) => {
+    const buildTools = (snapshot: StoredChatSnapshot, sink: GenerationSinkShape) => {
       const ensureEnvironment = () =>
         Effect.runPromise(pythonServer.createEnvironment(snapshot.id, snapshot.dataset));
+      const runExecution = async (
+        code: string[],
+        language: 'python' | 'sql',
+      ): Promise<ToolOutput> => {
+        try {
+          await ensureEnvironment();
+          const response = await Effect.runPromise(
+            pythonServer.execute(snapshot.id, code, language),
+          );
+          const images = await Effect.runPromise(sink.saveImages(response.images));
+          return { outputs: response.outputs, images };
+        } catch (cause) {
+          // Return the failure as a tool result so the model can narrate or retry
+          // instead of the whole generation stream aborting.
+          return {
+            outputs: `Execution service error: ${
+              cause instanceof HttpError ? cause.message : String(cause)
+            }`,
+            images: [],
+          };
+        }
+      };
       return {
         check_environment: tool({
           description: 'Fetch the available dataframes in the selected compute environment.',
           inputSchema: aiSchema(Schema.Struct({ request: Schema.optional(Schema.String) })),
-          execute: async () => (await ensureEnvironment()).available_dataframes,
+          execute: async () => {
+            try {
+              return (await ensureEnvironment()).available_dataframes;
+            } catch (cause) {
+              return `Execution service error: ${
+                cause instanceof HttpError ? cause.message : String(cause)
+              }`;
+            }
+          },
         }),
         run_python: tool({
           description: 'Execute Python lines in the selected compute environment.',
           inputSchema: aiSchema(Schema.Struct({ python_code: Schema.Array(Schema.String) })),
-          execute: async ({ python_code }) => {
-            await ensureEnvironment();
-            return (
-              await Effect.runPromise(pythonServer.execute(snapshot.id, [...python_code], 'python'))
-            ).outputs;
-          },
+          execute: ({ python_code }) => runExecution([...python_code], 'python'),
         }),
         run_sql: tool({
           description: 'Execute SQL lines in the selected compute environment.',
           inputSchema: aiSchema(Schema.Struct({ sql_statement: Schema.Array(Schema.String) })),
-          execute: async ({ sql_statement }) => {
-            await ensureEnvironment();
-            return (
-              await Effect.runPromise(pythonServer.execute(snapshot.id, [...sql_statement], 'sql'))
-            ).outputs;
-          },
+          execute: ({ sql_statement }) => runExecution([...sql_statement], 'sql'),
         }),
       };
     };
@@ -233,7 +261,7 @@ export class Agent extends Effect.Service<Agent>()('app/Agent', {
             model,
             system: systemPrompt,
             messages: toModelMessages(snapshot.messages),
-            tools: buildTools(snapshot),
+            tools: buildTools(snapshot, sink),
             stopWhen: isStepCount(MAX_AGENT_ITERATIONS),
             telemetry: {
               isEnabled: true,
@@ -341,10 +369,20 @@ export class Agent extends Effect.Service<Agent>()('app/Agent', {
                   (value) =>
                     Effect.gen(function* () {
                       toolResultCount += 1;
-                      const result =
-                        typeof value.output === 'string'
-                          ? value.output
-                          : JSON.stringify(value.output);
+                      const output = value.output;
+                      const images =
+                        typeof output === 'object' &&
+                        output !== null &&
+                        'images' in output &&
+                        Array.isArray((output as { images?: unknown }).images)
+                          ? (
+                              output as { images: Array<{ id: string; mime: string }> }
+                            ).images.filter(
+                              (image): image is { id: string; mime: string } =>
+                                typeof image?.id === 'string' && typeof image?.mime === 'string',
+                            )
+                          : [];
+                      const result = typeof output === 'string' ? output : JSON.stringify(output);
                       snapshot.messages.push({
                         id: value.toolCallId,
                         role: 'tool',
@@ -353,7 +391,7 @@ export class Agent extends Effect.Service<Agent>()('app/Agent', {
                         toolCallId: value.toolCallId,
                         toolName: value.toolName,
                         toolArguments: value.input,
-                        toolResult: result,
+                        toolResult: output,
                         toolFailed: false,
                       });
                       assistantId = Option.none();
@@ -361,6 +399,7 @@ export class Agent extends Effect.Service<Agent>()('app/Agent', {
                         id: value.toolCallId,
                         name: value.toolName,
                         result,
+                        images,
                         isFailure: false,
                       });
                       yield* sink.save();

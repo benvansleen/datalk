@@ -3,7 +3,22 @@ import { Config, ConfigLive } from './Config';
 import { HttpError } from '../types';
 
 const EnvironmentResponse = Schema.Struct({ available_dataframes: Schema.String });
-const ExecuteResponse = Schema.Struct({ outputs: Schema.String });
+
+export const ImageAttachment = Schema.Struct({
+  id: Schema.String,
+  mime: Schema.String,
+  data: Schema.String,
+});
+
+const ExecuteResponse = Schema.Struct({
+  outputs: Schema.String,
+  images: Schema.optional(Schema.Array(ImageAttachment)),
+});
+
+export type ExecuteResult = {
+  outputs: string;
+  images: ReadonlyArray<{ id: string; mime: string; data: string }>;
+};
 
 export class PythonServer extends Effect.Service<PythonServer>()('app/PythonServer', {
   effect: Effect.gen(function* () {
@@ -53,7 +68,11 @@ export class PythonServer extends Effect.Service<PythonServer>()('app/PythonServ
         EnvironmentResponse,
       );
 
-    const execute = (chatId: string, code: string[], language: 'python' | 'sql') =>
+    const execute = (
+      chatId: string,
+      code: string[],
+      language: 'python' | 'sql',
+    ): Effect.Effect<ExecuteResult, HttpError> =>
       request(
         '/execute',
         {
@@ -62,7 +81,7 @@ export class PythonServer extends Effect.Service<PythonServer>()('app/PythonServ
           body: JSON.stringify({ chat_id: chatId, code, language }),
         },
         ExecuteResponse,
-      );
+      ).pipe(Effect.map(({ outputs, images }) => ({ outputs, images: images ?? [] })));
 
     return { createEnvironment, execute } as const;
   }),

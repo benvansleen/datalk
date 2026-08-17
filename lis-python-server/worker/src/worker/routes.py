@@ -7,7 +7,12 @@ from .auth import authenticate
 from .checkpoint import checkpoint_kernel
 from .error_boundary import WorkerProtocolError
 from .execution import build_code, execute_kernel_code
-from .interface import ExecutionRequest, ExecutionResponse, StartupResponse
+from .interface import (
+    ExecutionRequest,
+    ExecutionResponse,
+    ImageAttachment,
+    StartupResponse,
+)
 from .lifespan import app
 from .state import WorkerState
 from .telemetry import (
@@ -127,4 +132,11 @@ async def execute(request: Request, execution: ExecutionRequest) -> ExecutionRes
             telemetry.append(checkpoint_timer.finish(StageStatus.OK))
 
         state.last_activity = time.monotonic()
-        return ExecutionResponse(outputs=result.output, telemetry=telemetry)
+        return ExecutionResponse(
+            outputs=result.output,
+            images=[
+                ImageAttachment(id=image.id, mime=image.mime, data=image.data)
+                for image in result.images
+            ],
+            telemetry=telemetry,
+        )

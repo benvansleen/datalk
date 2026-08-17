@@ -15,7 +15,7 @@ import { InitializeCommand, SubmitMessageCommand, type Env, type GenerationEvent
 import { Agent, GenerationSink, type GenerationSinkShape } from './Agent';
 import { CellPlatform, makeCellPlatformLayer } from './CellPlatform';
 import { CellStorage } from './CellStorage';
-import { ChatSnapshotStore, makeChatStorageLayer } from './ChatSnapshotStore';
+import { ChatSnapshotStore, makeChatStorageLayer, type StoredImage } from './ChatSnapshotStore';
 import { Environment } from './Environment';
 import { Http } from './Http';
 import { InternalApi } from './InternalApi';
@@ -268,6 +268,16 @@ export class ChatCellService extends Effect.Service<ChatCellService>()('app/Chat
         save: () => saveGenerationSnapshot(snapshot, leaseId).pipe(Effect.orDie),
         saveTitle: () => saveTitle(snapshot).pipe(Effect.orDie),
         spawn: (work) => platform.fork(work),
+        saveImages: (images) =>
+          snapshots
+            .saveImages(images)
+            .pipe(
+              Effect.catchAll((error) =>
+                Console.error(`Image persistence failed: ${String(error.cause)}`).pipe(
+                  Effect.as([]),
+                ),
+              ),
+            ),
       };
       const generation = observability.track(
         'app.chat.generation',
@@ -526,6 +536,25 @@ export class ChatCellService extends Effect.Service<ChatCellService>()('app/Chat
         ),
       );
 
+    const serveImage = (imageId: string): Effect.Effect<Response> =>
+      snapshots.getImage(imageId).pipe(
+        Effect.flatMap(
+          Effect.transposeMapOption((image: StoredImage) =>
+            Effect.succeed(
+              new Response(image.bytes, {
+                headers: {
+                  'content-type': image.mime,
+                  'cache-control': 'private, max-age=31536000, immutable',
+                  'x-content-type-options': 'nosniff',
+                },
+              }),
+            ),
+          ),
+        ),
+        Effect.map(Option.getOrElse(() => new Response(null, { status: 404 }))),
+        Effect.catchAll(() => Effect.succeed(new Response(null, { status: 404 }))),
+      );
+
     const routeSnapshot = (
       request: Request,
       url: URL,
@@ -558,6 +587,11 @@ export class ChatCellService extends Effect.Service<ChatCellService>()('app/Chat
                 ),
                 Match.when({ method: 'POST', path: '/messages' }, () =>
                   submitMessage(request, snapshot),
+                ),
+                Match.when(
+                  (route: { method: string; path: string }) =>
+                    route.method === 'GET' && route.path.startsWith('/images/'),
+                  (route) => serveImage(route.path.slice('/images/'.length)),
                 ),
                 Match.orElse(() =>
                   Effect.succeed(Response.json({ error: 'Not found' }, { status: 404 })),

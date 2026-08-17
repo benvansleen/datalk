@@ -1,5 +1,7 @@
 import "go:encoding/json"
 
+import "environments"
+
 #[json]
 struct RawCreateRequest {
   chat_id: Option<json.RawMessage>,
@@ -20,7 +22,12 @@ struct RawExecuteRequest {
 struct EnvironmentResponse { available_dataframes: string }
 
 #[json]
-struct ExecutionResponse { outputs: string }
+struct ExecutionResponse {
+  outputs: string,
+
+  #[json(omitempty)]
+  images: Slice<environments.Image>,
+}
 
 #[json]
 struct DetailResponse { detail: string }

@@ -122,6 +122,7 @@ impl Builder {
       Name: WORKER_CONTAINER_NAME,
       Image: self.worker.image,
       ImagePullPolicy: core.PullIfNotPresent,
+      WorkingDir: "/tmp",
       Ports: [
         core.ContainerPort {
           Name: "http",
@@ -159,6 +160,7 @@ impl Builder {
       env_var("HOME", "/tmp/home"),
       env_var("JUPYTER_RUNTIME_DIR", "/tmp/jupyter/runtime"),
       env_var("MPLCONFIGDIR", "/tmp/matplotlib"),
+      env_var("MPLBACKEND", "module://matplotlib_inline.backend_inline"),
       env_var("PYTHONDONTWRITEBYTECODE", "1"),
       env_var("PYTHONUNBUFFERED", "1"),
     ]

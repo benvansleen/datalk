@@ -24,6 +24,7 @@ describe('Agent service', () => {
       save: () => Effect.void,
       saveTitle: () => Effect.void,
       spawn: () => Effect.void,
+      saveImages: () => Effect.succeed([]),
     };
     const snapshot = {
       id: 'chat-1',

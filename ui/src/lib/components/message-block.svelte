@@ -10,6 +10,8 @@
     name?: string;
     arguments?: string;
     output?: unknown;
+    chatId?: string;
+    images?: Array<{ id: string; mime: string }>;
   }
 
   const {
@@ -18,6 +20,8 @@
     name: fnName = undefined,
     arguments: args = undefined,
     output = undefined,
+    chatId = undefined,
+    images = undefined,
   }: Props = $props();
 
   const cleanFnName = (fnName: string | undefined): string => {
@@ -60,12 +64,16 @@ ${sql_statement.join('\n')}
       }
     }
 
-    // Handle output - can be a string or an object with text property
+    // Handle output - can be a string, an object with a text property, or a
+    // structured tool result with an outputs field
     let outputText: string | undefined;
     if (typeof output === 'string') {
       outputText = output;
     } else if (output && typeof output === 'object' && 'text' in output) {
       outputText = String(output.text);
+    } else if (output && typeof output === 'object' && 'outputs' in output) {
+      const outputs = (output as { outputs?: unknown }).outputs;
+      outputText = Array.isArray(outputs) ? outputs.map(String).join('\n') : String(outputs);
     }
     if (outputText) {
       let displayOutput = outputText;
@@ -128,6 +136,17 @@ ${sql_statement.join('\n')}
   {#if finalContent}
     <div class="markdown mx-6">
       {@html marked.parse(finalContent)}
+    </div>
+  {/if}
+  {#if chatId && images}
+    <div class="mx-6 grid gap-2 pb-2">
+      {#each images as image (image.id)}
+        <img
+          src={`/live/chats/${chatId}/images/${image.id}`}
+          alt="Generated figure"
+          class="max-w-full rounded-md border"
+        />
+      {/each}
     </div>
   {/if}
   <div class="min-h-2"></div>

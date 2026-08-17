@@ -38,7 +38,7 @@ impl Client {
       request_timeout,
       execution_timeout,
       startup_timeout,
-      max_response_bytes: 1024 * 1024 as int64,
+      max_response_bytes: (10 * 1024 * 1024) as int64,
       telemetry,
     }
   }
@@ -105,7 +105,16 @@ impl Client {
       .record_worker_stages(ctx, runtime.environment_id, result.telemetry)
       .map_err(|err| env.WorkerError.InvalidResponse(err.Error()))?
 
-    Ok(env.ExecutionResult { outputs: result.outputs })
+    Ok(
+      env.ExecutionResult {
+        outputs: result.outputs,
+        images: result.images.map(|img| env.Image {
+          id: img.id,
+          mime: img.mime,
+          data: img.data,
+        }),
+      },
+    )
   }
 
   fn request(
@@ -189,7 +198,14 @@ struct StartupResponse {
 struct ExecuteRequest { code: Slice<string>, language: string }
 
 #[json]
-struct ExecuteResponse { outputs: string, telemetry: Slice<telemetryapi.Stage> }
+struct ExecuteResponse {
+  outputs: string,
+  images: Slice<WorkerImage>,
+  telemetry: Slice<telemetryapi.Stage>,
+}
+
+#[json]
+struct WorkerImage { id: string, mime: string, data: string }
 
 #[json]
 struct ErrorResponse {

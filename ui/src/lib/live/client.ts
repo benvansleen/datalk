@@ -6,6 +6,8 @@ export type LiveChatSummary = {
   generating: boolean;
 };
 
+export type ImageRef = { id: string; mime: string };
+
 export type LiveMessage = {
   id: string;
   role: 'user' | 'assistant' | 'tool';
@@ -14,6 +16,7 @@ export type LiveMessage = {
   toolName?: string;
   toolArguments?: unknown;
   toolResult?: unknown;
+  images?: ImageRef[];
 };
 
 export type LiveSnapshot = {
@@ -48,16 +51,37 @@ export const toLiveChats = (chats: SsrChat[]): LiveChatSummary[] =>
     updatedAt: chat.updatedAt.getTime(),
   }));
 
+const imageRefsOf = (output: unknown): ImageRef[] | undefined => {
+  if (!output || typeof output !== 'object' || !('images' in output)) return undefined;
+  const images = (output as { images?: unknown }).images;
+  if (!Array.isArray(images)) return undefined;
+  const refs = images.filter(
+    (image): image is ImageRef =>
+      !!image &&
+      typeof image === 'object' &&
+      typeof (image as { id?: unknown }).id === 'string' &&
+      typeof (image as { mime?: unknown }).mime === 'string',
+  );
+  return refs.length > 0 ? refs : undefined;
+};
+
+const withImageRefs = (message: LiveMessage): LiveMessage => ({
+  ...message,
+  images: message.images ?? imageRefsOf(message.toolResult),
+});
+
 export const toLiveMessages = (messages: SsrDisplayMessage[]): LiveMessage[] =>
-  messages.map((message, index) => ({
-    id: String(index),
-    role: message.role,
-    content: message.content ?? '',
-    createdAt: 0,
-    toolName: message.name,
-    toolArguments: message.arguments,
-    toolResult: message.output,
-  }));
+  messages
+    .map((message, index) => ({
+      id: String(index),
+      role: message.role,
+      content: message.content ?? '',
+      createdAt: 0,
+      toolName: message.name,
+      toolArguments: message.arguments,
+      toolResult: message.output,
+    }))
+    .map(withImageRefs);
 
 export const deletedChatId = (message: unknown): string | undefined => {
   if (!message || typeof message !== 'object' || !('type' in message) || !('data' in message)) {
@@ -96,7 +120,8 @@ export const reduceSnapshot = (snapshot: LiveSnapshot, message: unknown): LiveSn
   }
   const wire = message as { type: string; data: unknown };
   if (wire.type === 'snapshot') {
-    return wire.data as LiveSnapshot;
+    const incoming = wire.data as LiveSnapshot;
+    return { ...incoming, messages: incoming.messages.map(withImageRefs) };
   }
   if (wire.type !== 'event') return snapshot;
   const event = wire.data as GenerationEvent;
@@ -170,11 +195,15 @@ export const reduceSnapshot = (snapshot: LiveSnapshot, message: unknown): LiveSn
     };
   }
   if (event.type === 'tool-result') {
-    const { id, result } = event.data as { id: string; result: unknown };
+    const { id, result, images } = event.data as {
+      id: string;
+      result: unknown;
+      images?: ImageRef[];
+    };
     return {
       ...snapshot,
       messages: snapshot.messages.map((message) =>
-        message.id === id ? { ...message, toolResult: result } : message,
+        message.id === id ? { ...message, toolResult: result, images } : message,
       ),
     };
   }

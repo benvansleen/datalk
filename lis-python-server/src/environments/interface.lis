@@ -29,6 +29,13 @@ pub struct Dataset {
   pub relative_path: string,
 }
 
+#[json]
+pub struct Image {
+  pub id: string,
+  pub mime: string,
+  pub data: string,
+}
+
 pub interface DatasetCatalog {
   fn find(name: string) -> Option<Dataset>
   fn names() -> Slice<string>

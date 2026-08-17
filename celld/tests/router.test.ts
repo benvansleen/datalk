@@ -79,4 +79,28 @@ describe('Router', () => {
       left: expect.objectContaining({ status: 404, message: 'Not found' }),
     });
   });
+
+  it('proxies chat image requests with both path parameters', async () => {
+    const chatFetch = vi
+      .fn()
+      .mockResolvedValue(
+        new Response(new Uint8Array([1, 2, 3]), { headers: { 'content-type': 'image/png' } }),
+      );
+    const env = makeEnv(vi.fn(), chatFetch);
+
+    const response = await route(
+      new Request('https://datalk.test/live/chats/chat-1/images/img-9'),
+      env,
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-type')).toBe('image/png');
+    expect(env.CHAT_CELL.idFromName).toHaveBeenCalledWith('chat-1');
+    expect(chatFetch).toHaveBeenCalledWith(
+      'https://cell/images/img-9',
+      expect.objectContaining({
+        headers: expect.objectContaining({ 'x-datalk-chat-id': 'chat-1' }),
+      }),
+    );
+  });
 });

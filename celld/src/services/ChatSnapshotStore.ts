@@ -17,6 +17,24 @@ import {
 export const KEY_PROJECTION_NEXT_SEQUENCE = 'projection-next-sequence';
 export const KEY_PROJECTION_OUTBOX = 'projection-outbox';
 export const KEY_PROJECTION_ATTEMPT = 'projection-attempt';
+export const KEY_IMAGE_INDEX = 'image-index';
+
+const MAX_CHAT_IMAGES = 50;
+
+export type StoredImageInput = { id: string; mime: string; data: string };
+export type StoredImage = { mime: string; bytes: Uint8Array<ArrayBuffer> };
+export type ImageRef = { id: string; mime: string };
+
+const imageKey = (id: string) => `img:${id}`;
+
+const decodeBase64 = (data: string): Uint8Array<ArrayBuffer> => {
+  const binary = atob(data);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index++) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  return bytes;
+};
 
 export type StoredProjectionEvent = {
   sequence: number;
@@ -112,7 +130,43 @@ export class ChatSnapshotStore extends Effect.Service<ChatSnapshotStore>()(
           ),
         );
 
-      return { load, put, putProjected, putHydratedIfAbsent, transaction } as const;
+      const saveImages = (images: ReadonlyArray<StoredImageInput>) =>
+        storage.transaction((transaction) =>
+          Effect.gen(function* () {
+            if (images.length === 0) return [];
+            const index = Option.getOrElse(
+              yield* transaction.get<string[]>(KEY_IMAGE_INDEX),
+              (): string[] => [],
+            );
+            let ids = [...index];
+            for (const image of images) {
+              yield* transaction.put(imageKey(image.id), {
+                mime: image.mime,
+                bytes: decodeBase64(image.data),
+              } satisfies StoredImage);
+              ids.push(image.id);
+            }
+            while (ids.length > MAX_CHAT_IMAGES) {
+              const evicted = ids.shift();
+              if (evicted === undefined) break;
+              yield* transaction.delete(imageKey(evicted));
+            }
+            yield* transaction.put(KEY_IMAGE_INDEX, ids);
+            return images.map(({ id, mime }): ImageRef => ({ id, mime }));
+          }),
+        );
+
+      const getImage = (id: string) => storage.get<StoredImage>(imageKey(id));
+
+      return {
+        load,
+        put,
+        putProjected,
+        putHydratedIfAbsent,
+        transaction,
+        saveImages,
+        getImage,
+      } as const;
     }),
   },
 ) {}
