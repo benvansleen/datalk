@@ -1,0 +1,19 @@
+{
+  "name": "datalk-celld-contract-tests",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check": "tsc --noEmit",
+    "test": "node --test --test-concurrency=1 seaweedfs-s3.contract.test.ts"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.1012.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24",
+    "typescript": "^5.9.3"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

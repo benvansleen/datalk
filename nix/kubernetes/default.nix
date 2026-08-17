@@ -18,11 +18,13 @@
       {
         imports = with self.modules.kubernetes; [
           cloudnative-pg
+          celld
           datalk
           external-secrets
+          observability
           lis-python-server
+          seaweedfs
           tailscale-operator
-          valkey
         ];
 
         nixidy = {
@@ -41,6 +43,11 @@
 
         modules = {
           cloudnative-pg.enable = true;
+          celld = {
+            enable = true;
+            deploySourceImage = self.image-uri self.packages.x86_64-linux.celld-deploy-source-image;
+            liveOrigin = "https://datalk.clouded-mimosa.ts.net";
+          };
           datalk = {
             enable = true;
             image = self.image-uri self.packages.x86_64-linux.datalk-image;
@@ -48,11 +55,12 @@
             environment = "production";
             ingress = {
               type = "tailscale";
-              host = "datalk.clouded-mimosa.ts.net";
+              host = "datalk";
             };
             runtimeExternalSecret.enable = true;
           };
           external-secrets.enable = true;
+          observability.enable = true;
           python-server = {
             enable = true;
             image = self.image-uri self.packages.x86_64-linux.lis-python-server-image;
@@ -60,8 +68,8 @@
             datasetGcsBucket = "datalk-datasets";
             checkpointStorageClass = "standard";
           };
+          seaweedfs.enable = true;
           tailscale-operator.enable = true;
-          valkey.enable = true;
         };
       };
 
@@ -72,10 +80,11 @@
       {
         imports = with self.modules.kubernetes; [
           cloudnative-pg
+          celld
           datalk
           lis-python-server
           observability
-          valkey
+          seaweedfs
         ];
         nixidy = {
           target = {
@@ -86,6 +95,12 @@
         };
         modules = {
           cloudnative-pg.enable = true;
+          celld = {
+            enable = true;
+            image = self.local-image-uri self.packages.x86_64-linux.celld-dev-image;
+            dev.enable = hotReload;
+            liveOrigin = "http://localhost:8080";
+          };
           observability.enable = true;
           datalk = {
             enable = true;
@@ -105,7 +120,7 @@
             workerImage = self.local-image-uri self.packages.x86_64-linux.lis-python-worker-image;
             datasetHostPath = "/workspace/datalk/datasets";
           };
-          valkey.enable = true;
+          seaweedfs.enable = true;
         };
       };
   };
@@ -118,6 +133,25 @@
       system,
       ...
     }:
+    let
+      seaweedfsOperatorChart =
+        let
+          src = pkgs.fetchFromGitHub {
+            owner = "seaweedfs";
+            repo = "seaweedfs-operator";
+            rev = "afef5cd8e1e6bc0f22d37b18437b5f7708ee5762";
+            hash = "sha256-up0K0UrXnMTj9LLVhSaXdeUMRcasFsiHUCogyxplKP4=";
+          };
+        in
+        pkgs.runCommand "seaweedfs-operator-chart" { } ''
+          cp -r ${src}/deploy/helm $out
+        '';
+      charts = inputs.nixhelm.chartsDerivations.${system} // {
+        seaweedfs-operator = {
+          seaweedfs-operator = seaweedfsOperatorChart;
+        };
+      };
+    in
     {
       packages = {
         nixidy = inputs'.nixidy.packages.default.overrideAttrs (old: {
@@ -127,8 +161,7 @@
 
       legacyPackages = {
         nixidyEnvs.${system} = inputs.nixidy.lib.mkEnvs {
-          inherit pkgs;
-          charts = inputs.nixhelm.chartsDerivations.${system};
+          inherit pkgs charts;
           envs = {
             default.modules = [ self.modules.kubernetes.default ];
             local.modules = [ self.modules.kubernetes.local ];
@@ -152,6 +185,10 @@
               tailscale-operator = fromChartCRD {
                 name = "tailscale";
                 chart = inputs.nixhelm.chartsDerivations.${system}.tailscale.tailscale-operator;
+              };
+              seaweedfs-operator = fromChartCRD {
+                name = "seaweedfs-operator";
+                chart = seaweedfsOperatorChart;
               };
             };
             generatedOutputDir = "nix/kubernetes/_generated";

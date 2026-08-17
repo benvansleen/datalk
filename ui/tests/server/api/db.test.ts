@@ -1,67 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
 import { Cause, Effect, Exit, Layer, Option } from 'effect';
-import {
-  requireChatOwnership,
-  getMessageRequest,
-  getChatWithHistory,
-  getChatsForUser,
-  createChat,
-  deleteChat,
-  updateChatTitle,
-  clearCurrentMessageRequest,
-} from '$lib/server/api/db';
+import { getChatWithHistory, getChatsForUser } from '$lib/server/api/db';
 import { Database } from '$lib/server/services/Database';
-import { AuthError, DatabaseError } from '$lib/server/errors';
+import { DatabaseError } from '$lib/server/errors';
 
 const makeLayer = (db: unknown) => Layer.succeed(Database, db as never);
 
 describe('db api helpers', () => {
-  it('rejects when chat ownership is missing', async () => {
-    const db = {
-      query: {
-        chat: {
-          findFirst: () => Effect.fail(new AuthError({ message: 'nope' })),
-        },
-      },
-    };
-
-    const exit = await Effect.runPromiseExit(
-      requireChatOwnership('user-1', 'chat-1').pipe(Effect.provide(makeLayer(db))),
-    );
-
-    expect(Exit.isFailure(exit)).toBe(true);
-
-    if (Exit.isFailure(exit)) {
-      const failure = Cause.failureOption(exit.cause);
-      expect(Option.isSome(failure)).toBe(true);
-      if (Option.isSome(failure)) {
-        expect(failure.value).toBeInstanceOf(AuthError);
-      }
-    }
-  });
-
-  it('returns message requests when present', async () => {
-    const db = {
-      select: () => ({
-        from: () => ({
-          where: () => ({
-            limit: () => Effect.succeed([{ id: 'mr-1', content: 'Hello' }]),
-          }),
-        }),
-      }),
-    };
-
-    const result = await Effect.runPromise(
-      getMessageRequest('mr-1').pipe(Effect.provide(makeLayer(db))),
-    );
-
-    expect(Option.isSome(result)).toBe(true);
-
-    if (Option.isSome(result)) {
-      expect(result.value?.content).toBe('Hello');
-    }
-  });
-
   it('returns none when chat is missing', async () => {
     const db = {
       query: {
@@ -208,114 +153,6 @@ describe('db api helpers', () => {
 
     const exit = await Effect.runPromiseExit(
       getChatsForUser('user-1').pipe(Effect.provide(makeLayer(db))),
-    );
-
-    expect(Exit.isFailure(exit)).toBe(true);
-
-    if (Exit.isFailure(exit)) {
-      const failure = Cause.failureOption(exit.cause);
-      expect(Option.isSome(failure)).toBe(true);
-      if (Option.isSome(failure)) {
-        expect(failure.value).toBeInstanceOf(DatabaseError);
-      }
-    }
-  });
-
-  it('creates a chat and returns its id', async () => {
-    const returning = vi.fn(() => Effect.succeed([{ chatId: 'chat-1' }]));
-    const db = {
-      insert: () => ({
-        values: () => ({
-          returning,
-        }),
-      }),
-    };
-
-    const result = await Effect.runPromise(
-      createChat('user-1', 'dataset-1').pipe(Effect.provide(makeLayer(db))),
-    );
-
-    expect(result).toBe('chat-1');
-    expect(returning).toHaveBeenCalledOnce();
-  });
-
-  it('maps chat creation errors to DatabaseError', async () => {
-    const returning = vi.fn(() => Effect.fail(new Error('boom')));
-    const db = {
-      insert: () => ({
-        values: () => ({
-          returning,
-        }),
-      }),
-    };
-
-    const exit = await Effect.runPromiseExit(
-      createChat('user-1', 'dataset-1').pipe(Effect.provide(makeLayer(db))),
-    );
-
-    expect(Exit.isFailure(exit)).toBe(true);
-
-    if (Exit.isFailure(exit)) {
-      const failure = Cause.failureOption(exit.cause);
-      expect(Option.isSome(failure)).toBe(true);
-      if (Option.isSome(failure)) {
-        expect(failure.value).toBeInstanceOf(DatabaseError);
-      }
-    }
-  });
-
-  it('maps update failures to DatabaseError', async () => {
-    const where = vi.fn(() => Effect.fail(new Error('boom')));
-    const db = {
-      update: () => ({
-        set: () => ({
-          where,
-        }),
-      }),
-    };
-
-    const exit = await Effect.runPromiseExit(
-      updateChatTitle('chat-1', 'Title').pipe(Effect.provide(makeLayer(db))),
-    );
-
-    expect(Exit.isFailure(exit)).toBe(true);
-
-    if (Exit.isFailure(exit)) {
-      const failure = Cause.failureOption(exit.cause);
-      expect(Option.isSome(failure)).toBe(true);
-      if (Option.isSome(failure)) {
-        expect(failure.value).toBeInstanceOf(DatabaseError);
-      }
-    }
-  });
-
-  it('clears current message request', async () => {
-    const where = vi.fn(() => Effect.succeed(undefined));
-    const db = {
-      update: () => ({
-        set: () => ({
-          where,
-        }),
-      }),
-    };
-
-    await Effect.runPromise(
-      clearCurrentMessageRequest('chat-1').pipe(Effect.provide(makeLayer(db))),
-    );
-
-    expect(where).toHaveBeenCalledOnce();
-  });
-
-  it('maps delete failures to DatabaseError', async () => {
-    const where = vi.fn(() => Effect.fail(new Error('boom')));
-    const db = {
-      delete: () => ({
-        where,
-      }),
-    };
-
-    const exit = await Effect.runPromiseExit(
-      deleteChat('user-1', 'chat-1').pipe(Effect.provide(makeLayer(db))),
     );
 
     expect(Exit.isFailure(exit)).toBe(true);

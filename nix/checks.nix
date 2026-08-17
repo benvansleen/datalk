@@ -15,7 +15,7 @@
     {
       checks = {
         pre-commit-check = inputs.pre-commit-hooks.lib.${system}.run {
-          src = ../.;
+          src = inputs.gitignore.lib.gitignoreSource ../.;
           hooks = {
             check-added-large-files.enable = true;
             check-merge-conflicts.enable = true;

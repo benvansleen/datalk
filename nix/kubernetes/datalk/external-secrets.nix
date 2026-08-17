@@ -35,16 +35,16 @@
                     remoteRef.key = "better-auth-secret";
                   }
                   {
+                    secretKey = "INTERNAL_CELL_SECRET";
+                    remoteRef.key = "internal-cell-secret";
+                  }
+                  {
+                    secretKey = "INTERNAL_PROJECTION_SECRET";
+                    remoteRef.key = "internal-projection-secret";
+                  }
+                  {
                     secretKey = "OPENAI_API_KEY";
                     remoteRef.key = "openai-api-key";
-                  }
-                  {
-                    secretKey = "REDIS_USER";
-                    remoteRef.key = "redis-user";
-                  }
-                  {
-                    secretKey = "REDIS_PASSWORD";
-                    remoteRef.key = "redis-password";
                   }
                 ];
               };

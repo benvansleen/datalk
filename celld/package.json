@@ -1,0 +1,26 @@
+{
+  "name": "datalk-celld-app",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check": "tsc --noEmit",
+    "test": "vitest run",
+    "deploy": "celld deploy"
+  },
+  "dependencies": {
+    "@ai-sdk/openai": "4.0.36",
+    "@effect/platform": "0.96.2",
+    "ai": "7.0.58",
+    "effect": "3.21.4"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20260319.0",
+    "esbuild": "^0.27.7",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.2"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

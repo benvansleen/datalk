@@ -1,73 +1,89 @@
 <script lang="ts">
   import type { PageProps } from './$types';
-  import { invalidateAll } from '$app/navigation';
+  import { goto } from '$app/navigation';
   import { onMount } from 'svelte';
   import { Button } from '$lib/components/shadcn/button';
   import * as Card from '$lib/components/shadcn/card';
+  import * as Select from '$lib/components/shadcn/select/index.js';
   import Separator from '$lib/components/shadcn/separator/separator.svelte';
   import ChatSummary from '$lib/components/chat-summary.svelte';
+  import {
+    LiveClient,
+    createChat,
+    deleteChat,
+    reduceChats,
+    toLiveChats,
+    type LiveChatSummary,
+  } from '$lib/live/client';
 
   let { data }: PageProps = $props();
+  let chats = $state<LiveChatSummary[]>(toLiveChats(data.chats));
+  let dataset = $state('');
+  let error = $state('');
+  const triggerContent = $derived(
+    data.datasets.find((item) => item === dataset) ?? 'Select a dataset',
+  );
+  const waitingChats = $derived(chats.filter((chat) => !chat.generating));
+  const workingChats = $derived(chats.filter((chat) => chat.generating));
 
   onMount(() => {
-    const eventSource = new EventSource('/chat-status-events');
-    eventSource.addEventListener('message', (_e) => {
-      // Refresh data when chat status changes
-      invalidateAll();
-    });
-
-    return () => {
-      eventSource.close();
-    };
+    const client = new LiveClient(
+      () => '/live/socket',
+      (message) => {
+        chats = reduceChats(chats, message);
+      },
+    );
+    client.start();
+    return () => client.stop();
   });
 
-  const waitingChats = $derived(data.chats.filter((chat) => chat.currentMessageRequest === null));
-  const workingChats = $derived(data.chats.filter((chat) => chat.currentMessageRequest !== null));
-
-  import * as Select from '$lib/components/shadcn/select/index.js';
-
-  let value = $state('');
-
-  const triggerContent = $derived(data.datasets.find((d) => d === value) ?? 'Select a dataset');
+  const create = async () => {
+    if (!dataset) return;
+    try {
+      await goto(`/chat/${(await createChat(dataset)).id}`);
+    } catch (cause) {
+      error = cause instanceof Error ? cause.message : 'Unable to create chat';
+    }
+  };
 </script>
 
-<div class="grid place-items-center h-screen">
+<div class="grid h-screen place-items-center">
   <Card.Root class="w-full max-w-sm">
-    <Card.Header class="flex flex-col items-center">
-      <form method="POST" action="?/createChat" class="mx-auto w-fit">
-        <Button type="submit" disabled={!value}>Create new chat</Button>
-        <input type="hidden" name="dataset" value={triggerContent} />
-      </form>
-      <Select.Root type="single" bind:value required>
-        <Select.Trigger>
-          {triggerContent}
-        </Select.Trigger>
+    <Card.Header class="flex flex-col items-center gap-3">
+      <Select.Root type="single" bind:value={dataset} required>
+        <Select.Trigger>{triggerContent}</Select.Trigger>
         <Select.Content>
           <Select.Group>
             <Select.Label>Datasets</Select.Label>
-            {#each data.datasets as dataset}
-              <Select.Item value={dataset} label={dataset}>
-                {dataset}
-              </Select.Item>
+            {#each data.datasets as item}
+              <Select.Item value={item} label={item}>{item}</Select.Item>
             {/each}
           </Select.Group>
         </Select.Content>
       </Select.Root>
+      <Button onclick={create} disabled={!dataset}>Create new chat</Button>
+      {#if error}<p class="text-sm text-red-600">{error}</p>{/if}
     </Card.Header>
-    {#if data.chats.length > 0}
+    {#if chats.length > 0}
       <Card.Content class="grid gap-6">
         <Card.Title class="mx-auto w-fit">Chat Dashboard</Card.Title>
-        <div class="grid gap-2 max-h-128 p-4 overflow-y-auto">
+        <div class="grid max-h-128 gap-2 overflow-y-auto p-4">
           {#each workingChats as chat}
             <div class="bg-gray-200">
-              <ChatSummary {chat} />
+              <ChatSummary
+                {chat}
+                ondelete={(id) => deleteChat(id).catch((cause) => (error = String(cause)))}
+              />
             </div>
           {:else}
             <p>No currently running chats</p>
           {/each}
           <Separator />
           {#each waitingChats as chat}
-            <ChatSummary {chat} />
+            <ChatSummary
+              {chat}
+              ondelete={(id) => deleteChat(id).catch((cause) => (error = String(cause)))}
+            />
           {/each}
         </div>
       </Card.Content>

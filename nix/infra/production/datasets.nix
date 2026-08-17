@@ -26,6 +26,7 @@
           inherit (self.gcloud) project;
           name = "datalk-datasets";
           location = self.gcloud.region;
+          force_destroy = true;
           uniform_bucket_level_access = true;
           depends_on = [
             "google_project_service.storage"

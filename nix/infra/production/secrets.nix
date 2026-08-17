@@ -58,25 +58,33 @@
             "google_service_account.external_secrets"
           ];
         };
+        celld_auth_secret = {
+          inherit (self.gcloud) project;
+          secret_id = "celld-auth-secret";
+          replication.auto = { };
+          depends_on = [
+            "google_service_account.external_secrets"
+          ];
+        };
+        internal_cell_secret = {
+          inherit (self.gcloud) project;
+          secret_id = "internal-cell-secret";
+          replication.auto = { };
+          depends_on = [
+            "google_service_account.external_secrets"
+          ];
+        };
+        internal_projection_secret = {
+          inherit (self.gcloud) project;
+          secret_id = "internal-projection-secret";
+          replication.auto = { };
+          depends_on = [
+            "google_service_account.external_secrets"
+          ];
+        };
         openai_api_key = {
           inherit (self.gcloud) project;
           secret_id = "openai-api-key";
-          replication.auto = { };
-          depends_on = [
-            "google_service_account.external_secrets"
-          ];
-        };
-        redis_user = {
-          inherit (self.gcloud) project;
-          secret_id = "redis-user";
-          replication.auto = { };
-          depends_on = [
-            "google_service_account.external_secrets"
-          ];
-        };
-        redis_password = {
-          inherit (self.gcloud) project;
-          secret_id = "redis-password";
           replication.auto = { };
           depends_on = [
             "google_service_account.external_secrets"
@@ -101,9 +109,9 @@
           GCLOUD = "${lib.getExe pkgs.google-cloud-sdk}" # noqa
           SECRET_IDS = {
               "BETTER_AUTH_SECRET": "better-auth-secret",
+              "INTERNAL_CELL_SECRET": "internal-cell-secret",
+              "INTERNAL_PROJECTION_SECRET": "internal-projection-secret",
               "OPENAI_API_KEY": "openai-api-key",
-              "REDIS_USER": "redis-user",
-              "REDIS_PASSWORD": "redis-password",
               "TAILSCALE_OAUTH_CLIENT_ID": "tailscale-oauth-client-id",
               "TAILSCALE_OAUTH_CLIENT_SECRET": "tailscale-oauth-client-secret",
           }

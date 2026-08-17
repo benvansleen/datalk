@@ -93,7 +93,12 @@
           location = self.gcloud.zone;
           cluster = "\${google_container_cluster.${name}.name}";
 
-          node_count = 3;
+          initial_node_count = 3;
+          autoscaling = {
+            min_node_count = 3;
+            max_node_count = 9;
+            location_policy = "BALANCED";
+          };
 
           node_config = {
             machine_type = "e2-medium";

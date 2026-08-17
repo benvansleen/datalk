@@ -3,7 +3,6 @@
   "compilerOptions": {
     "rewriteRelativeImportExtensions": true,
     "allowJs": false,
-    "checkJs": true,
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,

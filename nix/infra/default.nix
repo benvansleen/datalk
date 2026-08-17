@@ -30,98 +30,12 @@
             # gcloud container clusters get-credentials datalk --zone us-east4-a
             hashicorp_google
             hashicorp_external
+            alekc_kubectl
           ]
         );
 
-      tfLifecycle =
-        {
-          init ? "",
-          apply ? "",
-          destroy ? "",
-        }:
-        /* sh */ ''
-          case "$1" in
-            init)
-              ${init}
-            ;;
-            apply)
-              ${apply}
-            ;;
-            destroy)
-              ${destroy}
-            ;;
-          esac
-        '';
-
-      kubectl = lib.getExe pkgs.kubectl;
-      nixidyDiff =
-        {
-          env,
-          context,
-          prepareContext ? "",
-          skipIfUnavailable ? false,
-        }:
-        tfLifecycle {
-          apply = /* sh */ ''
-            to_apply="${env}"
-            kubectl_context="${context}"
-            skip_nixidy_diff=0
-
-            if ! ${kubectl} config get-contexts "$kubectl_context" >/dev/null 2>&1 \
-              || ! ${kubectl} --context "$kubectl_context" cluster-info >/dev/null 2>&1; then
-              ${
-                if skipIfUnavailable then
-                  /* sh */ ''
-                    echo "Kubernetes context $kubectl_context is unavailable; skipping live nixidy diff"
-                    skip_nixidy_diff=1
-                  ''
-                else
-                  /* sh */ ''
-                    echo "Kubernetes context $kubectl_context is unavailable" >&2
-                    exit 1
-                  ''
-              }
-            fi
-
-            ${prepareContext}
-
-            if [ "$skip_nixidy_diff" -eq 0 ]; then
-            diff_status=0
-            found_manifests=0
-            for manifest in "$to_apply"/*/*.yaml; do
-              [ -e "$manifest" ] || continue
-              case "$manifest" in
-                "$to_apply"/apps/*)
-                  continue
-                ;;
-              esac
-
-              found_manifests=1
-
-              if KUBECTL_EXTERNAL_DIFF=${lib.getExe self'.packages.cleanKubectlDiff} ${kubectl} --context "$kubectl_context" diff -f "$manifest"; then
-                true
-              else
-                status=$?
-                if [ "$status" -eq 1 ]; then
-                  diff_status=1
-                else
-                  echo "kubectl diff failed for $manifest with exit code $status" >&2
-                  exit "$status"
-                fi
-              fi
-            done
-
-            if [ "$found_manifests" -eq 0 ]; then
-              echo "No manifests found under $to_apply" >&2
-              exit 1
-            fi
-
-            if [ "$diff_status" -eq 0 ]; then
-              echo "No changes to cluster"
-            fi
-            fi
-          '';
-        };
+      imageKey = img: lib.replaceStrings [ "-" ] [ "_" ] img.imageName;
+      pushRefs = imgs: map (img: "terraform_data.push_${imageKey img}") imgs;
     in
     {
       terranix = {
@@ -137,46 +51,100 @@
                   --zone ${self.gcloud.zone} \
                   --project ${self.gcloud.project} >/dev/null 2>&1 || true
               '';
+              imgs = with self.packages.${system}; [
+                datalk-image
+                celld-deploy-source-image
+                lis-python-server-image
+                lis-python-worker-image
+              ];
             in
             {
               workdir = ".terraform/production";
               modules = with self.modules.infra; [
                 production
                 {
-                  inherit context prepareContext;
-                  manifest = manifest.declarativePackage;
+                  imports = [ nixidy-kubectl ];
+                  nixidyKubectl = {
+                    env = manifest;
+                    wait = true;
+                    extraDependsOn = [
+                      "google_container_cluster.${self.gcloud.name}"
+                      "terraform_data.propagate_secrets"
+                    ]
+                    ++ pushRefs imgs;
+                  };
+                  provider.kubectl = {
+                    config_path = "~/.kube/config";
+                    config_context = context;
+                  };
+                  terraform.required_providers = {
+                    google = {
+                      source = "hashicorp/google";
+                      version = "7.42.0";
+                    };
+                    external = {
+                      source = "hashicorp/external";
+                      version = "2.4.0";
+                    };
+                    kubectl = {
+                      source = "alekc/kubectl";
+                      version = "2.4.1";
+                    };
+                  };
                 }
               ];
               terraformWrapper = {
                 package = terraform;
-                prefixText = nixidyDiff {
-                  inherit context prepareContext;
-                  env = manifest.environmentPackage;
-                  skipIfUnavailable = true;
-                };
+                prefixText = prepareContext;
               };
             };
           local =
             let
               context = "k3d-${self.gcloud.name}-local";
               manifest = self'.legacyPackages.nixidyEnvs.${system}.local;
+              imgs = with self.packages.${system}; [
+                datalk-image
+                datalk-dev-image
+                celld-dev-image
+                lis-python-server-image
+                lis-python-worker-image
+              ];
             in
             {
+              ## bootstrap with
+              # `nix run .#local.terraform -- apply -target=terraform_data.k3d_cluster`
               modules = with self.modules.infra; [
                 k3d
                 {
-                  inherit context;
-                  manifest = manifest.declarativePackage;
+                  imports = [ nixidy-kubectl ];
+                  nixidyKubectl = {
+                    env = manifest;
+                    wait = false;
+                    extraDependsOn = [
+                      "terraform_data.k3d_cluster"
+                      "terraform_data.local_secrets"
+                    ]
+                    ++ pushRefs imgs;
+                  };
+                  provider.kubectl = {
+                    config_path = "~/.kube/config";
+                    config_context = context;
+                  };
+                  terraform.required_providers = {
+                    external = {
+                      source = "hashicorp/external";
+                      version = "2.4.0";
+                    };
+                    kubectl = {
+                      source = "alekc/kubectl";
+                      version = "2.4.1";
+                    };
+                  };
                 }
               ];
               workdir = ".terraform/local";
               terraformWrapper = {
                 package = terraform;
-                prefixText = nixidyDiff {
-                  inherit context;
-                  env = manifest.environmentPackage;
-                  skipIfUnavailable = true;
-                };
               };
             };
         };

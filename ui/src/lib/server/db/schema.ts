@@ -6,9 +6,11 @@ import {
   pgTable,
   text,
   timestamp,
+  bigint,
   boolean,
   index,
   jsonb,
+  primaryKey,
 } from 'drizzle-orm/pg-core';
 
 export const messageRequests = pgTable('message_requests', {
@@ -34,7 +36,19 @@ export const chat = pgTable('chat', {
     .notNull(),
   currentMessageRequest: uuid('currentMessageRequest'),
   title: text('title'),
+  deletedAt: timestamp('deleted_at'),
 });
+
+export const cellProjectionLedger = pgTable(
+  'cell_projection_ledger',
+  {
+    cellKind: text('cell_kind').notNull(),
+    cellId: text('cell_id').notNull(),
+    lastSequence: bigint('last_sequence', { mode: 'number' }).notNull().default(0),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.cellKind, table.cellId] })],
+);
 
 export const chatRelations = relations(chat, ({ one, many }) => ({
   messages: many(chatMessage),

@@ -1,23 +1,33 @@
 import { ManagedRuntime, Effect, Exit, Cause } from 'effect';
 import type { ConfigError as EffectConfigError } from 'effect';
 import { type SqlError } from '@effect/sql/SqlError';
+import { Tracer } from '@effect/opentelemetry';
+import { ROOT_CONTEXT, trace, type SpanContext, type TextMapGetter } from '@opentelemetry/api';
+import { W3CTraceContextPropagator } from '@opentelemetry/core';
 import { LiveLayer, type AppServices } from './layers/Live';
-import { RedisError } from './errors';
 
 // Type for the runtime including potential layer construction errors
-type RuntimeError = EffectConfigError.ConfigError | RedisError | SqlError;
+type RuntimeError = EffectConfigError.ConfigError | SqlError;
 
 // Singleton runtime - initialized once at server startup
 // ManagedRuntime handles resource lifecycle automatically
 let _runtime: ManagedRuntime.ManagedRuntime<AppServices, RuntimeError> | null = null;
 
+const traceContextPropagator = new W3CTraceContextPropagator();
+const headersGetter: TextMapGetter<Headers> = {
+  get: (headers, key) => headers.get(key) ?? undefined,
+  keys: (headers) => Array.from(headers.keys()),
+};
+
 export type RequestSpan = {
   name: string;
   attributes?: Record<string, unknown>;
+  parent?: SpanContext;
 };
 
 export const requestSpanFromRequest = (request: Request, url: URL, route?: string): RequestSpan => {
   const normalizedRoute = route ?? url.pathname;
+  const context = traceContextPropagator.extract(ROOT_CONTEXT, request.headers, headersGetter);
   return {
     name: `${request.method} ${normalizedRoute}`,
     attributes: {
@@ -25,6 +35,7 @@ export const requestSpanFromRequest = (request: Request, url: URL, route?: strin
       'http.route': normalizedRoute,
       'http.url': url.toString(),
     },
+    parent: trace.getSpanContext(context),
   };
 };
 
@@ -36,11 +47,14 @@ const withTraceLogAnnotations = <A, E, R>(effect: Effect.Effect<A, E, R>): Effec
     Effect.catchAll(() => effect),
   );
 
-const withRequestSpan = <A, E, R>(
+export const withRequestSpan = <A, E, R>(
   effect: Effect.Effect<A, E, R>,
   span?: RequestSpan,
-): Effect.Effect<A, E, R> =>
-  span ? effect.pipe(Effect.withSpan(span.name, { attributes: span.attributes })) : effect;
+): Effect.Effect<A, E, R> => {
+  if (!span) return effect;
+  const traced = effect.pipe(Effect.withSpan(span.name, { attributes: span.attributes }));
+  return span.parent ? traced.pipe(Tracer.withSpanContext(span.parent)) : traced;
+};
 
 const withRequestSpanAndLogs = <A, E, R>(
   effect: Effect.Effect<A, E, R>,

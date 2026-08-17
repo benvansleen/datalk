@@ -95,30 +95,6 @@
                             };
                           }
                         ];
-                        redisEnv = with config.modules.valkey; [
-                          {
-                            name = "REDIS_HOST";
-                            value = "valkey";
-                          }
-                          {
-                            name = "REDIS_PORT";
-                            value = toString port;
-                          }
-                          {
-                            name = "REDIS_USER";
-                            valueFrom.secretKeyRef = {
-                              name = secretName;
-                              key = userKey;
-                            };
-                          }
-                          {
-                            name = "REDIS_PASSWORD";
-                            valueFrom.secretKeyRef = {
-                              name = secretName;
-                              key = passwordKey;
-                            };
-                          }
-                        ];
                       in
                       {
                         initContainers.migrate = {
@@ -132,64 +108,58 @@
                           imagePullPolicy = "Always";
                           ports.http.containerPort = 3000;
 
-                          env =
+                          env = lib.flatten [
                             dbEnv
-                            ++ redisEnv
-                            ++ [
-                              {
-                                name = "ENVIRONMENT";
-                                value = cfg.environment;
-                              }
-                              {
-                                name = "NODE_ENV";
-                                value = cfg.environment;
-                              }
-                              {
-                                name = "PORT";
-                                value = "3000";
-                              }
-                              {
-                                name = "ORIGIN";
-                                value = cfg.publicUrl;
-                              }
-                              {
-                                name = "BETTER_AUTH_URL";
-                                value = cfg.publicUrl;
-                              }
-                              {
-                                name = "BETTER_AUTH_SECRET";
-                                valueFrom.secretKeyRef = {
-                                  name = "datalk-runtime";
-                                  key = "BETTER_AUTH_SECRET";
-                                };
-                              }
-                              {
-                                name = "PYTHON_SERVER_HOST";
-                                value = "python-server";
-                              }
-                              {
-                                name = "PYTHON_SERVER_PORT";
-                                value = toString config.modules.python-server.port;
-                              }
-                              {
-                                name = "OPENAI_API_KEY";
-                                valueFrom.secretKeyRef = {
-                                  name = "datalk-runtime";
-                                  key = "OPENAI_API_KEY";
-                                };
-                              }
-                            ];
-
-                          # resources = {
-                          # requests = {
-                          #   cpu = "100m";
-                          #   memory = "2Gi";
-                          # };
-                          # limits = {
-                          #   cpu = "500m";
-                          #   memory = "3Gi";
-                          # };
-                          # };
+                            {
+                              name = "PYTHON_SERVER_HOST";
+                              value = "python-server";
+                            }
+                            {
+                              name = "PYTHON_SERVER_PORT";
+                              value = toString config.modules.python-server.port;
+                            }
+                            {
+                              name = "ENVIRONMENT";
+                              value = cfg.environment;
+                            }
+                            {
+                              name = "NODE_ENV";
+                              value = cfg.environment;
+                            }
+                            {
+                              name = "PORT";
+                              value = "3000";
+                            }
+                            {
+                              name = "ORIGIN";
+                              value = cfg.publicUrl;
+                            }
+                            {
+                              name = "BETTER_AUTH_URL";
+                              value = cfg.publicUrl;
+                            }
+                            {
+                              name = "BETTER_AUTH_SECRET";
+                              valueFrom.secretKeyRef = {
+                                name = "datalk-runtime";
+                                key = "BETTER_AUTH_SECRET";
+                              };
+                            }
+                            {
+                              name = "INTERNAL_PROJECTION_SECRET";
+                              valueFrom.secretKeyRef = {
+                                name = "datalk-runtime";
+                                key = "INTERNAL_PROJECTION_SECRET";
+                              };
+                            }
+                            {
+                              name = "OPENAI_API_KEY";
+                              valueFrom.secretKeyRef = {
+                                name = "datalk-runtime";
+                                key = "OPENAI_API_KEY";
+                              };
+                            }
+                          ];
                         };
                       };
                   };
