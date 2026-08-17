@@ -1,8 +1,10 @@
 <script lang="ts">
   import type { PageProps } from './$types';
   import { goto } from '$app/navigation';
+  import { resolve } from '$app/paths';
   import { onMount } from 'svelte';
   import { ArrowUp } from '@lucide/svelte';
+  import Autoscroll from '$lib/components/autoscroll.svelte';
   import { Spinner } from '$lib/components/shadcn/spinner';
   import * as Item from '$lib/components/shadcn/item';
   import MessageBlock from '$lib/components/message-block.svelte';
@@ -29,15 +31,14 @@
   });
   let input = $state('');
   let error = $state('');
-  let scrollToDiv: HTMLDivElement;
   let formEl: HTMLFormElement;
-  let textareaEl: HTMLTextAreaElement;
+  let autoscroll: Autoscroll | undefined;
 
   onMount(() => {
     const userClient = new LiveClient(
       () => '/live/socket',
       (message) => {
-        if (deletedChatId(message) === data.chatId) void goto('/');
+        if (deletedChatId(message) === data.chatId) void goto(resolve('/'));
         chats = reduceChats(chats, message);
       },
     );
@@ -58,7 +59,7 @@
     };
     input = '';
     error = '';
-    window.scrollTo(0, 0);
+    autoscroll?.reset(data.currentMessageRequestId !== null);
     const client = new LiveClient(
       () => `/live/chats/${chatId}/socket`,
       (message) => {
@@ -75,6 +76,7 @@
     try {
       await sendMessage(data.chatId, input);
       input = '';
+      autoscroll?.pin();
     } catch (cause) {
       error = cause instanceof Error ? cause.message : 'Unable to send message';
     }
@@ -87,19 +89,13 @@
       formEl?.requestSubmit();
     }
   };
-
-  $effect(() => {
-    const el = textareaEl;
-    if (!el) return;
-    const rows = Math.min(8, Math.max(1, input.split('\n').length));
-    el.rows = rows;
-  });
 </script>
 
 <Sidebar {chats} currentChatId={data.chatId}>
+  <Autoscroll messages={snapshot.messages} bind:this={autoscroll} />
   <div class="m-20 grid gap-6">
     <div class="grid gap-2">
-      {#each snapshot.messages.filter((message) => message.role !== 'assistant' || message.content) as message}
+      {#each snapshot.messages.filter((message) => message.role !== 'assistant' || message.content) as message (message.id)}
         <MessageBlock
           role={message.role === 'tool' ? undefined : message.role}
           content={message.role === 'tool' ? undefined : message.content}
@@ -114,17 +110,13 @@
       {/each}
     </div>
     <form bind:this={formEl} onsubmit={submit} class="grid gap-2">
-      <div
-        bind:this={scrollToDiv}
-        class="mx-auto flex w-full max-w-2xl overflow-hidden rounded-md border"
-      >
+      <div class="mx-auto flex w-full max-w-2xl overflow-hidden rounded-md border">
         <textarea
-          bind:this={textareaEl}
           bind:value={input}
           onkeydown={handleKeydown}
           disabled={snapshot.generating}
           placeholder="Type your question... (shift+enter to send)"
-          class="flex-1 resize-none px-4 py-2 focus:outline-none"
+          class="field-sizing-content max-h-64 flex-1 resize-none overflow-y-auto px-4 py-2 focus:outline-none"
           rows="1"></textarea>
         {#if snapshot.generating}
           <Item.Root variant="muted"><Item.Media><Spinner /></Item.Media></Item.Root>
