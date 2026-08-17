@@ -11,7 +11,7 @@ import "go:time"
 import env "environments"
 import telemetryapi "telemetry"
 
-struct Client {
+pub struct Client {
   http: Ref<http.Client>,
   auth: Auth,
   port: int,
@@ -23,7 +23,7 @@ struct Client {
 }
 
 impl Client {
-  fn new(
+  pub fn new(
     auth: Auth,
     port: int,
     request_timeout: time.Duration,

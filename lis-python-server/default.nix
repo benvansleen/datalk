@@ -25,7 +25,7 @@ let
       {
         nativeBuildInputs = [ go ];
         outputHashMode = "recursive";
-        outputHash = "sha256-5YBiofQTwU8r5IwjoCYEz0YsfS/+o6pWGZeG3l43ZBQ=";
+        outputHash = "sha256-6iCwsDoYh+NM33JrTkjvmpaSmFzQ3GsyqcKSNv8bVs8=";
       }
       /* sh */ ''
         export HOME="$TMPDIR"

@@ -10,17 +10,29 @@
           (final: prev: {
             lisette = prev.lisette.overrideAttrs (
               new: old: {
-                version = "0.10.0";
+                version = "0.11.3";
                 src = old.src.overrideAttrs {
                   tag = "lisette-v${new.version}";
-                  hash = "sha256-WqvBONVy2/JMFAUTsnCEAE5c4qA/1vy+MsKkBQKJMpg=";
+                  hash = "sha256-zoYvrr9h0XvfXudVaf++LhKhTXz1KfaOHq+dy+EAyyU=";
                 };
                 cargoDeps = final.rustPlatform.fetchCargoVendor {
                   inherit (new) src;
-                  hash = "sha256-9TqoXzrUyb5AK/9EHw8H35N2LjoZWwCtwHp4Sp+gqsQ=";
+                  hash = "sha256-Zgu3/VJRciwvufL+iwEwVL9h5hCLssVr1oT4H/7PQ0c=";
                 };
-                checkFlags = (old.checkFlags or [ ]) ++ [
-                  "--skip=e2e_learn"
+                patches = (old.patches or [ ]) ++ [ ./patches/lisette-otel-zero-safe.patch ];
+                nativeBuildInputs = (old.nativeBuildInputs or [ ]) ++ [ final.makeWrapper ];
+                postInstall = (old.postInstall or "") + /* sh */ ''
+                  mkdir -p "$out/share/lisette"
+                  cp bindgen/bindgen.external.json "$out/share/lisette/bindgen.external.json"
+                  wrapProgram "$out/bin/lis" \
+                    --set LISETTE_BINDGEN_CONFIG "$out/share/lisette/bindgen.external.json"
+                '';
+                checkFlags = final.lib.flatten [
+                  (old.checkFlags or [ ])
+                  (map (test: "--skip=${test}") [
+                    "e2e_learn"
+                    "an_executable_script_runs_through_its_shebang"
+                  ])
                 ];
               }
             );

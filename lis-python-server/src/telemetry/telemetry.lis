@@ -2,15 +2,15 @@ import "go:context"
 import "go:errors"
 import "go:go.opentelemetry.io/otel/attribute"
 import "go:go.opentelemetry.io/otel/codes"
+import "go:go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
 import "go:go.opentelemetry.io/otel/propagation"
+import "go:go.opentelemetry.io/otel/sdk/resource"
+import "go:go.opentelemetry.io/otel/semconv/v1.37.0"
 import "go:net/http"
 import "go:os"
+import "go:os/signal"
 import oteltrace "go:go.opentelemetry.io/otel/trace"
-import otlptracehttp "go:go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
-import resource "go:go.opentelemetry.io/otel/sdk/resource"
 import sdktrace "go:go.opentelemetry.io/otel/sdk/trace"
-import semconv "go:go.opentelemetry.io/otel/semconv/v1.37.0"
-import signal "go:os/signal"
 import "go:strings"
 import "go:syscall"
 import "go:time"
@@ -55,20 +55,8 @@ impl Runtime {
         return Err(err)
       },
     }
-    let Some(controller_tracer) = controller_provider.Tracer(
-      INSTRUMENTATION_NAME,
-    ) else {
-      let _ = worker_provider.Shutdown(ctx)
-      let _ = controller_provider.Shutdown(ctx)
-      return Err(errors.New("OpenTelemetry controller tracer is unavailable"))
-    }
-    let Some(worker_tracer) = worker_provider.Tracer(
-      f"{INSTRUMENTATION_NAME}/worker",
-    ) else {
-      let _ = worker_provider.Shutdown(ctx)
-      let _ = controller_provider.Shutdown(ctx)
-      return Err(errors.New("OpenTelemetry worker tracer is unavailable"))
-    }
+    let controller_tracer = controller_provider.Tracer(INSTRUMENTATION_NAME)
+    let worker_tracer = worker_provider.Tracer(f"{INSTRUMENTATION_NAME}/worker")
 
     let propagator = propagation.NewCompositeTextMapPropagator(
       propagation.TraceContext { .. },
@@ -115,12 +103,10 @@ impl Runtime {
 
     for stage in stages {
       let name = worker_stage_name(stage.stage)?
-      if stage.start_unix_nano < 0 || stage.duration_nano < 0 ||
-      stage.duration_nano > MAX_STAGE_DURATION as int64 {
+      if stage.start_unix_nano < 0 || stage.duration_nano < 0 || stage.duration_nano > MAX_STAGE_DURATION as int64 {
         return Err(errors.New("worker telemetry has invalid timing"))
       }
-      if stage.status != "ok" && stage.status != "error" &&
-      stage.status != "timeout" {
+      if stage.status != "ok" && stage.status != "error" && stage.status != "timeout" {
         return Err(errors.New("worker telemetry has invalid status"))
       }
       let error_type = match stage.error_type {
@@ -298,9 +284,12 @@ fn service_name(fallback: string) -> string {
 
 fn worker_stage_name(stage: string) -> Result<string, error> {
   match stage {
+    "kernel_start" => Ok("kernel.start"),
+    "kernel_ready_wait" => Ok("kernel.ready.wait"),
+    "dataset_load" => Ok("dataset.load"),
+    "checkpoint_restore" => Ok("checkpoint.restore"),
     "lock_wait" => Ok("worker.lock.wait"),
     "jupyter_user_execution" => Ok("jupyter.execute"),
-    "jupyter_metadata_execution" => Ok("jupyter.metadata"),
     "checkpoint_write" => Ok("checkpoint.write"),
     "timeout_kernel_restart" => Ok("kernel.restart"),
     _ => Err(errors.New("unknown worker telemetry stage")),

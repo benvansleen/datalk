@@ -1,0 +1,52 @@
+diff --git a/bindgen/bindgen.external.json b/bindgen/bindgen.external.json
+index 8f84bde..b55f496 100644
+--- a/bindgen/bindgen.external.json
++++ b/bindgen/bindgen.external.json
+@@ -11,6 +11,12 @@
+       }
+     },
+     "types": {
++      "zero_safe": {
++        "go.opentelemetry.io/otel/propagation": [
++          "Baggage",
++          "TraceContext"
++        ]
++      },
+       "bool_as_flag": {
+         "github.com/charmbracelet/lipgloss": [
+           "GetBorder"
+diff --git a/crates/cli/src/workspace.rs b/crates/cli/src/workspace.rs
+index 23a1641..de419ad 100644
+--- a/crates/cli/src/workspace.rs
++++ b/crates/cli/src/workspace.rs
+@@ -230,5 +230,8 @@ impl<'a> GoWorkspace<'a> {
+             c
+         };
+         cmd.current_dir(self.root);
++        if let Some(config) = std::env::var_os("LISETTE_BINDGEN_CONFIG") {
++            cmd.arg("-config").arg(config);
++        }
+         cmd
+     }
+diff --git a/bindgen/bindgen.external.json b/bindgen/bindgen.external.json
+index b55f496..80bb8cc 100644
+--- a/bindgen/bindgen.external.json
++++ b/bindgen/bindgen.external.json
+@@ -1379,6 +1379,17 @@
+           "GridFSBucket.GetFilesCollection",
+           "Session.Client"
+         ],
++        "go.opentelemetry.io/otel/trace": [
++          "TracerProvider.Tracer"
++        ],
++        "go.opentelemetry.io/otel/sdk/trace": [
++          "TracerProvider.Tracer"
++        ],
++        "k8s.io/client-go/kubernetes/typed/core/v1": [
++          "*.PersistentVolumeClaims",
++          "*.Pods",
++          "*.ServiceAccounts"
++        ],
+         "go.opentelemetry.io/otel/sdk/resource": [
+           "Environment"
+         ],
