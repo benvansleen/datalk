@@ -27,7 +27,12 @@
     };
     nixhelm = {
       url = "github:farcaller/nixhelm";
-      inputs.nixpkgs.follows = "nixpkgs";
+      inputs = {
+        nixpkgs.follows = "nixpkgs";
+        pyproject-build-systems.follows = "pyproject-build-systems";
+        pyproject-nix.follows = "pyproject-nix";
+        uv2nix.follows = "uv2nix";
+      };
     };
     nixidy = {
       url = "github:arnarg/nixidy";
@@ -55,6 +60,7 @@
       url = "github:terranix/terranix";
       inputs = {
         flake-parts.follows = "flake-parts";
+        import-tree.follows = "import-tree";
         nixpkgs.follows = "nixpkgs";
       };
     };

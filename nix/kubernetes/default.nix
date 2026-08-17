@@ -8,7 +8,12 @@
     };
     nixhelm = {
       url = "github:farcaller/nixhelm";
-      inputs.nixpkgs.follows = "nixpkgs";
+      inputs = {
+        nixpkgs.follows = "nixpkgs";
+        pyproject-nix.follows = "pyproject-nix";
+        pyproject-build-systems.follows = "pyproject-build-systems";
+        uv2nix.follows = "uv2nix";
+      };
     };
   };
 

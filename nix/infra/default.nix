@@ -9,6 +9,7 @@
       inputs = {
         nixpkgs.follows = "nixpkgs";
         flake-parts.follows = "flake-parts";
+        import-tree.follows = "import-tree";
       };
     };
   };
