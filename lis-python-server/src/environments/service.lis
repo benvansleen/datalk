@@ -31,6 +31,11 @@ pub struct ExecutionResult {
   pub outputs: string,
 }
 
+enum StartupWaitResult {
+  Checkpoint(Result<(), EnvironmentError>),
+  Runtime(Result<RuntimeInfo, EnvironmentError>),
+}
+
 #[display]
 pub enum EnvironmentError {
   DatasetMismatch { expected: string, actual: string },
@@ -147,12 +152,17 @@ impl Service {
   }
 
   fn find_or_start(self, ctx: context.Context, spec: RuntimeSpec) -> Result<RuntimeInfo, EnvironmentError> {
-    match self.runtime
-      .find(ctx, spec.environment_id)
-      .map_err(EnvironmentError.Runtime)? {
+    match self.find_runtime(ctx, spec.environment_id)? {
       Some(runtime) => self.reuse_or_replace(ctx, runtime, spec),
       None => self.start(ctx, spec),
     }
+  }
+
+  fn find_runtime(self, ctx: context.Context, environment_id: string) -> Result<Option<RuntimeInfo>, EnvironmentError> {
+    let (ctx, span) = self.telemetry.start(ctx, "kubernetes.pod.find")
+    defer span.end()
+    span.attribute("environment.id", environment_id)
+    self.runtime.find(ctx, environment_id).map_err(EnvironmentError.Runtime)
   }
 
   fn reuse_or_replace(
@@ -182,13 +192,11 @@ impl Service {
   }
 
   fn start(self, ctx: context.Context, spec: RuntimeSpec) -> Result<RuntimeInfo, EnvironmentError> {
-    self.runtime.ensure_checkpoint(ctx, spec).map_err(EnvironmentError.Runtime)?
-    match self.runtime.start(ctx, spec) {
+    self.ensure_checkpoint(ctx, spec)?
+    match self.start_runtime(ctx, spec) {
       Ok(runtime) => Ok(runtime),
       Err(RuntimeError.Conflict) => {
-        let runtime = self.runtime
-            .find(ctx, spec.environment_id)
-            .map_err(EnvironmentError.Runtime)?.ok_or(
+        let runtime = self.find_runtime(ctx, spec.environment_id)?.ok_or(
           EnvironmentError.Runtime(RuntimeError.Conflict),
         )?
         self.reuse_or_replace(ctx, runtime, spec)
@@ -197,16 +205,85 @@ impl Service {
     }
   }
 
+  fn ensure_checkpoint(self, ctx: context.Context, spec: RuntimeSpec) -> Result<(), EnvironmentError> {
+    let (ctx, span) = self.telemetry.start(ctx, "kubernetes.pvc.ensure")
+    defer span.end()
+    span.attribute("environment.id", spec.environment_id)
+    span.attribute("pvc.name", spec.checkpoint_name)
+    self.runtime.ensure_checkpoint(ctx, spec).map_err(EnvironmentError.Runtime)
+  }
+
+  fn start_runtime(self, ctx: context.Context, spec: RuntimeSpec) -> Result<RuntimeInfo, RuntimeError> {
+    let (ctx, span) = self.telemetry.start(ctx, "kubernetes.pod.create")
+    defer span.end()
+    span.attribute("environment.id", spec.environment_id)
+    self.runtime.start(ctx, spec)
+  }
+
   fn wait_until_ready(self, ctx: context.Context, runtime: RuntimeInfo) -> Result<RuntimeInfo, EnvironmentError> {
     match runtime.state {
       RuntimeState.Ready => Ok(runtime),
       RuntimeState.Pending => {
-        self.runtime
-          .wait_until_ready(ctx, runtime.environment_id, self.startup_timeout)
-          .map_err(|err| match err {
-            RuntimeError.TimedOut => EnvironmentError.StartupTimedOut,
-            _ => EnvironmentError.Runtime(err),
-          })
+        let deadline = time.Now().Add(self.startup_timeout)
+        let (wait_ctx, cancel) = context.WithCancel(ctx)
+        defer cancel()
+        let checkpoint_results = Channel.new<Result<(), EnvironmentError>>()
+        let runtime_results = Channel.new<Result<RuntimeInfo, EnvironmentError>>()
+
+        task {
+          let result = self.wait_until_checkpoint_bound(
+            wait_ctx,
+            runtime,
+            deadline,
+          )
+          let _ = checkpoint_results.send(result)
+        }
+        task {
+          let result = self.wait_until_runtime_ready(
+            wait_ctx,
+            runtime.environment_id,
+            deadline,
+          )
+          let _ = runtime_results.send(result)
+        }
+
+        let first = select {
+          match checkpoint_results.receive() {
+            Some(result) => StartupWaitResult.Checkpoint(result),
+            None => StartupWaitResult.Checkpoint(Err(
+              startup_wait_channel_closed(),
+            )),
+          },
+          match runtime_results.receive() {
+            Some(result) => StartupWaitResult.Runtime(result),
+            None => StartupWaitResult.Runtime(Err(startup_wait_channel_closed())),
+          },
+        }
+
+        match first {
+          StartupWaitResult.Checkpoint(Err(err)) => {
+            cancel()
+            let _ = runtime_results.receive()
+            Err(err)
+          },
+          StartupWaitResult.Runtime(Err(err)) => {
+            cancel()
+            let _ = checkpoint_results.receive()
+            Err(err)
+          },
+          StartupWaitResult.Checkpoint(Ok(())) => {
+            runtime_results
+              .receive()
+              .unwrap_or_else(|| Err(startup_wait_channel_closed()))
+          },
+          StartupWaitResult.Runtime(Ok(ready_runtime)) => {
+            match checkpoint_results.receive() {
+              Some(Ok(())) => Ok(ready_runtime),
+              Some(Err(err)) => Err(err),
+              None => Err(startup_wait_channel_closed()),
+            }
+          },
+        }
       },
       _ => Err(EnvironmentError.Runtime(RuntimeError.Terminated(
         runtime.environment_id,
@@ -214,9 +291,44 @@ impl Service {
     }
   }
 
+  fn wait_until_checkpoint_bound(
+    self,
+    ctx: context.Context,
+    runtime: RuntimeInfo,
+    deadline: time.Time,
+  ) -> Result<(), EnvironmentError> {
+    let (ctx, span) = self.telemetry.start(ctx, "kubernetes.pvc.bound.wait")
+    defer span.end()
+    span.attribute("environment.id", runtime.environment_id)
+    span.attribute("pvc.name", runtime.checkpoint_name)
+    self.runtime
+      .wait_until_checkpoint_bound(ctx, runtime.checkpoint_name, deadline)
+      .map_err(|err| match err {
+        RuntimeError.TimedOut => EnvironmentError.StartupTimedOut,
+        _ => EnvironmentError.Runtime(err),
+      })
+  }
+
+  fn wait_until_runtime_ready(
+    self,
+    ctx: context.Context,
+    environment_id: string,
+    deadline: time.Time,
+  ) -> Result<RuntimeInfo, EnvironmentError> {
+    let (ctx, span) = self.telemetry.start(ctx, "kubernetes.pod.ready.wait")
+    defer span.end()
+    span.attribute("environment.id", environment_id)
+    self.runtime
+      .wait_until_ready(ctx, environment_id, deadline)
+      .map_err(|err| match err {
+        RuntimeError.TimedOut => EnvironmentError.StartupTimedOut,
+        _ => EnvironmentError.Runtime(err),
+      })
+  }
+
   fn describe(self, ctx: context.Context, runtime: RuntimeInfo) -> Result<Environment, EnvironmentError> {
     let metadata = self.worker
-      .metadata(ctx, runtime)
+      .startup(ctx, runtime)
       .map_err(EnvironmentError.Worker)?
 
     Ok(Environment { available_dataframes: metadata.available_dataframes })
@@ -227,4 +339,10 @@ fn environment_id(chat_id: string) -> string {
   let hasher = sha256.New()
   let _ = hasher.Write(chat_id as Slice<byte>)
   hex.EncodeToString(hasher.Sum([])).substring(0..52)
+}
+
+fn startup_wait_channel_closed() -> EnvironmentError {
+  EnvironmentError.Runtime(RuntimeError.Internal(
+    "startup wait channel closed unexpectedly",
+  ))
 }

@@ -29,11 +29,11 @@ async def checkpoint_kernel(state: "WorkerState") -> None:
         )
 
 
-async def restore_kernel(state: "WorkerState") -> None:
+async def restore_kernel(state: "WorkerState") -> str | None:
     checkpoint = state.config.checkpoint_path
     checkpoint.with_name(checkpoint.name + ".tmp").unlink(missing_ok=True)
     if not checkpoint.exists():
-        return
+        return None
 
     result = await asyncio.wait_for(
         execute_kernel_code(state, build_restore_code(checkpoint)),
@@ -41,7 +41,7 @@ async def restore_kernel(state: "WorkerState") -> None:
     )
 
     if result.succeeded:
-        return
+        return result.output
 
     quarantine = checkpoint.with_name(f"{checkpoint.name}.corrupt-{time.time_ns()}")
     os.replace(checkpoint, quarantine)
@@ -50,6 +50,7 @@ async def restore_kernel(state: "WorkerState") -> None:
         quarantine,
         result.output,
     )
+    return None
 
 
 def build_checkpoint_code(checkpoint_path: Path) -> str:
@@ -122,4 +123,10 @@ if not isinstance(__datalk_state, dict):
 
 globals().update(__datalk_state)
 del __datalk_state
+
+print([
+    (name, value.columns, value.shape)
+    for name, value in globals().items()
+    if type(value) is pd.core.frame.DataFrame and not name.startswith("_")
+])
     """

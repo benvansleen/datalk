@@ -15,6 +15,6 @@ class ExecutionResponse(BaseModel):
     telemetry: Telemetry
 
 
-class MetadataResponse(BaseModel):
+class StartupResponse(BaseModel):
     available_dataframes: str
     telemetry: Telemetry

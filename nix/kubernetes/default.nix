@@ -67,6 +67,10 @@
             workerImage = self.image-uri self.packages.x86_64-linux.lis-python-worker-image;
             datasetGcsBucket = "datalk-datasets";
             checkpointStorageClass = "standard";
+            workerImagePrePull = {
+              enable = true;
+              nodeSelector.workload = "datalk";
+            };
           };
           seaweedfs.enable = true;
           tailscale-operator.enable = true;

@@ -12,6 +12,13 @@
         workerImage = mkOption {
           type = types.str;
         };
+        workerImagePrePull = {
+          enable = mkEnableOption "python worker image pre-pulling";
+          nodeSelector = mkOption {
+            type = types.attrsOf types.str;
+            default = { };
+          };
+        };
         port = mkOption {
           type = types.port;
           default = 8000;
@@ -58,7 +65,7 @@
               token_path = "/var/run/secrets/kubernetes.io/serviceaccount/token";
               ca_path = "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt";
               request_timeout = "10s";
-              readiness_poll_interval = "500ms";
+              readiness_poll_interval = "250ms";
             };
             environments = {
               max_active = cfg.maxWorkers;
@@ -202,6 +209,78 @@
                         tmp = {
                           name = "tmp";
                           emptyDir = { };
+                        };
+                      };
+                    };
+                  };
+                };
+
+                daemonSets = lib.mkIf cfg.workerImagePrePull.enable {
+                  python-worker-image-prepull.spec = {
+                    selector.matchLabels.app = "python-worker-image-prepull";
+                    template = {
+                      metadata.labels.app = "python-worker-image-prepull";
+                      spec = {
+                        inherit (cfg.workerImagePrePull) nodeSelector;
+                        automountServiceAccountToken = false;
+                        enableServiceLinks = false;
+                        terminationGracePeriodSeconds = 1;
+                        securityContext = {
+                          runAsNonRoot = true;
+                          runAsUser = 1000;
+                          runAsGroup = 1000;
+                          seccompProfile.type = "RuntimeDefault";
+                        };
+                        initContainers.prepull = {
+                          image = cfg.workerImage;
+                          imagePullPolicy = "IfNotPresent";
+                          command = [
+                            "/bin/python"
+                            "-c"
+                            ""
+                          ];
+                          securityContext = {
+                            privileged = false;
+                            allowPrivilegeEscalation = false;
+                            capabilities.drop = [ "ALL" ];
+                            readOnlyRootFilesystem = true;
+                            runAsNonRoot = true;
+                            runAsUser = 1000;
+                            runAsGroup = 1000;
+                          };
+                          resources = {
+                            requests = {
+                              cpu = "1m";
+                              memory = "16Mi";
+                            };
+                            limits = {
+                              cpu = "10m";
+                              memory = "32Mi";
+                            };
+                          };
+                        };
+                        containers.hold = {
+                          image = "registry.k8s.io/pause:3.10";
+                          imagePullPolicy = "IfNotPresent";
+                          securityContext = {
+                            privileged = false;
+                            allowPrivilegeEscalation = false;
+                            capabilities.drop = [ "ALL" ];
+                            readOnlyRootFilesystem = true;
+                            runAsNonRoot = true;
+                            runAsUser = 65535;
+                            runAsGroup = 65535;
+                          };
+                          resources = {
+                            requests = {
+                              cpu = "1m";
+                              memory = "1Mi";
+                            };
+                            limits = {
+                              cpu = "10m";
+                              memory = "8Mi";
+                            };
+                          };
                         };
                       };
                     };

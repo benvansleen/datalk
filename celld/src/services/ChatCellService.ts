@@ -21,6 +21,7 @@ import { Http } from './Http';
 import { InternalApi } from './InternalApi';
 import { Observability } from './Observability';
 import { Projection } from './Projection';
+import { PythonServer } from './PythonServer';
 
 const MAX_EVENTS = 1_000;
 const GENERATION_LEASE_MS = 60_000;
@@ -56,6 +57,7 @@ export class ChatCellService extends Effect.Service<ChatCellService>()('app/Chat
     const http = yield* Http;
     const internalApi = yield* InternalApi;
     const projection = yield* Projection;
+    const pythonServer = yield* PythonServer;
     const agent = yield* Agent;
     const observability = yield* Observability;
     const generationRuntime = yield* Ref.make<GenerationRuntimeState>({
@@ -119,6 +121,11 @@ export class ChatCellService extends Effect.Service<ChatCellService>()('app/Chat
         yield* snapshots.putProjected(snapshot);
         yield* announceSnapshot(snapshot);
       });
+
+    const prewarmEnvironment = (snapshot: StoredChatSnapshot) =>
+      pythonServer
+        .createEnvironment(snapshot.id, snapshot.dataset)
+        .pipe(Effect.catchAll(() => Console.error('Environment prewarm failed')));
 
     const saveGenerationSnapshot = (snapshot: StoredChatSnapshot, leaseId: string) =>
       snapshots
@@ -248,14 +255,7 @@ export class ChatCellService extends Effect.Service<ChatCellService>()('app/Chat
             }),
           ),
         )
-        .pipe(
-          Effect.flatMap(
-            Option.match({
-              onNone: () => Effect.void,
-              onSome: announceSnapshot,
-            }),
-          ),
-        );
+        .pipe(Effect.flatMap(Effect.transposeMapOption(announceSnapshot)));
 
     const generate = (snapshot: StoredChatSnapshot, messageRequestId: string, leaseId: string) => {
       const sink: GenerationSinkShape = {
@@ -392,21 +392,19 @@ export class ChatCellService extends Effect.Service<ChatCellService>()('app/Chat
       ).pipe(
         Effect.flatMap((action) => {
           const maintain = (lease: Option.Option<GenerationLease>) =>
-            Option.match(lease, {
-              onNone: () => Effect.void,
-              onSome: (activeLease) =>
-                platform.fork(
-                  leaseSemaphore
-                    .withPermits(1)(renewGenerationLease(activeLease))
-                    .pipe(
-                      Effect.catchAll(() =>
-                        Console.error('Generation lease renewal failed').pipe(
-                          Effect.andThen(scheduleAlarm(Date.now() + 1_000)),
-                        ),
+            Effect.transposeMapOption(lease, (activeLease) =>
+              platform.fork(
+                leaseSemaphore
+                  .withPermits(1)(renewGenerationLease(activeLease))
+                  .pipe(
+                    Effect.catchAll(() =>
+                      Console.error('Generation lease renewal failed').pipe(
+                        Effect.andThen(scheduleAlarm(Date.now() + 1_000)),
                       ),
                     ),
-                ),
-            });
+                  ),
+              ),
+            );
           const start = () => {
             const finish = Ref.modify(generationRuntime, (state) => [
               state.driveRequested,
@@ -461,10 +459,10 @@ export class ChatCellService extends Effect.Service<ChatCellService>()('app/Chat
               }
               return storage.put(KEY_CHAT_ID, chatId).pipe(
                 Effect.andThen(
-                  Option.match(existing, {
-                    onNone: () => save(snapshot),
-                    onSome: () => Effect.void,
-                  }),
+                  save(snapshot).pipe(
+                    Effect.andThen(platform.fork(prewarmEnvironment(snapshot))),
+                    Effect.when(() => Option.isNone(existing)),
+                  ),
                 ),
                 Effect.as(Response.json(summaryOf(snapshot), { headers: jsonHeaders })),
               );
@@ -577,10 +575,9 @@ export class ChatCellService extends Effect.Service<ChatCellService>()('app/Chat
         Match.when({ method: 'POST', path: '/initialize' }, () => initialize(request, userId)),
         Match.orElse(() => {
           const requestedChatId = Option.fromNullable(request.headers.get('x-datalk-chat-id'));
-          return Option.match(requestedChatId, {
-            onNone: () => Effect.void,
-            onSome: (chatId) => storage.put(KEY_CHAT_ID, chatId),
-          }).pipe(
+          return Effect.transposeMapOption(requestedChatId, (chatId) =>
+            storage.put(KEY_CHAT_ID, chatId),
+          ).pipe(
             Effect.andThen(snapshots.load),
             Effect.flatMap(
               Option.match({
@@ -615,14 +612,12 @@ export class ChatCellService extends Effect.Service<ChatCellService>()('app/Chat
 
     const alarm = snapshots.load.pipe(
       Effect.flatMap(
-        Option.match({
-          onNone: () => Effect.void,
-          onSome: (snapshot) =>
-            driveGeneration.pipe(
-              Effect.when(() => !snapshot.deleted && snapshot.generation.status !== 'idle'),
-              Effect.asVoid,
-            ),
-        }),
+        Effect.transposeMapOption((snapshot) =>
+          Effect.when(
+            driveGeneration,
+            () => !snapshot.deleted && snapshot.generation.status !== 'idle',
+          ),
+        ),
       ),
       Effect.andThen(
         projection.flushProjection().pipe(Effect.provideService(CellStorage, storage)),

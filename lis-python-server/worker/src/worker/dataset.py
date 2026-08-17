@@ -38,10 +38,20 @@ def build_dataset_load_code(dataset_path: Path) -> str:
     for path in dataset_files(dataset_path):
         lines.append(f"{path.stem} = pd.read_csv({str(path)!r})")
 
+    lines.append(
+        """
+print([
+    (name, value.columns, value.shape)
+    for name, value in globals().items()
+    if type(value) is pd.core.frame.DataFrame and not name.startswith("_")
+])
+    """.strip()
+    )
+
     return "\n".join(lines)
 
 
-async def load_dataset(state: "WorkerState") -> None:
+async def load_dataset(state: "WorkerState") -> str:
     result = await asyncio.wait_for(
         execute_kernel_code(state, build_dataset_load_code(state.config.dataset_path)),
         timeout=state.config.execution_timeout,
@@ -49,3 +59,5 @@ async def load_dataset(state: "WorkerState") -> None:
 
     if not result.succeeded:
         raise RuntimeError(f"Dataset initialization failed: {result.output}")
+
+    return result.output

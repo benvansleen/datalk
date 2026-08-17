@@ -96,10 +96,23 @@ def build_code(request: ExecutionRequest) -> str:
 
         case "sql":
             statement = "\n".join(line.replace("\n", " ") for line in request.code)
-            return "\n".join(
-                [
-                    "import duckdb",
-                    f"sql_output = duckdb.sql({statement!r}).df()",
-                    "print(sql_output)",
-                ]
-            )
+            return f"""
+import duckdb
+
+__datalk_dataframes = {{
+    name: value
+    for name, value in globals().items()
+    if type(value) is pd.core.frame.DataFrame and not name.startswith('_')
+    and name != 'sql_output'
+}}
+
+for __datalk_name in globals().get('__datalk_registered_dataframes', set()) - __datalk_dataframes.keys():
+    duckdb.unregister(__datalk_name)
+
+for __datalk_name, __datalk_value in __datalk_dataframes.items():
+    duckdb.register(__datalk_name, __datalk_value)
+
+__datalk_registered_dataframes = set(__datalk_dataframes)
+sql_output = duckdb.sql({statement!r}).df()
+print(sql_output)
+            """.strip()

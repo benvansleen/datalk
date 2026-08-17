@@ -9,9 +9,12 @@ MAX_TELEMETRY_STAGES = 5
 
 
 class StageName(StrEnum):
+    KERNEL_START = "kernel_start"
+    KERNEL_READY_WAIT = "kernel_ready_wait"
+    DATASET_LOAD = "dataset_load"
+    CHECKPOINT_RESTORE = "checkpoint_restore"
     LOCK_WAIT = "lock_wait"
     JUPYTER_USER_EXECUTION = "jupyter_user_execution"
-    JUPYTER_METADATA_EXECUTION = "jupyter_metadata_execution"
     CHECKPOINT_WRITE = "checkpoint_write"
     TIMEOUT_KERNEL_RESTART = "timeout_kernel_restart"
 

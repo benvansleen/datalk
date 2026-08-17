@@ -343,6 +343,12 @@ describe('Datalk execution server HTTP contract', () => {
           200,
           { outputs: '(3736, 33)\n(1524, 16)\n' },
         );
+        const tables = yield* execute(chatId, ['SHOW TABLES'], 'sql');
+        assert.equal(tables.status, 200);
+        const tablesOutput: unknown = JSON.parse(tables.body).outputs;
+        assert.ok(typeof tablesOutput === 'string');
+        assert.match(tablesOutput, /cfbd_2025_games/);
+        assert.match(tablesOutput, /cfbd_2025_lines/);
 
         assertJsonResponse(
           yield* execute(chatId, ['SELECT COUNT(*) AS game_count FROM cfbd_2025_games'], 'sql'),

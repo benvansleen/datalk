@@ -1,14 +1,17 @@
 import asyncio
+import io
 import unittest
+from contextlib import redirect_stdout
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
+import pandas as pd
 from pydantic import ValidationError
 
 from worker.error_boundary import WorkerProtocolError, handle_worker_error
-from worker.execution import KernelResult, classify_kernel_error
+from worker.execution import KernelResult, build_code, classify_kernel_error
 from worker.interface import ExecutionRequest, ExecutionResponse
-from worker.routes import execute, metadata
+from worker.routes import execute, startup
 from worker.telemetry import (
     MAX_TELEMETRY_STAGES,
     StageErrorType,
@@ -26,6 +29,8 @@ def request_with(state):
 def worker_state():
     return SimpleNamespace(
         ready=True,
+        available_dataframes="[('games',)]\n",
+        startup_telemetry=[],
         last_activity=0.0,
         execution_lock=asyncio.Lock(),
         config=SimpleNamespace(execution_timeout=1.0),
@@ -39,6 +44,25 @@ class TelemetryModelTests(unittest.TestCase):
             classify_kernel_error("BinderException"),
             StageErrorType.BINDER_ERROR,
         )
+
+    def test_sql_registers_live_dataframes_before_execution(self):
+        code = build_code(ExecutionRequest(code=["SHOW TABLES"], language="sql"))
+
+        self.assertIn("duckdb.register(__datalk_name, __datalk_value)", code)
+        self.assertIn("duckdb.unregister(__datalk_name)", code)
+        self.assertIn("sql_output = duckdb.sql('SHOW TABLES').df()", code)
+
+        namespace = {"pd": pd, "games": pd.DataFrame({"id": [1]})}
+        output = io.StringIO()
+        with redirect_stdout(output):
+            exec(code, namespace)
+        self.assertIn("games", output.getvalue())
+
+        del namespace["games"]
+        output = io.StringIO()
+        with redirect_stdout(output):
+            exec(code, namespace)
+        self.assertNotIn("games", output.getvalue())
         self.assertEqual(
             classify_kernel_error("AttackerControlledException"),
             StageErrorType.USER_CODE_ERROR,
@@ -111,18 +135,39 @@ class RouteTelemetryTests(unittest.IsolatedAsyncioTestCase):
             ],
         )
 
-    async def test_metadata_records_distinct_jupyter_stage(self):
+    async def test_startup_returns_cold_start_stages_once(self):
         state = worker_state()
-        with patch(
-            "worker.routes.execute_kernel_code",
-            AsyncMock(return_value=KernelResult(output="[]", succeeded=True)),
-        ):
-            response = await metadata(request_with(state))
+        state.startup_telemetry = [
+            StageTelemetry(
+                stage=stage,
+                start_unix_nano=index + 1,
+                duration_nano=1,
+                status=StageStatus.OK,
+            )
+            for index, stage in enumerate(
+                [
+                    StageName.KERNEL_START,
+                    StageName.KERNEL_READY_WAIT,
+                    StageName.DATASET_LOAD,
+                    StageName.CHECKPOINT_RESTORE,
+                ]
+            )
+        ]
 
+        response = await startup(request_with(state))
+        repeated = await startup(request_with(state))
+
+        self.assertEqual(response.available_dataframes, "[('games',)]\n")
         self.assertEqual(
             [stage.stage for stage in response.telemetry],
-            [StageName.LOCK_WAIT, StageName.JUPYTER_METADATA_EXECUTION],
+            [
+                StageName.KERNEL_START,
+                StageName.KERNEL_READY_WAIT,
+                StageName.DATASET_LOAD,
+                StageName.CHECKPOINT_RESTORE,
+            ],
         )
+        self.assertEqual(repeated.telemetry, [])
 
     async def test_execute_records_bounded_kernel_error_type(self):
         state = worker_state()

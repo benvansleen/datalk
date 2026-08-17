@@ -7,15 +7,20 @@ pub interface Runtime {
   fn wait_until_ready(
     ctx: context.Context,
     environment_id: string,
-    timeout: time.Duration,
+    deadline: time.Time,
   ) -> Result<RuntimeInfo, RuntimeError>
+  fn wait_until_checkpoint_bound(
+    ctx: context.Context,
+    checkpoint_name: string,
+    deadline: time.Time,
+  ) -> Result<(), RuntimeError>
   fn stop(ctx: context.Context, environment_id: string) -> Result<(), RuntimeError>
   fn ensure_checkpoint(ctx: context.Context, spec: RuntimeSpec) -> Result<(), RuntimeError>
   fn delete_checkpoint(ctx: context.Context, environment_id: string) -> Result<(), RuntimeError>
 }
 
 pub interface Worker {
-  fn metadata(ctx: context.Context, runtime: RuntimeInfo) -> Result<DataframeMetadata, WorkerError>
+  fn startup(ctx: context.Context, runtime: RuntimeInfo) -> Result<DataframeMetadata, WorkerError>
   fn execute(ctx: context.Context, runtime: RuntimeInfo, request: Execution) -> Result<ExecutionResult, WorkerError>
 }
 
@@ -34,6 +39,7 @@ pub struct RuntimeInfo {
   pub pod_name: string,
   pub pod_ip: string,
   pub dataset: string,
+  pub checkpoint_name: string,
   pub state: RuntimeState,
   pub message: string,
 }

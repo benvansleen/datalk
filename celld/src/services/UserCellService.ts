@@ -33,22 +33,19 @@ export class UserCellService extends Effect.Service<UserCellService>()('app/User
       const hydrate = internalApi.hydrateUser(userId).pipe(
         Effect.catchAll(() => Effect.succeed(Option.none<ChatSummaryList>())),
         Effect.flatMap(
-          Option.match({
-            onNone: () => Effect.void,
-            onSome: (hydrated) =>
-              storage.transaction((transaction) => {
-                const alreadyHydrated = transaction
-                  .get<boolean>(KEY_HYDRATED)
-                  .pipe(Effect.map(Option.contains(true)));
-                return transaction
-                  .put(KEY_CHATS, hydrated)
-                  .pipe(
-                    Effect.andThen(transaction.put(KEY_HYDRATED, true)),
-                    Effect.unlessEffect(alreadyHydrated),
-                    Effect.asVoid,
-                  );
-              }),
-          }),
+          Effect.transposeMapOption((hydrated) =>
+            storage.transaction((transaction) => {
+              const alreadyHydrated = transaction
+                .get<boolean>(KEY_HYDRATED)
+                .pipe(Effect.map(Option.contains(true)));
+              return transaction
+                .put(KEY_CHATS, hydrated)
+                .pipe(
+                  Effect.andThen(transaction.put(KEY_HYDRATED, true)),
+                  Effect.unlessEffect(alreadyHydrated),
+                );
+            }),
+          ),
         ),
       );
       return hydrate.pipe(Effect.unlessEffect(isHydrated), Effect.asVoid);

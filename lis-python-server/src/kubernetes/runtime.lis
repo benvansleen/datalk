@@ -3,8 +3,11 @@ import "go:context"
 import core "go:k8s.io/api/core/v1"
 import coreclient "go:k8s.io/client-go/kubernetes/typed/core/v1"
 import "go:fmt"
+import "go:io"
+import "go:k8s.io/apimachinery/pkg/api/resource"
 import meta "go:k8s.io/apimachinery/pkg/apis/meta/v1"
-import resource "go:k8s.io/apimachinery/pkg/api/resource"
+import "go:net"
+import "go:net/http"
 import "go:strings"
 import "go:time"
 
@@ -30,6 +33,7 @@ pub struct Runtime {
   datasets: config.DatasetConfig,
   resources: core.ResourceRequirements,
   checkpoint_size: resource.Quantity,
+  ready_client: Ref<http.Client>,
   request_timeout: time.Duration,
   poll_interval: time.Duration,
 }
@@ -59,6 +63,7 @@ impl Runtime {
         datasets,
         resources,
         checkpoint_size,
+        ready_client: &http.Client { Timeout: time.Second, .. },
         request_timeout: kube.request_timeout,
         poll_interval: kube.readiness_poll_interval,
       },
@@ -115,9 +120,9 @@ impl Runtime {
     let results = Channel.new<Result<(), env.RuntimeError>>()
     let mut pending = 0
     for pod in pods.Items {
-      if pod.ObjectMeta.DeletionTimestamp.is_some() ||
-      pod.ObjectMeta.Name == keep_name ||
-      is_pod_ready(&pod) {
+      if pod.ObjectMeta.DeletionTimestamp.is_some() || pod.ObjectMeta.Name == keep_name || is_pod_active(
+        &pod,
+      ) {
         continue
       }
       let pod_name = pod.ObjectMeta.Name
@@ -142,10 +147,8 @@ impl Runtime {
     self,
     ctx: context.Context,
     environment_id: string,
-    timeout: time.Duration,
+    deadline: time.Time,
   ) -> Result<env.RuntimeInfo, env.RuntimeError> {
-    let deadline = time.Now().Add(timeout)
-
     loop {
       let Some(runtime) = self.find(ctx, environment_id)? else {
         return Err(env.RuntimeError.NotFound)
@@ -155,11 +158,69 @@ impl Runtime {
         env.RuntimeState.Terminal => return Err(env.RuntimeError.Terminated(
           runtime.message,
         )),
+        env.RuntimeState.Pending if self.worker_is_ready(ctx, runtime) => {
+          return Ok(mark_runtime_ready(runtime))
+        },
         env.RuntimeState.Pending => (),
       }
 
       if time.Now().After(deadline) { return Err(env.RuntimeError.TimedOut) }
       // TODO: avoid polling
+      time.Sleep(self.poll_interval)
+    }
+  }
+
+  fn worker_is_ready(self, ctx: context.Context, runtime: env.RuntimeInfo) -> bool {
+    if runtime.pod_ip == "" { return false }
+    let address = net.JoinHostPort(runtime.pod_ip, fmt.Sprint(self.worker.port))
+    let (ctx, cancel) = context.WithTimeout(ctx, time.Second)
+    defer cancel()
+    let request = match http.NewRequestWithContext(
+      ctx,
+      http.MethodGet,
+      f"http://{address}/readyz",
+      None,
+    ) {
+      Ok(request) => request,
+      Err(_) => return false,
+    }
+    let response = match self.ready_client.Do(request) {
+      Ok(response) => response,
+      Err(_) => return false,
+    }
+    let Some(body) = response.Body else {
+      return false
+    }
+    defer close_response_body(body)
+    response.StatusCode >= 200 && response.StatusCode < 300
+  }
+
+  fn wait_until_checkpoint_bound(
+    self,
+    ctx: context.Context,
+    checkpoint_name: string,
+    deadline: time.Time,
+  ) -> Result<(), env.RuntimeError> {
+    loop {
+      let claim = self.claims
+        .Get(ctx, checkpoint_name, meta.GetOptions { .. })
+        .map_err(|err| {
+          if apierrors.IsNotFound(err) {
+            env.RuntimeError.NotFound
+          } else {
+            map_api_error(err)
+          }
+        })?
+
+      match claim.Status.Phase {
+        core.ClaimBound => return Ok(()),
+        core.ClaimLost => return Err(env.RuntimeError.Internal(
+          f"checkpoint {checkpoint_name} is lost",
+        )),
+        _ => (),
+      }
+
+      if time.Now().After(deadline) { return Err(env.RuntimeError.TimedOut) }
       time.Sleep(self.poll_interval)
     }
   }
@@ -210,8 +271,7 @@ impl Runtime {
     let results = Channel.new<Result<(), env.RuntimeError>>()
     let mut pending = 0
     for claim in claims.Items {
-      if claim.ObjectMeta.DeletionTimestamp.is_some() ||
-      claim.ObjectMeta.Name == keep_name {
+      if claim.ObjectMeta.DeletionTimestamp.is_some() || claim.ObjectMeta.Name == keep_name {
         continue
       }
       let Some(environment_id) = claim.ObjectMeta.Annotations.get(
@@ -242,7 +302,7 @@ impl Runtime {
     let pod_name = name_for_pod(environment_id)
     let active = self.pods
       .Get(ctx, pod_name, meta.GetOptions { .. })
-      .map_or(false, is_pod_ready)
+      .map_or(false, is_pod_active)
     if active { return Ok(()) }
 
     self.pods
@@ -365,6 +425,17 @@ fn runtime_info(environment_id: string, pod: Ref<core.Pod>) -> Result<env.Runtim
     _ => env.RuntimeState.Pending,
   }
 
+  let checkpoint_name = match pod.ObjectMeta.Annotations.get(
+    CHECKPOINT_ANNOTATION,
+  ) {
+    Some(checkpoint_name) => checkpoint_name,
+    None => {
+      return Err(env.RuntimeError.Internal(
+        f"pod {pod.ObjectMeta.Name} is missing {CHECKPOINT_ANNOTATION}",
+      ))
+    },
+  }
+
   let message = match pod.Status.Message {
     "" => pod.Status.Reason,
     _ => pod.Status.Message,
@@ -376,10 +447,23 @@ fn runtime_info(environment_id: string, pod: Ref<core.Pod>) -> Result<env.Runtim
       pod_name: pod.ObjectMeta.Name,
       pod_ip: pod.Status.PodIP,
       dataset,
+      checkpoint_name,
       state,
       message,
     },
   )
+}
+
+fn mark_runtime_ready(runtime: env.RuntimeInfo) -> env.RuntimeInfo {
+  env.RuntimeInfo {
+    environment_id: runtime.environment_id,
+    pod_name: runtime.pod_name,
+    pod_ip: runtime.pod_ip,
+    dataset: runtime.dataset,
+    checkpoint_name: runtime.checkpoint_name,
+    state: env.RuntimeState.Ready,
+    message: runtime.message,
+  }
 }
 
 fn validate_checkpoint(
@@ -428,12 +512,23 @@ fn is_pod_ready(pod: Ref<core.Pod>) -> bool {
   )
 }
 
+fn is_pod_active(pod: Ref<core.Pod>) -> bool {
+  match pod.Status.Phase {
+    core.PodSucceeded | core.PodFailed => false,
+    _ => true,
+  }
+}
+
 fn name_for_pod(environment_id: string) -> string {
   f"python-env-{environment_id}"
 }
 
 fn name_for_checkpoint(environment_id: string) -> string {
   f"state-{environment_id}"
+}
+
+fn close_response_body(body: io.ReadCloser) {
+  if let Err(_) = body.Close() {}
 }
 
 fn parse_resources(cfg: config.WorkerResources) -> Result<core.ResourceRequirements, error> {

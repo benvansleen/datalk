@@ -26,8 +26,8 @@ impl Worker {
     }
   }
 
-  fn metadata(self, ctx: context.Context, runtime: env.RuntimeInfo) -> Result<env.DataframeMetadata, env.WorkerError> {
-    self.client.metadata(ctx, runtime)
+  fn startup(self, ctx: context.Context, runtime: env.RuntimeInfo) -> Result<env.DataframeMetadata, env.WorkerError> {
+    self.client.startup(ctx, runtime)
   }
 
   fn execute(

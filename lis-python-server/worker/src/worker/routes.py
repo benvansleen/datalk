@@ -7,10 +7,16 @@ from .auth import authenticate
 from .checkpoint import checkpoint_kernel
 from .error_boundary import WorkerProtocolError
 from .execution import build_code, execute_kernel_code
-from .interface import ExecutionRequest, ExecutionResponse, MetadataResponse
+from .interface import ExecutionRequest, ExecutionResponse, StartupResponse
 from .lifespan import app
 from .state import WorkerState
-from .telemetry import StageErrorType, StageName, StageStatus, StageTelemetry, StageTimer
+from .telemetry import (
+    StageErrorType,
+    StageName,
+    StageStatus,
+    StageTelemetry,
+    StageTimer,
+)
 
 
 def require_ready(state: WorkerState) -> None:
@@ -23,74 +29,20 @@ def require_ready(state: WorkerState) -> None:
 
 
 @app.get(
-    "/v1/metadata",
+    "/v1/startup",
     dependencies=[Depends(authenticate)],
-    response_model=MetadataResponse,
+    response_model=StartupResponse,
 )
-async def metadata(request: Request) -> MetadataResponse:
+async def startup(request: Request) -> StartupResponse:
     state: WorkerState = request.app.state.worker
     require_ready(state)
     state.last_activity = time.monotonic()
 
-    telemetry: list[StageTelemetry] = []
-    lock_timer = StageTimer.start(StageName.LOCK_WAIT)
-    async with state.execution_lock:
-        telemetry.append(lock_timer.finish(StageStatus.OK))
-        execution_timer = StageTimer.start(StageName.JUPYTER_METADATA_EXECUTION)
-        try:
-            result = await asyncio.wait_for(
-                execute_kernel_code(state, metadata_code()),
-                timeout=state.config.execution_timeout,
-            )
-        except TimeoutError:
-            telemetry.append(
-                execution_timer.finish(
-                    StageStatus.TIMEOUT,
-                    StageErrorType.EXECUTION_TIMEOUT,
-                )
-            )
-            restart_timer = StageTimer.start(StageName.TIMEOUT_KERNEL_RESTART)
-            try:
-                await state.restart()
-            except Exception as e:
-                telemetry.append(
-                    restart_timer.finish(
-                        StageStatus.ERROR,
-                        StageErrorType.KERNEL_RESTART_FAILED,
-                    )
-                )
-                raise WorkerProtocolError(
-                    status=502,
-                    code="kernel_unavailable",
-                    message=f"Kernel timeout recovery failed: {e}",
-                    telemetry=telemetry,
-                ) from e
-            telemetry.append(restart_timer.finish(StageStatus.OK))
-            raise WorkerProtocolError(
-                status=408,
-                code="execution_timeout",
-                message="Code execution timed out",
-                telemetry=telemetry,
-            )
-
-        telemetry.append(
-            execution_timer.finish(
-                StageStatus.OK if result.succeeded else StageStatus.ERROR,
-                None
-                if result.succeeded
-                else result.error_type or StageErrorType.USER_CODE_ERROR,
-            )
-        )
-
-    if not result.succeeded:
-        raise WorkerProtocolError(
-            status=502,
-            code="kernel_unavailable",
-            message=result.output,
-            telemetry=telemetry,
-        )
-
-    return MetadataResponse(available_dataframes=result.output, telemetry=telemetry)
+    telemetry, state.startup_telemetry = state.startup_telemetry, []
+    return StartupResponse(
+        available_dataframes=state.available_dataframes,
+        telemetry=telemetry,
+    )
 
 
 @app.post(
@@ -176,13 +128,3 @@ async def execute(request: Request, execution: ExecutionRequest) -> ExecutionRes
 
         state.last_activity = time.monotonic()
         return ExecutionResponse(outputs=result.output, telemetry=telemetry)
-
-
-def metadata_code() -> str:
-    return """
-print([
-    (name, value.columns, value.shape)
-    for name, value in globals().items()
-    if type(value) is pd.core.frame.DataFrame and not name.startswith("_")
-])
-        """

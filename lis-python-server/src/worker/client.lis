@@ -43,24 +43,25 @@ impl Client {
     }
   }
 
-  fn metadata(self, ctx: context.Context, runtime: env.RuntimeInfo) -> Result<env.DataframeMetadata, env.WorkerError> {
-    let (ctx, span) = self.telemetry.start(ctx, "worker.metadata")
+  fn startup(self, ctx: context.Context, runtime: env.RuntimeInfo) -> Result<env.DataframeMetadata, env.WorkerError> {
+    let stage_ctx = ctx
+    let (ctx, span) = self.telemetry.start(ctx, "worker.startup")
     defer span.end()
     span.attribute("environment.id", runtime.environment_id)
     let response = self.request(
       ctx,
       runtime,
       http.MethodGet,
-      "/v1/metadata",
+      "/v1/startup",
       None,
       self.request_timeout,
     )?
-    let mut body = MetadataResponse { .. }
+    let mut body = StartupResponse { .. }
     json
       .Unmarshal(response, &body)
       .map_err(|err| env.WorkerError.InvalidResponse(err.Error()))?
     self.telemetry
-      .record_worker_stages(ctx, runtime.environment_id, body.telemetry)
+      .record_worker_stages(stage_ctx, runtime.environment_id, body.telemetry)
       .map_err(|err| env.WorkerError.InvalidResponse(err.Error()))?
 
     Ok(
@@ -179,7 +180,7 @@ impl Client {
 }
 
 #[json]
-struct MetadataResponse {
+struct StartupResponse {
   available_dataframes: string,
   telemetry: Slice<telemetryapi.Stage>,
 }

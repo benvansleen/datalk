@@ -16,8 +16,8 @@ const makeSnapshot = (): StoredChatSnapshot => ({
   events: [],
 });
 
-const makeCell = (snapshot: StoredChatSnapshot = makeSnapshot()) => {
-  const values = new Map<string, unknown>([[KEY_SNAPSHOT, snapshot]]);
+const makeCell = (snapshot: StoredChatSnapshot | null = makeSnapshot()) => {
+  const values = new Map<string, unknown>(snapshot ? [[KEY_SNAPSHOT, snapshot]] : []);
   const work: Promise<unknown>[] = [];
   let alarm: number | null = null;
   const storage = {
@@ -93,6 +93,42 @@ describe('ChatCell generation recovery', () => {
     expect(response.status).toBe(200);
     expect(snapshot().generation).toEqual({ status: 'pending', requestId: 'request-1' });
     expect(snapshot().events).toEqual([]);
+  });
+
+  it('prewarms a new chat environment without delaying initialization', async () => {
+    let completePrewarm: (response: Response) => void = () => undefined;
+    const fetchMock = vi.fn<(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>>(
+      () =>
+        new Promise<Response>((resolve) => {
+          completePrewarm = resolve;
+        }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    const { cell, drainWork, snapshot } = makeCell(null);
+    const request = new Request('https://cell.test/initialize', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-datalk-internal-secret': 'internal-secret',
+        'x-datalk-user-id': 'user-1',
+      },
+      body: JSON.stringify({ chatId: 'chat-new', dataset: 'dataset-1' }),
+    });
+
+    const response = await cell.fetch(request);
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
+
+    expect(response.status).toBe(200);
+    expect(snapshot()).toMatchObject({ id: 'chat-new', dataset: 'dataset-1' });
+    const [sentUrl, sentInit] = fetchMock.mock.calls[0];
+    expect(String(sentUrl)).toBe('https://python.internal/environment/create');
+    expect(sentInit).toMatchObject({
+      method: 'POST',
+      body: JSON.stringify({ chat_id: 'chat-new', dataset: 'dataset-1' }),
+    });
+
+    completePrewarm(Response.json({ available_dataframes: '[]' }));
+    await drainWork();
   });
 
   it('resumes persisted generation after an isolate is replaced', async () => {

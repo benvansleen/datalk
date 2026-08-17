@@ -1,6 +1,6 @@
 import core "go:k8s.io/api/core/v1"
 import "go:fmt"
-import intstr "go:k8s.io/apimachinery/pkg/util/intstr"
+import "go:k8s.io/apimachinery/pkg/util/intstr"
 import meta "go:k8s.io/apimachinery/pkg/apis/meta/v1"
 import "go:time"
 
@@ -107,12 +107,12 @@ impl Builder {
   fn build_container(self) -> core.Container {
     let startup_probe = http_probe(
       "/readyz",
-      2,
+      1,
       1,
       startup_failure_threshold(self.environments.startup_timeout),
     )
 
-    let readiness_probe = http_probe("/readyz", 2, 1, 2)
+    let readiness_probe = http_probe("/readyz", 1, 1, 2)
 
     let liveness_probe = http_probe("/livez", 10, 2, 3)
 
@@ -281,7 +281,7 @@ fn http_probe(
 
 fn startup_failure_threshold(timeout: time.Duration) -> int32 {
   let seconds = timeout.Seconds()
-  let threshold = ((seconds + 1.0) / 2.0) as int32
+  let threshold = (seconds + 1.0) as int32
 
   if threshold < 1 { 1 } else { threshold }
 }
