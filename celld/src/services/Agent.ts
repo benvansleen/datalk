@@ -249,8 +249,8 @@ export class Agent extends Effect.Service<Agent>()('app/Agent', {
               onSome: Effect.succeed,
             }),
           );
-          const model = createOpenAI({ apiKey }).chat(
-            Option.getOrElse(config.openaiModel, () => 'gpt-5-nano'),
+          const model = createOpenAI({ apiKey }).responses(
+            Option.getOrElse(config.openaiModel, () => 'gpt-5.6-luna'),
           );
           if (snapshot.title === '...')
             yield* sink.spawn(
