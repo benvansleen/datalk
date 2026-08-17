@@ -38,19 +38,21 @@ KERNEL_ERROR_TYPES = {
 
 
 def classify_kernel_error(error_name: object) -> StageErrorType:
-    if not isinstance(error_name, str):
-        return StageErrorType.USER_CODE_ERROR
-    return KERNEL_ERROR_TYPES.get(error_name, StageErrorType.USER_CODE_ERROR)
+    match error_name:
+        case str():
+            return KERNEL_ERROR_TYPES.get(error_name, StageErrorType.USER_CODE_ERROR)
+        case _:
+            return StageErrorType.USER_CODE_ERROR
 
 
-def require_client(state: "WorkerState") -> AsyncKernelClient:
+def require_client(state: WorkerState) -> AsyncKernelClient:
     if state.client is None:
         raise RuntimeError("Kernel client is not available")
     return state.client
 
 
 async def execute_kernel_code(
-    state: "WorkerState",
+    state: WorkerState,
     code: str,
 ) -> KernelResult:
     client = require_client(state)

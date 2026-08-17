@@ -139,6 +139,9 @@
 
                   template = {
                     metadata.labels.app = controllerLabel;
+                    metadata.annotations."checksum/config" = builtins.hashString "sha256" (
+                      controllerConfig + datasetCatalog
+                    );
                     spec = {
                       serviceAccountName = controllerServiceAccount;
                       securityContext = {
