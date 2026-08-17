@@ -38,10 +38,26 @@ const parseToolArgs = (args: string): unknown => {
   }
 };
 
-const toModelMessages = (messages: ChatMessage[]): ModelMessage[] => {
+const INTERRUPTED_TOOL_RESULT = 'Tool execution was interrupted before a result was recorded.';
+
+export const toModelMessages = (messages: ChatMessage[]): ModelMessage[] => {
   const toolCallIds = new Set(
     messages.flatMap((message) => (message.toolCalls ?? []).map((call) => call.toolCallId)),
   );
+  const answeredToolCallIds = new Set(
+    messages.flatMap((message) => (message.role === 'tool' ? [message.toolCallId] : [])),
+  );
+  const interruptedToolResult = (toolCallId: string, toolName: string): ModelMessage => ({
+    role: 'tool',
+    content: [
+      {
+        type: 'tool-result',
+        toolCallId,
+        toolName,
+        output: { type: 'text', value: INTERRUPTED_TOOL_RESULT },
+      },
+    ],
+  });
   return messages.flatMap((message) =>
     Match.value(message).pipe(
       Match.when({ role: 'user' }, (message): ModelMessage[] => [
@@ -85,7 +101,14 @@ const toModelMessages = (messages: ChatMessage[]): ModelMessage[] => {
             input: parseToolArgs(call.args),
           })),
         ];
-        return content.length > 0 ? [{ role: 'assistant', content }] : [];
+        if (content.length === 0) return [];
+        const interrupted = (message.toolCalls ?? []).filter(
+          (call) => !answeredToolCallIds.has(call.toolCallId),
+        );
+        return [
+          { role: 'assistant', content },
+          ...interrupted.map((call) => interruptedToolResult(call.toolCallId, call.toolName)),
+        ];
       }),
       Match.orElse(() => []),
     ),
